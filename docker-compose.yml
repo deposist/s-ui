@@ -1,6 +1,6 @@
 services:
   s-ui:
-    image: ghcr.io/admin8800/s-ui
+    image: ghcr.io/deposist/s-ui
     container_name: s-ui
     hostname: "s-ui"
     network_mode: host

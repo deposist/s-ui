@@ -135,13 +135,13 @@ install_s-ui() {
     cd /tmp/
 
     if [ $# == 0 ]; then
-        last_version=$(curl -Ls "https://api.github.com/repos/admin8800/s-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -Ls "https://api.github.com/repos/deposist/s-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
             echo -e "${red}Не удалось получить версию s-ui. Возможно, сработало ограничение GitHub API. Повторите попытку позже${plain}"
             exit 1
         fi
         echo -e "Получена последняя версия s-ui: ${last_version}. Начинается установка..."
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz https://github.com/admin8800/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz
+        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz https://github.com/deposist/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz
         if [[ $? -ne 0 ]]; then
             echo -e "${red}Не удалось скачать s-ui. Убедитесь, что сервер имеет доступ к GitHub ${plain}"
             exit 1
@@ -149,7 +149,7 @@ install_s-ui() {
     else
         last_version=$1
         [[ "${last_version}" != v* ]] && last_version="v${last_version}"
-        url="https://github.com/admin8800/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz"
+        url="https://github.com/deposist/s-ui/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz"
         echo -e "Начинается установка s-ui ${last_version}"
         wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz ${url}
         if [[ $? -ne 0 ]]; then

@@ -44,12 +44,12 @@
 ### Linux/macOS
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui/main/install.sh)
 ```
 
 ### Windows
 
-1. Скачайте последнюю версию для Windows из [GitHub Releases](https://github.com/admin8800/s-ui/releases/latest).
+1. Скачайте последнюю версию для Windows из [GitHub Releases](https://github.com/deposist/s-ui/releases/latest).
 2. Распакуйте ZIP-файл.
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
@@ -59,7 +59,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh
 **Шаг 1:** чтобы установить определенную старую версию, добавьте тег версии с `v` в конец команды установки. Например, версия `v1.0.0`:
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh) v1.0.0
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui/main/install.sh) v1.0.0
 ```
 
 
@@ -67,8 +67,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh
 
 ### Linux/macOS
 
-1. Скачайте последнюю версию S-UI для вашей системы и архитектуры из GitHub: [https://github.com/admin8800/s-ui/releases/latest](https://github.com/admin8800/s-ui/releases/latest)
-2. **Необязательно:** скачайте последнюю версию `s-ui.sh`: [https://raw.githubusercontent.com/admin8800/s-ui/main/s-ui.sh](https://raw.githubusercontent.com/admin8800/s-ui/main/s-ui.sh)
+1. Скачайте последнюю версию S-UI для вашей системы и архитектуры из GitHub: [https://github.com/deposist/s-ui/releases/latest](https://github.com/deposist/s-ui/releases/latest)
+2. **Необязательно:** скачайте последнюю версию `s-ui.sh`: [https://raw.githubusercontent.com/deposist/s-ui/main/s-ui.sh](https://raw.githubusercontent.com/deposist/s-ui/main/s-ui.sh)
 3. **Необязательно:** скопируйте `s-ui.sh` в `/usr/bin/` и выполните `chmod +x /usr/bin/s-ui`.
 4. Распакуйте tar.gz-архив s-ui в выбранный каталог и перейдите в распакованную папку.
 5. Скопируйте файлы `*.service` в `/etc/systemd/system/`, затем выполните `systemctl daemon-reload`.
@@ -77,7 +77,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/admin8800/s-ui/main/install.sh
 
 ### Windows
 
-1. Скачайте последнюю версию для Windows из GitHub: [https://github.com/admin8800/s-ui/releases/latest](https://github.com/admin8800/s-ui/releases/latest)
+1. Скачайте последнюю версию для Windows из GitHub: [https://github.com/deposist/s-ui/releases/latest](https://github.com/deposist/s-ui/releases/latest)
 2. Скачайте подходящий пакет для Windows, например `s-ui-windows-amd64.zip`.
 3. Распакуйте ZIP-файл в выбранный каталог.
 4. Запустите `install-windows.bat` от имени администратора.
@@ -118,7 +118,7 @@ curl -fsSL https://get.docker.com | sh
 ```shell
 services:
   s-ui:
-    image: ghcr.io/admin8800/s-ui
+    image: ghcr.io/deposist/s-ui
     container_name: s-ui
     hostname: "s-ui"
     network_mode: host
@@ -143,13 +143,13 @@ docker run -itd \
     -v $PWD/cert/:/root/cert/ \
     --name s-ui \
     --restart=unless-stopped \
-    ghcr.io/admin8800/s-ui
+    ghcr.io/deposist/s-ui
 ```
 
 > Самостоятельная сборка образа
 
 ```shell
-git clone https://github.com/admin8800/s-ui
+git clone https://github.com/deposist/s-ui
 docker build -t s-ui .
 ```
 
@@ -170,7 +170,7 @@ docker build -t s-ui .
 
 ```shell
 # Клонирование репозитория
-git clone https://github.com/admin8800/s-ui
+git clone https://github.com/deposist/s-ui
 ```
 
 ### Фронтенд
