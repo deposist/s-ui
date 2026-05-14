@@ -101,13 +101,13 @@
                   <v-col cols="9">
                     <v-chip density="compact" color="primary" variant="flat" v-if="tilesData.sys?.ipv4?.length>0">
                       <v-tooltip activator="parent" location="top" style="direction: ltr;">
-                        <span v-html="tilesData.sys?.ipv4?.join('<br />')"></span>
+                        <span v-for="ip in tilesData.sys?.ipv4" :key="ip">{{ ip }}<br /></span>
                       </v-tooltip>
                       IPv4
                     </v-chip>
                     <v-chip density="compact" color="primary" variant="flat" v-if="tilesData.sys?.ipv6?.length>0">
                       <v-tooltip activator="parent" location="top" style="direction: ltr;">
-                        <span v-html="tilesData.sys?.ipv6?.join('<br />')"></span>
+                        <span v-for="ip in tilesData.sys?.ipv6" :key="ip">{{ ip }}<br /></span>
                       </v-tooltip>
                       IPv6
                     </v-chip>
@@ -239,8 +239,8 @@ const reloadItems = computed({
 
 const reloadData = async () => {
   const request = [...new Set(reloadItems.value.map(r => r.split('-')[1]))]
-  if (tilesData.value?.sys?.appVersion) request.filter(r => r != 'sys')
-  const data = await HttpUtils.get('api/status',{ r: request.join(',')})
+  const filteredRequest = tilesData.value?.sys?.appVersion ? request.filter(r => r != 'sys') : request
+  const data = await HttpUtils.get('api/status',{ r: filteredRequest.join(',')})
   if (data.success) {
     tilesData.value = data.obj
   }

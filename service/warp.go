@@ -20,6 +20,8 @@ import (
 
 type WarpService struct{}
 
+var warpHTTPClient = &http.Client{Timeout: 20 * time.Second}
+
 func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, error) {
 	url := fmt.Sprintf("https://api.cloudflareclient.com/v0a2158/reg/%s", deviceId)
 
@@ -29,12 +31,14 @@ func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
+	resp, err := warpHTTPClient.Do(req)
+	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, common.NewErrorf("cloudflare warp status: %d", resp.StatusCode)
+	}
 	buffer := bytes.NewBuffer(make([]byte, 8192))
 	buffer.Reset()
 	_, err = buffer.ReadFrom(resp.Body)
@@ -51,10 +55,19 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	publicKey := privateKey.PublicKey().String()
 	hostName, _ := os.Hostname()
 
-	data := fmt.Sprintf(`{"key":"%s","tos":"%s","type": "PC","model": "s-ui", "name": "%s"}`, publicKey, tos, hostName)
+	dataBytes, err := json.Marshal(map[string]string{
+		"key":   publicKey,
+		"tos":   tos,
+		"type":  "PC",
+		"model": "s-ui",
+		"name":  hostName,
+	})
+	if err != nil {
+		return err
+	}
 	url := "https://api.cloudflareclient.com/v0a2158/reg"
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer([]byte(data)))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(dataBytes))
 	if err != nil {
 		return err
 	}
@@ -62,12 +75,14 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	req.Header.Add("CF-Client-Version", "a-7.21-0721")
 	req.Header.Add("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
+	resp, err := warpHTTPClient.Do(req)
+	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return common.NewErrorf("cloudflare warp status: %d", resp.StatusCode)
+	}
 	buffer := bytes.NewBuffer(make([]byte, 8192))
 	buffer.Reset()
 	_, err = buffer.ReadFrom(resp.Body)
@@ -81,12 +96,22 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 		return err
 	}
 
-	deviceId := rspData["id"].(string)
-	token := rspData["token"].(string)
-	license, ok := rspData["account"].(map[string]interface{})["license"].(string)
+	deviceId, ok := rspData["id"].(string)
+	if !ok {
+		return common.NewError("missing warp device id")
+	}
+	token, ok := rspData["token"].(string)
+	if !ok {
+		return common.NewError("missing warp token")
+	}
+	account, ok := rspData["account"].(map[string]interface{})
+	if !ok {
+		return common.NewError("missing warp account")
+	}
+	license, ok := account["license"].(string)
 	if !ok {
 		logger.Debug("Error accessing license value.")
-		return err
+		return common.NewError("missing warp license")
 	}
 
 	warpInfo, err := s.getWarpInfo(deviceId, token)
@@ -107,8 +132,22 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	addresses, _ := interfaceConfig["addresses"].(map[string]interface{})
 	v4, _ := addresses["v4"].(string)
 	v6, _ := addresses["v6"].(string)
-	peer, _ := warpConfig["peers"].([]interface{})[0].(map[string]interface{})
-	peerEndpoint, _ := peer["endpoint"].(map[string]interface{})["host"].(string)
+	peers, ok := warpConfig["peers"].([]interface{})
+	if !ok || len(peers) == 0 {
+		return common.NewError("missing warp peers")
+	}
+	peer, ok := peers[0].(map[string]interface{})
+	if !ok {
+		return common.NewError("invalid warp peer")
+	}
+	peerEndpointObj, ok := peer["endpoint"].(map[string]interface{})
+	if !ok {
+		return common.NewError("missing warp peer endpoint")
+	}
+	peerEndpoint, ok := peerEndpointObj["host"].(string)
+	if !ok {
+		return common.NewError("missing warp peer endpoint host")
+	}
 	peerEpAddress, peerEpPort, err := net.SplitHostPort(peerEndpoint)
 	if err != nil {
 		return err
@@ -116,7 +155,7 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	peerPublicKey, _ := peer["public_key"].(string)
 	peerPort, _ := strconv.Atoi(peerEpPort)
 
-	peers := []map[string]interface{}{
+	peerConfigs := []map[string]interface{}{
 		{
 			"address":     peerEpAddress,
 			"port":        peerPort,
@@ -145,7 +184,7 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	epOptions["private_key"] = privateKey.String()
 	epOptions["address"] = []string{fmt.Sprintf("%s/32", v4), fmt.Sprintf("%s/128", v6)}
 	epOptions["listen_port"] = 0
-	epOptions["peers"] = peers
+	epOptions["peers"] = peerConfigs
 
 	ep.Options, err = json.MarshalIndent(epOptions, "", "  ")
 	return err
@@ -188,20 +227,25 @@ func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) err
 	}
 
 	url := fmt.Sprintf("https://api.cloudflareclient.com/v0a2158/reg/%s/account", warpData["device_id"])
-	data := fmt.Sprintf(`{"license": "%s"}`, warpData["license_key"])
+	dataBytes, err := json.Marshal(map[string]string{"license": warpData["license_key"]})
+	if err != nil {
+		return err
+	}
 
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer([]byte(data)))
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(dataBytes))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+warpData["access_token"])
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := warpHTTPClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return common.NewErrorf("cloudflare warp status: %d", resp.StatusCode)
+	}
 	buffer := bytes.NewBuffer(make([]byte, 8192))
 	buffer.Reset()
 	_, err = buffer.ReadFrom(resp.Body)
@@ -216,7 +260,10 @@ func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) err
 
 	if success, ok := response["success"].(bool); ok && success == false {
 		errorArr, _ := response["errors"].([]interface{})
-		errorObj := errorArr[0].(map[string]interface{})
+		if len(errorArr) == 0 {
+			return common.NewError("warp license update failed")
+		}
+		errorObj, _ := errorArr[0].(map[string]interface{})
 		return common.NewError(errorObj["code"], errorObj["message"])
 	}
 

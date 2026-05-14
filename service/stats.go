@@ -2,6 +2,7 @@ package service
 
 import (
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/admin8800/s-ui/database"
@@ -16,12 +17,15 @@ type onlines struct {
 	Outbound []string `json:"outbound,omitempty"`
 }
 
-var onlineResources = &onlines{}
+var (
+	onlineResources   = &onlines{}
+	onlineResourcesMu sync.RWMutex
+)
 
 type StatsService struct {
 }
 
-func (s *StatsService) SaveStats(enableTraffic bool) error {
+func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 	if corePtr == nil || !corePtr.IsRunning() {
 		return nil
 	}
@@ -35,21 +39,20 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 	}
 	stats := st.GetStats()
 
-	// Reset onlines
-	onlineResources.Inbound = nil
-	onlineResources.Outbound = nil
-	onlineResources.User = nil
+	currentOnlines := onlines{}
 
 	if len(*stats) == 0 {
+		onlineResourcesMu.Lock()
+		onlineResources = &currentOnlines
+		onlineResourcesMu.Unlock()
 		return nil
 	}
 
-	var err error
 	db := database.GetDB()
 	tx := db.Begin()
 	defer func() {
 		if err == nil {
-			tx.Commit()
+			err = tx.Commit().Error
 		} else {
 			tx.Rollback()
 		}
@@ -71,14 +74,17 @@ func (s *StatsService) SaveStats(enableTraffic bool) error {
 		if stat.Direction {
 			switch stat.Resource {
 			case "inbound":
-				onlineResources.Inbound = append(onlineResources.Inbound, stat.Tag)
+				currentOnlines.Inbound = append(currentOnlines.Inbound, stat.Tag)
 			case "outbound":
-				onlineResources.Outbound = append(onlineResources.Outbound, stat.Tag)
+				currentOnlines.Outbound = append(currentOnlines.Outbound, stat.Tag)
 			case "user":
-				onlineResources.User = append(onlineResources.User, stat.Tag)
+				currentOnlines.User = append(currentOnlines.User, stat.Tag)
 			}
 		}
 	}
+	onlineResourcesMu.Lock()
+	onlineResources = &currentOnlines
+	onlineResourcesMu.Unlock()
 
 	if !enableTraffic {
 		return nil
@@ -153,7 +159,13 @@ func (s *StatsService) downsampleStats(stats []model.Stats, maxRows int) []model
 }
 
 func (s *StatsService) GetOnlines() (onlines, error) {
-	return *onlineResources, nil
+	onlineResourcesMu.RLock()
+	defer onlineResourcesMu.RUnlock()
+	return onlines{
+		Inbound:  append([]string(nil), onlineResources.Inbound...),
+		User:     append([]string(nil), onlineResources.User...),
+		Outbound: append([]string(nil), onlineResources.Outbound...),
+	}, nil
 }
 func (s *StatsService) DelOldStats(days int) error {
 	oldTime := time.Now().AddDate(0, 0, -(days)).Unix()

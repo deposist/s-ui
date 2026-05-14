@@ -29,7 +29,11 @@ func (s *LinkService) GetLinks(linkJson *json.RawMessage, types string, clientIn
 		case "external":
 			result = append(result, link.Uri)
 		case "sub":
-			subLinks := util.GetExternalLink(link.Uri)
+			subLinks, err := util.GetExternalLink(link.Uri)
+			if err != nil {
+				logger.Warning("sub: Error getting external subscription:", err)
+				continue
+			}
 			result = append(result, strings.Split(subLinks, "\n")...)
 		case "local":
 			if types == "all" {

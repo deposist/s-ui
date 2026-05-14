@@ -261,11 +261,17 @@ func (a *ApiService) postActions(c *gin.Context) (string, json.RawMessage, error
 
 func (a *ApiService) Login(c *gin.Context) {
 	remoteIP := getRemoteIp(c)
-	loginUser, err := a.UserService.Login(c.Request.FormValue("user"), c.Request.FormValue("pass"), remoteIP)
-	if err != nil {
+	if err := checkLoginRateLimit(remoteIP); err != nil {
 		jsonMsg(c, "", err)
 		return
 	}
+	loginUser, err := a.UserService.Login(c.Request.FormValue("user"), c.Request.FormValue("pass"), remoteIP)
+	if err != nil {
+		recordLoginFailure(remoteIP)
+		jsonMsg(c, "", err)
+		return
+	}
+	resetLoginFailures(remoteIP)
 
 	sessionMaxAge, err := a.SettingService.GetSessionMaxAge()
 	if err != nil {

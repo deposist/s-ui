@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/admin8800/s-ui/logger"
@@ -18,7 +19,8 @@ type TokenInMemory struct {
 
 type APIv2Handler struct {
 	ApiService
-	tokens *[]TokenInMemory
+	tokensMu sync.RWMutex
+	tokens   []TokenInMemory
 }
 
 func NewAPIv2Handler(g *gin.RouterGroup) *APIv2Handler {
@@ -97,9 +99,11 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 
 func (a *APIv2Handler) findUsername(c *gin.Context) string {
 	token := c.Request.Header.Get("Token")
-	for index, t := range *a.tokens {
-		if t.Expiry > 0 && t.Expiry < time.Now().Unix() {
-			(*a.tokens) = append((*a.tokens)[:index], (*a.tokens)[index+1:]...)
+	now := time.Now().Unix()
+	a.tokensMu.RLock()
+	defer a.tokensMu.RUnlock()
+	for _, t := range a.tokens {
+		if t.Expiry > 0 && t.Expiry < now {
 			continue
 		}
 		if t.Token == token {
@@ -127,7 +131,9 @@ func (a *APIv2Handler) ReloadTokens() {
 		if err != nil {
 			logger.Error("unable to load tokens: ", err)
 		}
-		a.tokens = &newTokens
+		a.tokensMu.Lock()
+		a.tokens = newTokens
+		a.tokensMu.Unlock()
 	} else {
 		logger.Error("unable to load tokens: ", err)
 	}

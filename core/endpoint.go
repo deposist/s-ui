@@ -9,7 +9,7 @@ import (
 )
 
 func (c *Core) AddInbound(config []byte) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	var err error
@@ -34,7 +34,7 @@ func (c *Core) AddInbound(config []byte) error {
 }
 
 func (c *Core) RemoveInbound(tag string) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	logger.Info("remove inbound: ", tag)
@@ -42,7 +42,7 @@ func (c *Core) RemoveInbound(tag string) error {
 }
 
 func (c *Core) AddOutbound(config []byte) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	var err error
@@ -72,7 +72,7 @@ func (c *Core) AddOutbound(config []byte) error {
 }
 
 func (c *Core) RemoveOutbound(tag string) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	logger.Info("remove outbound: ", tag)
@@ -80,7 +80,7 @@ func (c *Core) RemoveOutbound(tag string) error {
 }
 
 func (c *Core) AddEndpoint(config []byte) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	var err error
@@ -106,7 +106,7 @@ func (c *Core) AddEndpoint(config []byte) error {
 }
 
 func (c *Core) RemoveEndpoint(tag string) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	logger.Info("remove endpoint: ", tag)
@@ -114,7 +114,7 @@ func (c *Core) RemoveEndpoint(tag string) error {
 }
 
 func (c *Core) AddService(config []byte) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	var err error
@@ -139,7 +139,7 @@ func (c *Core) AddService(config []byte) error {
 }
 
 func (c *Core) RemoveService(tag string) error {
-	if !c.isRunning {
+	if !c.IsRunning() {
 		return common.NewError("sing-box is not running")
 	}
 	logger.Info("remove service: ", tag)

@@ -2,6 +2,7 @@ package database
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/admin8800/s-ui/config"
 	"github.com/admin8800/s-ui/database/model"
+	"github.com/admin8800/s-ui/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -24,11 +26,19 @@ func initUser() error {
 		return err
 	}
 	if count == 0 {
+		password := common.Random(24)
+		passwordHash, err := common.HashPassword(password)
+		if err != nil {
+			return err
+		}
 		user := &model.User{
 			Username: "admin",
-			Password: "admin",
+			Password: passwordHash,
 		}
-		return db.Create(user).Error
+		if err := db.Create(user).Error; err != nil {
+			return err
+		}
+		log.Printf("created initial admin user. username=admin password=%s", password)
 	}
 	return nil
 }
@@ -106,11 +116,28 @@ func InitDB(dbPath string) error {
 	if err != nil {
 		return err
 	}
+	if err := ensureIndexes(); err != nil {
+		return err
+	}
 	err = initUser()
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func ensureIndexes() error {
+	indexes := []string{
+		"CREATE INDEX IF NOT EXISTS idx_stats_lookup ON stats(date_time, resource, tag)",
+		"CREATE INDEX IF NOT EXISTS idx_changes_lookup ON changes(date_time, actor, key)",
+		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
+	}
+	for _, query := range indexes {
+		if err := db.Exec(query).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

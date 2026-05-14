@@ -2,7 +2,6 @@ package service
 
 import (
 	"encoding/json"
-	"os"
 
 	"github.com/admin8800/s-ui/database"
 	"github.com/admin8800/s-ui/database/model"
@@ -69,28 +68,6 @@ func (s *OutboundService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 			return err
 		}
 
-		if corePtr.IsRunning() {
-			configData, err := outbound.MarshalJSON()
-			if err != nil {
-				return err
-			}
-			if act == "edit" {
-				var oldTag string
-				err = tx.Model(model.Outbound{}).Select("tag").Where("id = ?", outbound.Id).Find(&oldTag).Error
-				if err != nil {
-					return err
-				}
-				err = corePtr.RemoveOutbound(oldTag)
-				if err != nil && err != os.ErrInvalid {
-					return err
-				}
-			}
-			err = corePtr.AddOutbound(configData)
-			if err != nil {
-				return err
-			}
-		}
-
 		err = tx.Save(&outbound).Error
 		if err != nil {
 			return err
@@ -100,12 +77,6 @@ func (s *OutboundService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 		err = json.Unmarshal(data, &tag)
 		if err != nil {
 			return err
-		}
-		if corePtr.IsRunning() {
-			err = corePtr.RemoveOutbound(tag)
-			if err != nil && err != os.ErrInvalid {
-				return err
-			}
 		}
 		err = tx.Where("tag = ?", tag).Delete(model.Outbound{}).Error
 		if err != nil {

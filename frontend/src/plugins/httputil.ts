@@ -61,7 +61,7 @@ function isMsg(obj: any): obj is Msg {
 }
   
 const HttpUtils = {
-  async get(url: string, data: object = {}, options: any[] = []): Promise<Msg> {
+  async get(url: string, data: object = {}, options: any = {}): Promise<Msg> {
     let msg: Msg
     try {
         const resp = await api.get(url, { params: data, ...options })

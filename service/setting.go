@@ -339,8 +339,9 @@ func (s *SettingService) GetFinalSubURI(host string) (string, error) {
 	if (*allSetting)["subDomain"] != "" {
 		host = (*allSetting)["subDomain"]
 	}
-	port := ":" + (*allSetting)["subPort"]
-	if (port == "80" && protocol == "http") || (port == "443" && protocol == "https") {
+	portValue := (*allSetting)["subPort"]
+	port := ":" + portValue
+	if (portValue == "80" && protocol == "http") || (portValue == "443" && protocol == "https") {
 		port = ""
 	}
 	return protocol + "://" + host + port + (*allSetting)["subPath"], nil

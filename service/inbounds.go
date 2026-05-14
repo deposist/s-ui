@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/admin8800/s-ui/database"
@@ -124,34 +125,6 @@ func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, ini
 			}
 		}
 
-		if corePtr.IsRunning() {
-			if act == "edit" {
-				err = corePtr.RemoveInbound(oldTag)
-				if err != nil && err != os.ErrInvalid {
-					return err
-				}
-			}
-
-			inboundConfig, err := inbound.MarshalJSON()
-			if err != nil {
-				return err
-			}
-
-			if act == "edit" {
-				inboundConfig, err = s.addUsers(tx, inboundConfig, inbound.Id, inbound.Type)
-			} else {
-				inboundConfig, err = s.initUsers(tx, inboundConfig, initUserIds, inbound.Type)
-			}
-			if err != nil {
-				return err
-			}
-
-			err = corePtr.AddInbound(inboundConfig)
-			if err != nil {
-				return err
-			}
-		}
-
 		err = util.FillOutJson(&inbound, hostname)
 		if err != nil {
 			return err
@@ -175,12 +148,6 @@ func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, ini
 		err = json.Unmarshal(data, &tag)
 		if err != nil {
 			return err
-		}
-		if corePtr.IsRunning() {
-			err = corePtr.RemoveInbound(tag)
-			if err != nil && err != os.ErrInvalid {
-				return err
-			}
 		}
 		var id uint
 		err = tx.Model(model.Inbound{}).Select("id").Where("tag = ?", tag).Scan(&id).Error
@@ -250,39 +217,6 @@ func (s *InboundService) hasUser(inboundType string) bool {
 	return false
 }
 
-func (s *InboundService) fetchUsers(db *gorm.DB, inboundType string, condition string, inbound map[string]interface{}) ([]json.RawMessage, error) {
-	if inboundType == "shadowtls" {
-		version, _ := inbound["version"].(float64)
-		if int(version) < 3 {
-			return nil, nil
-		}
-	}
-	if inboundType == "shadowsocks" {
-		method, _ := inbound["method"].(string)
-		if method == "2022-blake3-aes-128-gcm" {
-			inboundType = "shadowsocks16"
-		}
-	}
-
-	var users []string
-
-	err := db.Raw(
-		fmt.Sprintf(`SELECT json_extract(clients.config, "$.%s")
-		FROM clients WHERE enable = true AND %s`,
-			inboundType, condition)).Scan(&users).Error
-	if err != nil {
-		return nil, err
-	}
-	var usersJson []json.RawMessage
-	for _, user := range users {
-		if inboundType == "vless" && inbound["tls"] == nil {
-			user = strings.Replace(user, "xtls-rprx-vision", "", -1)
-		}
-		usersJson = append(usersJson, json.RawMessage(user))
-	}
-	return usersJson, nil
-}
-
 func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uint, inboundType string) ([]byte, error) {
 	if !s.hasUser(inboundType) {
 		return inboundJson, nil
@@ -294,8 +228,8 @@ func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uin
 		return nil, err
 	}
 
-	condition := fmt.Sprintf("%d IN (SELECT json_each.value FROM json_each(clients.inbounds))", inboundId)
-	inbound["users"], err = s.fetchUsers(db, inboundType, condition, inbound)
+	condition := "? IN (SELECT json_each.value FROM json_each(clients.inbounds))"
+	inbound["users"], err = s.fetchUsersByCondition(db, inboundType, condition, inbound, inboundId)
 	if err != nil {
 		return nil, err
 	}
@@ -319,13 +253,51 @@ func (s *InboundService) initUsers(db *gorm.DB, inboundJson []byte, clientIds st
 		return nil, err
 	}
 
-	condition := fmt.Sprintf("id IN (%s)", strings.Join(ClientIds, ","))
-	inbound["users"], err = s.fetchUsers(db, inboundType, condition, inbound)
+	ids := make([]uint, 0, len(ClientIds))
+	for _, clientId := range ClientIds {
+		id, err := strconv.ParseUint(strings.TrimSpace(clientId), 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, uint(id))
+	}
+	condition := "id IN ?"
+	inbound["users"], err = s.fetchUsersByCondition(db, inboundType, condition, inbound, ids)
 	if err != nil {
 		return nil, err
 	}
 
 	return json.Marshal(inbound)
+}
+
+func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, condition string, inbound map[string]interface{}, args ...interface{}) ([]json.RawMessage, error) {
+	if inboundType == "shadowtls" {
+		version, _ := inbound["version"].(float64)
+		if int(version) < 3 {
+			return nil, nil
+		}
+	}
+	if inboundType == "shadowsocks" {
+		method, _ := inbound["method"].(string)
+		if method == "2022-blake3-aes-128-gcm" {
+			inboundType = "shadowsocks16"
+		}
+	}
+
+	var users []string
+	query := fmt.Sprintf(`SELECT json_extract(clients.config, "$.%s") FROM clients WHERE enable = true AND %s`, inboundType, condition)
+	err := db.Raw(query, args...).Scan(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	var usersJson []json.RawMessage
+	for _, user := range users {
+		if inboundType == "vless" && inbound["tls"] == nil {
+			user = strings.Replace(user, "xtls-rprx-vision", "", -1)
+		}
+		usersJson = append(usersJson, json.RawMessage(user))
+	}
+	return usersJson, nil
 }
 
 func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {

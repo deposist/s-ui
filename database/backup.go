@@ -2,7 +2,6 @@ package database
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"os"
@@ -36,7 +35,7 @@ func GetDb(exclude string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbPath := dir + config.GetName() + "_" + time.Now().Format("20060102-200203") + ".db"
+	dbPath := filepath.Join(dir, config.GetName()+"_"+time.Now().Format("20060102-150405")+".db")
 
 	backupDb, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
@@ -49,8 +48,10 @@ func GetDb(exclude string) ([]byte, error) {
 		&model.Tls{},
 		&model.Inbound{},
 		&model.Outbound{},
+		&model.Service{},
 		&model.Endpoint{},
 		&model.User{},
+		&model.Tokens{},
 		&model.Stats{},
 		&model.Client{},
 		&model.Changes{},
@@ -63,8 +64,10 @@ func GetDb(exclude string) ([]byte, error) {
 	var tls []model.Tls
 	var inbound []model.Inbound
 	var outbound []model.Outbound
+	var services []model.Service
 	var endpoint []model.Endpoint
 	var users []model.User
+	var tokens []model.Tokens
 	var clients []model.Client
 	var stats []model.Stats
 	var changes []model.Changes
@@ -98,6 +101,13 @@ func GetDb(exclude string) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if err := db.Model(&model.Service{}).Scan(&services).Error; err != nil {
+		return nil, err
+	} else if len(services) > 0 {
+		if err := backupDb.Save(services).Error; err != nil {
+			return nil, err
+		}
+	}
 	if err := db.Model(&model.Endpoint{}).Scan(&endpoint).Error; err != nil {
 		return nil, err
 	} else if len(endpoint) > 0 {
@@ -109,6 +119,13 @@ func GetDb(exclude string) ([]byte, error) {
 		return nil, err
 	} else if len(users) > 0 {
 		if err := backupDb.Save(users).Error; err != nil {
+			return nil, err
+		}
+	}
+	if err := db.Model(&model.Tokens{}).Scan(&tokens).Error; err != nil {
+		return nil, err
+	} else if len(tokens) > 0 {
+		if err := backupDb.Save(tokens).Error; err != nil {
 			return nil, err
 		}
 	}
@@ -183,7 +200,7 @@ func ImportDB(file multipart.File) error {
 	}
 
 	// Save the file as temporary file
-	tempPath := fmt.Sprintf("%s.temp", config.GetDBPath())
+	tempPath := config.GetDBPath() + ".temp"
 	// Remove the existing fallback file (if any) before creating one
 	_, err = os.Stat(tempPath)
 	if err == nil {
@@ -203,8 +220,10 @@ func ImportDB(file multipart.File) error {
 	defer os.Remove(tempPath)
 
 	// Close old DB
-	old_db, _ := db.DB()
-	old_db.Close()
+	old_db, err := db.DB()
+	if err == nil {
+		old_db.Close()
+	}
 
 	// Save uploaded file to temporary file
 	_, err = io.Copy(tempFile, file)
@@ -221,7 +240,7 @@ func ImportDB(file multipart.File) error {
 	newDb_db.Close()
 
 	// Backup the current database for fallback
-	fallbackPath := fmt.Sprintf("%s.backup", config.GetDBPath())
+	fallbackPath := config.GetDBPath() + ".backup"
 	// Remove the existing fallback file (if any)
 	_, err = os.Stat(fallbackPath)
 	if err == nil {

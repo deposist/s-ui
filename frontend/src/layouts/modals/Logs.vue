@@ -41,7 +41,9 @@
             </v-btn>
           </v-col>
         </v-row>
-        <v-card style="background-color: background" dir="ltr" v-html="lines.join('<br />')"></v-card>
+        <v-card style="background-color: background" dir="ltr" class="pa-2">
+          <div v-for="(line, index) in lines" :key="index">{{ line }}</div>
+        </v-card>
       </v-card-text>
     </v-card>
   </v-dialog>

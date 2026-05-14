@@ -41,7 +41,7 @@ const Data = defineStore('Data', {
     setNewData(data: any) {
       this.lastLoad = Math.floor((new Date()).getTime()/1000)
       if (data.subURI) this.subURI = data.subURI
-      if (data.enableTraffic) this.enableTraffic = data.enableTraffic
+      if (Object.hasOwn(data, 'enableTraffic')) this.enableTraffic = data.enableTraffic
       if (data.config) this.config = data.config
       if (Object.hasOwn(data, 'clients')) this.clients = data.clients ?? []
       if (Object.hasOwn(data, 'inbounds')) this.inbounds = data.inbounds ?? []
@@ -62,7 +62,7 @@ const Data = defineStore('Data', {
       const options = id > 0 ? {id: id} : {}
       const msg = await HttpUtils.get('api/clients', options)
       if(msg.success) {
-        return <Client>msg.obj.clients[0]??{}
+        return (msg.obj.clients?.[0] ?? {}) as Client
       }
       return <Client>{}
     },

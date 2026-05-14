@@ -78,28 +78,6 @@ func (s *ServicesService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 			}
 		}
 
-		if corePtr.IsRunning() {
-			configData, err := srv.MarshalJSON()
-			if err != nil {
-				return err
-			}
-			if act == "edit" {
-				var oldTag string
-				err = tx.Model(model.Service{}).Select("tag").Where("id = ?", srv.Id).Find(&oldTag).Error
-				if err != nil {
-					return err
-				}
-				err = corePtr.RemoveService(oldTag)
-				if err != nil && err != os.ErrInvalid {
-					return err
-				}
-			}
-			err = corePtr.AddService(configData)
-			if err != nil {
-				return err
-			}
-		}
-
 		err = tx.Save(&srv).Error
 		if err != nil {
 			return err
@@ -109,12 +87,6 @@ func (s *ServicesService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 		err = json.Unmarshal(data, &tag)
 		if err != nil {
 			return err
-		}
-		if corePtr.IsRunning() {
-			err = corePtr.RemoveService(tag)
-			if err != nil && err != os.ErrInvalid {
-				return err
-			}
 		}
 		err = tx.Where("tag = ?", tag).Delete(model.Service{}).Error
 		if err != nil {

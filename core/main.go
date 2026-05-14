@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"sync"
 
 	"github.com/admin8800/s-ui/logger"
 
@@ -26,6 +27,7 @@ var (
 )
 
 type Core struct {
+	access    sync.RWMutex
 	isRunning bool
 	instance  *Box
 }
@@ -44,6 +46,8 @@ func (c *Core) GetCtx() context.Context {
 }
 
 func (c *Core) GetInstance() *Box {
+	c.access.RLock()
+	defer c.access.RUnlock()
 	return c.instance
 }
 
@@ -54,7 +58,7 @@ func (c *Core) Start(sbConfig []byte) error {
 		logger.Error("Unmarshal config err:", err.Error())
 	}
 
-	c.instance, err = NewBox(Options{
+	instance, err := NewBox(Options{
 		Context: globalCtx,
 		Options: opt,
 	})
@@ -62,10 +66,9 @@ func (c *Core) Start(sbConfig []byte) error {
 		return err
 	}
 
-	err = c.instance.Start()
+	err = instance.Start()
 	if err != nil {
-		_ = c.instance.Close()
-		c.instance = nil
+		_ = instance.Close()
 		return err
 	}
 
@@ -76,20 +79,29 @@ func (c *Core) Start(sbConfig []byte) error {
 	endpoint_manager = service.FromContext[adapter.EndpointManager](globalCtx)
 	router = service.FromContext[adapter.Router](globalCtx)
 
+	c.access.Lock()
+	c.instance = instance
 	c.isRunning = true
+	c.access.Unlock()
 	return nil
 }
 
 func (c *Core) Stop() error {
+	c.access.Lock()
 	c.isRunning = false
 	if c.instance == nil {
+		c.access.Unlock()
 		return nil
 	}
-	err := c.instance.Close()
+	instance := c.instance
 	c.instance = nil
+	c.access.Unlock()
+	err := instance.Close()
 	return err
 }
 
 func (c *Core) IsRunning() bool {
+	c.access.RLock()
+	defer c.access.RUnlock()
 	return c.isRunning
 }

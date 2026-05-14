@@ -14,12 +14,13 @@ import (
 )
 
 var (
-	LastUpdate          int64
 	corePtr             *core.Core
 	startCoreMu         sync.Mutex
 	startCoreInProgress bool
 	lastStartFailTime   time.Time
 	startCooldown       = 15 * time.Second
+	lastUpdateMu        sync.RWMutex
+	LastUpdate          int64
 )
 
 type ConfigService struct {
@@ -185,18 +186,26 @@ func (s *ConfigService) CheckOutbound(tag string, link string) core.CheckOutboun
 	return core.CheckOutbound(corePtr.GetCtx(), tag, link)
 }
 
-func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) ([]string, error) {
-	var err error
-	var objs []string = []string{obj}
+func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) (objs []string, err error) {
+	objs = []string{obj}
+	needsCoreRestart := false
 
 	db := database.GetDB()
 	tx := db.Begin()
 	defer func() {
 		if err == nil {
-			tx.Commit()
-			// Try to start core if it is not running
-			if !corePtr.IsRunning() {
-				s.StartCore()
+			if commitErr := tx.Commit().Error; commitErr != nil {
+				err = commitErr
+				return
+			}
+			if needsCoreRestart {
+				if corePtr.IsRunning() {
+					err = s.RestartCore()
+				} else {
+					err = s.StartCore()
+				}
+			} else if !corePtr.IsRunning() {
+				err = s.StartCore()
 			}
 		} else {
 			tx.Rollback()
@@ -209,31 +218,31 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		inboundIds, err = s.ClientService.Save(tx, act, data, hostname)
 		if err == nil && len(inboundIds) > 0 {
 			objs = append(objs, "inbounds")
-			err = s.InboundService.RestartInbounds(tx, inboundIds)
-			if err != nil {
-				return nil, common.NewErrorf("failed to update users for inbounds: %v", err)
-			}
+			needsCoreRestart = true
 		}
 	case "tls":
 		err = s.TlsService.Save(tx, act, data, hostname)
 		objs = append(objs, "clients", "inbounds")
+		needsCoreRestart = true
 	case "inbounds":
 		err = s.InboundService.Save(tx, act, data, initUsers, hostname)
 		objs = append(objs, "clients")
+		needsCoreRestart = true
 	case "outbounds":
 		err = s.OutboundService.Save(tx, act, data)
+		needsCoreRestart = true
 	case "services":
 		err = s.ServicesService.Save(tx, act, data)
+		needsCoreRestart = true
 	case "endpoints":
 		err = s.EndpointService.Save(tx, act, data)
+		needsCoreRestart = true
 	case "config":
 		err = s.SettingService.SaveConfig(tx, data)
 		if err != nil {
 			return nil, err
 		}
-		configData := make(json.RawMessage, len(data))
-		copy(configData, data)
-		go func() { _ = s.restartCoreWithConfig(configData) }()
+		needsCoreRestart = true
 	case "settings":
 		err = s.SettingService.Save(tx, data)
 	default:
@@ -255,7 +264,7 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		return nil, err
 	}
 
-	LastUpdate = time.Now().Unix()
+	setLastUpdate(time.Now().Unix())
 
 	return objs, nil
 }
@@ -264,34 +273,53 @@ func (s *ConfigService) CheckChanges(lu string) (bool, error) {
 	if lu == "" {
 		return true, nil
 	}
-	if LastUpdate == 0 {
+	lastUpdate := getLastUpdate()
+	if lastUpdate == 0 {
 		db := database.GetDB()
 		var count int64
-		err := db.Model(model.Changes{}).Where("date_time > " + lu).Count(&count).Error
+		intLu, err := strconv.ParseInt(lu, 10, 64)
+		if err != nil {
+			return false, err
+		}
+		err = db.Model(model.Changes{}).Where("date_time > ?", intLu).Count(&count).Error
 		if err == nil {
-			LastUpdate = time.Now().Unix()
+			setLastUpdate(time.Now().Unix())
 		}
 		return count > 0, err
 	} else {
 		intLu, err := strconv.ParseInt(lu, 10, 64)
-		return LastUpdate > intLu, err
+		return lastUpdate > intLu, err
 	}
 }
 
 func (s *ConfigService) GetChanges(actor string, chngKey string, count string) []model.Changes {
 	c, _ := strconv.Atoi(count)
-	whereString := "`id`>0"
+	if c <= 0 || c > 200 {
+		c = 20
+	}
+	db := database.GetDB().Model(model.Changes{})
 	if len(actor) > 0 {
-		whereString += " and `actor`='" + actor + "'"
+		db = db.Where("actor = ?", actor)
 	}
 	if len(chngKey) > 0 {
-		whereString += " and `key`='" + chngKey + "'"
+		db = db.Where("key = ?", chngKey)
 	}
-	db := database.GetDB()
 	var chngs []model.Changes
-	err := db.Model(model.Changes{}).Where(whereString).Order("`id` desc").Limit(c).Scan(&chngs).Error
+	err := db.Order("id desc").Limit(c).Scan(&chngs).Error
 	if err != nil {
 		logger.Warning(err)
 	}
 	return chngs
+}
+
+func setLastUpdate(value int64) {
+	lastUpdateMu.Lock()
+	LastUpdate = value
+	lastUpdateMu.Unlock()
+}
+
+func getLastUpdate() int64 {
+	lastUpdateMu.RLock()
+	defer lastUpdateMu.RUnlock()
+	return LastUpdate
 }

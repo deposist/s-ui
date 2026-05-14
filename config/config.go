@@ -64,5 +64,5 @@ func GetDBFolderPath() string {
 }
 
 func GetDBPath() string {
-	return fmt.Sprintf("%s/%s.db", GetDBFolderPath(), GetName())
+	return filepath.Join(GetDBFolderPath(), fmt.Sprintf("%s.db", GetName()))
 }

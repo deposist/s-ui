@@ -364,12 +364,10 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 	return nil
 }
 
-func (s *ClientService) DepleteClients() ([]uint, error) {
-	var err error
+func (s *ClientService) DepleteClients() (inboundIds []uint, err error) {
 	var clients []model.Client
 	var changes []model.Changes
 	var users []string
-	var inboundIds []uint
 
 	dt := time.Now().Unix()
 	db := database.GetDB()
@@ -377,7 +375,10 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 	tx := db.Begin()
 	defer func() {
 		if err == nil {
-			tx.Commit()
+			err = tx.Commit().Error
+			if err != nil {
+				return
+			}
 			if err1 := db.Exec("PRAGMA wal_checkpoint(FULL)").Error; err1 != nil {
 				logger.Error("Error checkpointing WAL: ", err1.Error())
 			}
@@ -424,7 +425,7 @@ func (s *ClientService) DepleteClients() ([]uint, error) {
 		if err != nil {
 			return nil, err
 		}
-		LastUpdate = dt
+		setLastUpdate(dt)
 	}
 
 	return inboundIds, nil
@@ -508,7 +509,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 		if err != nil {
 			return nil, err
 		}
-		LastUpdate = dt
+		setLastUpdate(dt)
 	}
 	return inboundIds, nil
 }

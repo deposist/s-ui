@@ -2,7 +2,6 @@ package service
 
 import (
 	"encoding/json"
-	"os"
 
 	"github.com/admin8800/s-ui/database"
 	"github.com/admin8800/s-ui/database/model"
@@ -91,28 +90,6 @@ func (s *EndpointService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 			}
 		}
 
-		if corePtr.IsRunning() {
-			configData, err := endpoint.MarshalJSON()
-			if err != nil {
-				return err
-			}
-			if act == "edit" {
-				var oldTag string
-				err = tx.Model(model.Endpoint{}).Select("tag").Where("id = ?", endpoint.Id).Find(&oldTag).Error
-				if err != nil {
-					return err
-				}
-				err = corePtr.RemoveEndpoint(oldTag)
-				if err != nil && err != os.ErrInvalid {
-					return err
-				}
-			}
-			err = corePtr.AddEndpoint(configData)
-			if err != nil {
-				return err
-			}
-		}
-
 		err = tx.Save(&endpoint).Error
 		if err != nil {
 			return err
@@ -122,12 +99,6 @@ func (s *EndpointService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 		err = json.Unmarshal(data, &tag)
 		if err != nil {
 			return err
-		}
-		if corePtr.IsRunning() {
-			err = corePtr.RemoveEndpoint(tag)
-			if err != nil && err != os.ErrInvalid {
-				return err
-			}
 		}
 		err = tx.Where("tag = ?", tag).Delete(model.Endpoint{}).Error
 		if err != nil {

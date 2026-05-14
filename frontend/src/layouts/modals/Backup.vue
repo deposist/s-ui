@@ -72,11 +72,7 @@ export default {
 
           this.control.visible = false
 
-          const uploadMsg = await HttpUtils.post('api/importdb', formData, {
-              headers: {
-                  'Content-Type': 'multipart/form-data',
-              },
-          })
+          const uploadMsg = await HttpUtils.post('api/importdb', formData)
 
           if (uploadMsg.success) {
             await new Promise(resolve => setTimeout(resolve, 1000))
