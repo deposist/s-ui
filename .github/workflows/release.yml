@@ -1,10 +1,10 @@
-name: 发布 S-UI
+name: Release S-UI
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "发布标签"
+        description: "Release tag"
         required: true
         default: "v1.4.1"
         type: string
@@ -25,26 +25,26 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     steps:
-      - name: 检出仓库
+      - name: Check out repository
         uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
 
-      - name: 设置 Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
-      - name: 构建前端
+      - name: Build frontend
         run: |
           cd frontend
           npm install
           npm run build
 
-      - name: 上传前端构建产物
+      - name: Upload frontend build artifact
         uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
@@ -52,7 +52,7 @@ jobs:
           retention-days: 1
 
   build-linux:
-    name: 构建-${{ matrix.platform }}
+    name: Build-${{ matrix.platform }}
     needs: build-frontend
     strategy:
       fail-fast: false
@@ -67,22 +67,22 @@ jobs:
           - { platform: s390x, arch: s390x, bootlin: s390x-z13, naive: false }
     runs-on: ubuntu-latest
     steps:
-      - name: 检出仓库
+      - name: Check out repository
         uses: actions/checkout@v6.0.2
 
-      - name: 下载前端构建产物
+      - name: Download frontend build artifact
         uses: actions/download-artifact@v8
         with:
           name: frontend-dist
           path: web/html
 
-      - name: 设置 Go
+      - name: Set up Go
         uses: actions/setup-go@v6
         with:
           cache: false
           go-version-file: go.mod
 
-      - name: 克隆 cronet-go（naive 平台）
+      - name: Clone cronet-go (naive platforms)
         if: matrix.naive
         run: |
           set -e
@@ -92,7 +92,7 @@ jobs:
           git -C ~/cronet-go checkout FETCH_HEAD
           git -C ~/cronet-go submodule update --init --recursive --depth=1
 
-      - name: 重新生成 Debian keyring（cronet sysroot）
+      - name: Regenerate Debian keyring (cronet sysroot)
         if: matrix.naive
         run: |
           set -e
@@ -100,7 +100,7 @@ jobs:
           cd ~/cronet-go
           GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
 
-      - name: 构建 cronet 库并设置工具链环境
+      - name: Build cronet library and set toolchain environment
         if: matrix.naive
         run: |
           set -e
@@ -112,23 +112,23 @@ jobs:
             echo "$line" >> $GITHUB_ENV
           done
 
-      - name: 设置 Go 构建环境
+      - name: Set Go build environment
         run: |
           echo "CGO_ENABLED=1" >> $GITHUB_ENV
           echo "GOOS=linux" >> $GITHUB_ENV
           echo "GOARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           if [ -n "${{ matrix.goarm }}" ]; then echo "GOARM=${{ matrix.goarm }}" >> $GITHUB_ENV; fi
 
-      - name: 设置 Bootlin musl（非 naive 平台）
+      - name: Set up Bootlin musl (non-naive platforms)
         if: ${{ matrix.naive != true }}
         run: |
           set -e
           BOOTLIN_ARCH="${{ matrix.bootlin }}"
-          echo "正在解析 arch=$BOOTLIN_ARCH 的 Bootlin musl 工具链（平台=${{ matrix.platform }}）"
+          echo "Resolving Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
           TARBALL_BASE="${{ env.BOOTLIN_BASE_URL }}/$BOOTLIN_ARCH/tarballs/"
           TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
-          [ -z "$TARBALL_URL" ] && { echo "未找到 arch=$BOOTLIN_ARCH 的 Bootlin musl 工具链" >&2; exit 1; }
-          echo "正在下载：$TARBALL_URL"
+          [ -z "$TARBALL_URL" ] && { echo "Bootlin musl toolchain not found for arch=$BOOTLIN_ARCH" >&2; exit 1; }
+          echo "Downloading: $TARBALL_URL"
           cd /tmp
           curl -fL -sS -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
           tar -xf "$(basename "$TARBALL_URL")"
@@ -137,7 +137,7 @@ jobs:
           BIN_DIR="$TOOLCHAIN_DIR/bin"
           echo "PATH=$BIN_DIR:$PATH" >> $GITHUB_ENV
           CC=$(find "$BIN_DIR" -maxdepth 1 \( -name '*-gcc.br_real' -o -name '*-gcc' \) -type f -executable 2>/dev/null | grep -v g++ | head -n1)
-          [ -z "$CC" ] && { echo "在 $BIN_DIR 中未找到 gcc" >&2; exit 1; }
+          [ -z "$CC" ] && { echo "gcc not found in $BIN_DIR" >&2; exit 1; }
           echo "CC=$(realpath "$CC")" >> $GITHUB_ENV
           SYSROOT=""
           F=$(find "$TOOLCHAIN_DIR" -name "libc-header-start.h" 2>/dev/null | head -1)
@@ -147,24 +147,24 @@ jobs:
             echo "CGO_LDFLAGS=--sysroot=$SYSROOT -static" >> $GITHUB_ENV
           fi
 
-      - name: 构建 s-ui
+      - name: Build s-ui
         run: |
           set -e
           BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale"
           [ "${{ matrix.naive }}" = "true" ] && BUILD_TAGS="${BUILD_TAGS},with_naive_outbound,with_musl"
           go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static'" -tags "$BUILD_TAGS" -o sui main.go
           file sui
-          ldd sui 2>/dev/null || echo "已确认静态二进制文件"
+          ldd sui 2>/dev/null || echo "Static binary confirmed"
 
           mkdir s-ui
           cp sui s-ui/
           cp s-ui.service s-ui/
           cp s-ui.sh s-ui/
 
-      - name: 打包
+      - name: Package
         run: tar -zcvf s-ui-linux-${{ matrix.platform }}.tar.gz s-ui
 
-      - name: 上传构建产物
+      - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: s-ui-linux-${{ matrix.platform }}
@@ -172,11 +172,11 @@ jobs:
           retention-days: 1
 
   publish-linux:
-    name: 发布 Linux 产物
+    name: Publish Linux artifacts
     needs: build-linux
     runs-on: ubuntu-latest
     steps:
-      - name: 规范化发布标签
+      - name: Normalize release tag
         id: vars
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -189,14 +189,14 @@ jobs:
             *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: 下载 Linux 构建产物
+      - name: Download Linux build artifacts
         uses: actions/download-artifact@v8
         with:
           pattern: s-ui-linux-*
           path: release-assets
           merge-multiple: true
 
-      - name: 发布到当前仓库 Release
+      - name: Publish to current repository Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
