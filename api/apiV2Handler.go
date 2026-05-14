@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/admin8800/s-ui/logger"
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,11 +20,13 @@ type TokenInMemory struct {
 type APIv2Handler struct {
 	ApiService
 	tokensMu sync.RWMutex
-	tokens   []TokenInMemory
+	tokens   map[string]TokenInMemory
 }
 
 func NewAPIv2Handler(g *gin.RouterGroup) *APIv2Handler {
-	a := &APIv2Handler{}
+	a := &APIv2Handler{
+		tokens: map[string]TokenInMemory{},
+	}
 	a.ReloadTokens()
 	a.initRouter(g)
 	return a
@@ -99,18 +101,20 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 
 func (a *APIv2Handler) findUsername(c *gin.Context) string {
 	token := c.Request.Header.Get("Token")
+	if token == "" {
+		return ""
+	}
 	now := time.Now().Unix()
 	a.tokensMu.RLock()
 	defer a.tokensMu.RUnlock()
-	for _, t := range a.tokens {
-		if t.Expiry > 0 && t.Expiry < now {
-			continue
-		}
-		if t.Token == token {
-			return t.Username
-		}
+	t, ok := a.tokens[token]
+	if !ok {
+		return ""
 	}
-	return ""
+	if t.Expiry > 0 && t.Expiry < now {
+		return ""
+	}
+	return t.Username
 }
 
 func (a *APIv2Handler) checkToken(c *gin.Context) {
@@ -125,16 +129,22 @@ func (a *APIv2Handler) checkToken(c *gin.Context) {
 
 func (a *APIv2Handler) ReloadTokens() {
 	tokens, err := a.ApiService.LoadTokens()
-	if err == nil {
-		var newTokens []TokenInMemory
-		err = json.Unmarshal(tokens, &newTokens)
-		if err != nil {
-			logger.Error("unable to load tokens: ", err)
-		}
-		a.tokensMu.Lock()
-		a.tokens = newTokens
-		a.tokensMu.Unlock()
-	} else {
+	if err != nil {
 		logger.Error("unable to load tokens: ", err)
+		return
 	}
+	var loaded []TokenInMemory
+	if len(tokens) > 0 {
+		if err := json.Unmarshal(tokens, &loaded); err != nil {
+			logger.Error("unable to load tokens: ", err)
+			return
+		}
+	}
+	newMap := make(map[string]TokenInMemory, len(loaded))
+	for _, t := range loaded {
+		newMap[t.Token] = t
+	}
+	a.tokensMu.Lock()
+	a.tokens = newMap
+	a.tokensMu.Unlock()
 }

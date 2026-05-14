@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/admin8800/s-ui/database"
-	"github.com/admin8800/s-ui/database/model"
-	"github.com/admin8800/s-ui/util"
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gorm.io/gorm"
 )
@@ -210,11 +210,29 @@ func (s *InboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 }
 
 func (s *InboundService) hasUser(inboundType string) bool {
-	switch inboundType {
-	case "mixed", "socks", "http", "shadowsocks", "vmess", "trojan", "naive", "hysteria", "shadowtls", "tuic", "hysteria2", "vless", "anytls":
-		return true
-	}
-	return false
+	_, ok := userJSONField[inboundType]
+	return ok
+}
+
+// userJSONField maps an inbound type to the JSON path used inside
+// clients.config to locate per-user data. The keys define an allow-list of
+// inbound types the user-fetch query understands; combined with using JSON
+// path placeholders this prevents SQL injection through the type string.
+var userJSONField = map[string]string{
+	"mixed":          "mixed",
+	"socks":          "socks",
+	"http":           "http",
+	"shadowsocks":    "shadowsocks",
+	"shadowsocks16":  "shadowsocks",
+	"vmess":          "vmess",
+	"trojan":         "trojan",
+	"naive":          "naive",
+	"hysteria":       "hysteria",
+	"shadowtls":      "shadowtls",
+	"tuic":           "tuic",
+	"hysteria2":      "hysteria2",
+	"vless":          "vless",
+	"anytls":         "anytls",
 }
 
 func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uint, inboundType string) ([]byte, error) {
@@ -284,8 +302,16 @@ func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, 
 		}
 	}
 
+	field, ok := userJSONField[inboundType]
+	if !ok {
+		return nil, common.NewErrorf("unsupported inbound type for user lookup: %s", inboundType)
+	}
+
 	var users []string
-	query := fmt.Sprintf(`SELECT json_extract(clients.config, "$.%s") FROM clients WHERE enable = true AND %s`, inboundType, condition)
+	// `field` is constrained to a static allow-list above, so embedding it
+	// directly into the JSON path is safe. The dynamic condition is fed
+	// through the query parameter slot to remain SQL-injection free.
+	query := fmt.Sprintf(`SELECT json_extract(clients.config, '$.%s') FROM clients WHERE enable = true AND %s`, field, condition)
 	err := db.Raw(query, args...).Scan(&users).Error
 	if err != nil {
 		return nil, err
@@ -314,8 +340,13 @@ func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
 		if err != nil && err != os.ErrInvalid {
 			return err
 		}
-		// Close all existing connections
-		corePtr.GetInstance().ConnTracker().CloseConnByInbound(inbound.Tag)
+		// Close all existing connections. The core may have been stopped
+		// concurrently (cron / user restart), so guard against a nil instance.
+		if instance := corePtr.GetInstance(); instance != nil {
+			if tracker := instance.ConnTracker(); tracker != nil {
+				tracker.CloseConnByInbound(inbound.Tag)
+			}
+		}
 
 		inboundConfig, err := inbound.MarshalJSON()
 		if err != nil {

@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/gin-gonic/gin"
 )

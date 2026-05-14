@@ -58,41 +58,73 @@ func GetLogger() *logging.Logger {
 }
 
 func Debug(args ...interface{}) {
+	if logger == nil {
+		fmt.Println(append([]interface{}{"DEBUG -"}, args...)...)
+		return
+	}
 	logger.Debug(args...)
 	addToBuffer("DEBUG", fmt.Sprint(args...))
 }
 
 func Debugf(format string, args ...interface{}) {
+	if logger == nil {
+		fmt.Printf("DEBUG - "+format+"\n", args...)
+		return
+	}
 	logger.Debugf(format, args...)
 	addToBuffer("DEBUG", fmt.Sprintf(format, args...))
 }
 
 func Info(args ...interface{}) {
+	if logger == nil {
+		fmt.Println(append([]interface{}{"INFO -"}, args...)...)
+		return
+	}
 	logger.Info(args...)
 	addToBuffer("INFO", fmt.Sprint(args...))
 }
 
 func Infof(format string, args ...interface{}) {
+	if logger == nil {
+		fmt.Printf("INFO - "+format+"\n", args...)
+		return
+	}
 	logger.Infof(format, args...)
 	addToBuffer("INFO", fmt.Sprintf(format, args...))
 }
 
 func Warning(args ...interface{}) {
+	if logger == nil {
+		fmt.Println(append([]interface{}{"WARNING -"}, args...)...)
+		return
+	}
 	logger.Warning(args...)
 	addToBuffer("WARNING", fmt.Sprint(args...))
 }
 
 func Warningf(format string, args ...interface{}) {
+	if logger == nil {
+		fmt.Printf("WARNING - "+format+"\n", args...)
+		return
+	}
 	logger.Warningf(format, args...)
 	addToBuffer("WARNING", fmt.Sprintf(format, args...))
 }
 
 func Error(args ...interface{}) {
+	if logger == nil {
+		fmt.Println(append([]interface{}{"ERROR -"}, args...)...)
+		return
+	}
 	logger.Error(args...)
 	addToBuffer("ERROR", fmt.Sprint(args...))
 }
 
 func Errorf(format string, args ...interface{}) {
+	if logger == nil {
+		fmt.Printf("ERROR - "+format+"\n", args...)
+		return
+	}
 	logger.Errorf(format, args...)
 	addToBuffer("ERROR", fmt.Sprintf(format, args...))
 }

@@ -6,11 +6,29 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/admin8800/s-ui/database/model"
+	"github.com/deposist/s-ui-rus-inst/database/model"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+// closeMainDB closes the global *gorm.DB so Windows can release file locks
+// before t.TempDir() cleanup tries to delete the database file.
+func closeMainDB(t *testing.T) {
+	t.Helper()
+	if db == nil {
+		return
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Logf("close main db handle: %v", err)
+		return
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Logf("close main db: %v", err)
+	}
+	db = nil
+}
 
 func TestGetDbIncludesServicesAndTokens(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
@@ -20,6 +38,8 @@ func TestGetDbIncludesServicesAndTokens(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeMainDB(t) })
+
 	db := GetDB()
 	if err := db.Create(&model.Service{Type: "derp", Tag: "svc-test"}).Error; err != nil {
 		t.Fatal(err)
@@ -39,6 +59,11 @@ func TestGetDbIncludesServicesAndTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if sqlDB, err := backupDB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	})
 	var servicesCount int64
 	if err := backupDB.Model(&model.Service{}).Where("tag = ?", "svc-test").Count(&servicesCount).Error; err != nil {
 		t.Fatal(err)

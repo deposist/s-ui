@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/admin8800/s-ui/core"
-	"github.com/admin8800/s-ui/database"
-	"github.com/admin8800/s-ui/database/model"
-	"github.com/admin8800/s-ui/logger"
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/core"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 )
 
 var (
@@ -87,7 +87,10 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 	return &rawConfig, nil
 }
 
-func (s *ConfigService) StartCore() error {
+// startCore starts sing-box. When force is true, the cool-down between failed
+// starts is bypassed, which is required for user-initiated restarts so the API
+// reflects the real start status instead of silently succeeding.
+func (s *ConfigService) startCore(force bool) error {
 	if corePtr.IsRunning() {
 		return nil
 	}
@@ -96,7 +99,7 @@ func (s *ConfigService) StartCore() error {
 		startCoreMu.Unlock()
 		return nil
 	}
-	if time.Since(lastStartFailTime) < startCooldown {
+	if !force && time.Since(lastStartFailTime) < startCooldown {
 		logger.Info("start core cooldown ", startCooldown/time.Second, " seconds")
 		startCoreMu.Unlock()
 		return nil
@@ -122,49 +125,26 @@ func (s *ConfigService) StartCore() error {
 		logger.Error("start sing-box err:", err.Error())
 		return err
 	}
+	startCoreMu.Lock()
+	lastStartFailTime = time.Time{}
+	startCoreMu.Unlock()
 	logger.Info("sing-box started")
 	return nil
 }
 
-func (s *ConfigService) RestartCore() error {
-	err := s.StopCore()
-	if err != nil {
-		return err
-	}
-	return s.StartCore()
+// StartCore is the cron-friendly variant: it respects the cooldown so a
+// failing core does not get hammered every 5 seconds.
+func (s *ConfigService) StartCore() error {
+	return s.startCore(false)
 }
 
-func (s *ConfigService) restartCoreWithConfig(config json.RawMessage) error {
-	startCoreMu.Lock()
-	if startCoreInProgress {
-		startCoreMu.Unlock()
-		return nil
-	}
-	startCoreInProgress = true
-	startCoreMu.Unlock()
-	defer func() {
-		startCoreMu.Lock()
-		startCoreInProgress = false
-		startCoreMu.Unlock()
-	}()
-
-	if corePtr.IsRunning() {
-		if err := corePtr.Stop(); err != nil {
-			logger.Error("restart sing-box err (stop):", err.Error())
-			return err
-		}
-	}
-	rawConfig, err := s.GetConfig(string(config))
-	if err != nil {
-		logger.Error("restart sing-box err (get config):", err.Error())
+// RestartCore is invoked from user actions; it bypasses the cooldown so the
+// caller observes the true start status.
+func (s *ConfigService) RestartCore() error {
+	if err := s.StopCore(); err != nil {
 		return err
 	}
-	if err := corePtr.Start(*rawConfig); err != nil {
-		logger.Error("restart sing-box err (start):", err.Error())
-		return err
-	}
-	logger.Info("sing-box restarted with new config")
-	return nil
+	return s.startCore(true)
 }
 
 func (s *ConfigService) StopCore() error {
@@ -200,12 +180,18 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 			}
 			if needsCoreRestart {
 				if corePtr.IsRunning() {
-					err = s.RestartCore()
+					if restartErr := s.RestartCore(); restartErr != nil {
+						logger.Warning("sing-box restart after save failed: ", restartErr)
+					}
 				} else {
-					err = s.StartCore()
+					if startErr := s.startCore(true); startErr != nil {
+						logger.Warning("sing-box start after save failed: ", startErr)
+					}
 				}
 			} else if !corePtr.IsRunning() {
-				err = s.StartCore()
+				if startErr := s.startCore(true); startErr != nil {
+					logger.Warning("sing-box start after save failed: ", startErr)
+				}
 			}
 		} else {
 			tx.Rollback()
@@ -286,10 +272,9 @@ func (s *ConfigService) CheckChanges(lu string) (bool, error) {
 			setLastUpdate(time.Now().Unix())
 		}
 		return count > 0, err
-	} else {
-		intLu, err := strconv.ParseInt(lu, 10, 64)
-		return lastUpdate > intLu, err
 	}
+	intLu, err := strconv.ParseInt(lu, 10, 64)
+	return lastUpdate > intLu, err
 }
 
 func (s *ConfigService) GetChanges(actor string, chngKey string, count string) []model.Changes {

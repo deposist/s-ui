@@ -6,8 +6,8 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/admin8800/s-ui/cmd/migration"
-	"github.com/admin8800/s-ui/config"
+	"github.com/deposist/s-ui-rus-inst/cmd/migration"
+	"github.com/deposist/s-ui-rus-inst/config"
 )
 
 func ParseCmd() {
@@ -88,7 +88,10 @@ func ParseCmd() {
 		getPanelURI()
 
 	case "migrate":
-		migration.MigrateDb()
+		if err := migration.MigrateDb(); err != nil {
+			fmt.Println("migrate failed:", err)
+			os.Exit(1)
+		}
 
 	case "setting":
 		err := settingCmd.Parse(os.Args[2:])

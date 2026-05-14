@@ -1,8 +1,8 @@
 package cronjob
 
 import (
-	"github.com/admin8800/s-ui/logger"
-	"github.com/admin8800/s-ui/service"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
 )
 
 type StatsJob struct {

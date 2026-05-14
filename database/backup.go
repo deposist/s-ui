@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/admin8800/s-ui/cmd/migration"
-	"github.com/admin8800/s-ui/config"
-	"github.com/admin8800/s-ui/database/model"
-	"github.com/admin8800/s-ui/logger"
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/cmd/migration"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -268,8 +268,16 @@ func ImportDB(file multipart.File) error {
 		return common.NewErrorf("Error moving db file: %v", err)
 	}
 
-	// Migrate DB
-	migration.MigrateDb()
+	// Migrate DB. If schema migration fails, restore the previous DB and
+	// surface the error to the caller so the panel does not boot with a
+	// half-migrated state.
+	if migErr := migration.MigrateDb(); migErr != nil {
+		errRename := os.Rename(fallbackPath, config.GetDBPath())
+		if errRename != nil {
+			return common.NewErrorf("Error migrating db (%v) and restoring fallback failed: %v", migErr, errRename)
+		}
+		return common.NewErrorf("Error migrating db: %v", migErr)
+	}
 	err = InitDB(config.GetDBPath())
 	if err != nil {
 		errRename := os.Rename(fallbackPath, config.GetDBPath())

@@ -3,14 +3,15 @@ package app
 import (
 	"log"
 
-	"github.com/admin8800/s-ui/config"
-	"github.com/admin8800/s-ui/core"
-	"github.com/admin8800/s-ui/cronjob"
-	"github.com/admin8800/s-ui/database"
-	"github.com/admin8800/s-ui/logger"
-	"github.com/admin8800/s-ui/service"
-	"github.com/admin8800/s-ui/sub"
-	"github.com/admin8800/s-ui/web"
+	"github.com/deposist/s-ui-rus-inst/cmd/migration"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/core"
+	"github.com/deposist/s-ui-rus-inst/cronjob"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/sub"
+	"github.com/deposist/s-ui-rus-inst/web"
 
 	"github.com/op/go-logging"
 )
@@ -33,6 +34,15 @@ func (a *APP) Init() error {
 	log.Printf("%v %v", config.GetName(), config.GetVersion())
 
 	a.initLog()
+
+	// Run schema migrations against the on-disk DB before opening it. This
+	// turns the upgrade flow into a one-step procedure: drop in the new
+	// binary, restart, and the panel adapts the legacy schema in place. The
+	// run is a no-op if the database is already at the current version or if
+	// it does not yet exist (first install).
+	if err := migration.MigrateDb(); err != nil {
+		return err
+	}
 
 	err := database.InitDB(config.GetDBPath())
 	if err != nil {

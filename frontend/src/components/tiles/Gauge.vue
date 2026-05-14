@@ -7,12 +7,32 @@ const props = defineProps({
   type: String
 })
 
-const data = computed(() => {
+interface GaugeData {
+  percent: number
+  current: string
+  currentUnit: string
+  total: string
+  totalUnit: string
+  hasTotal: boolean
+}
+
+const emptyGauge = (): GaugeData => ({
+  percent: 0,
+  current: '-',
+  currentUnit: '',
+  total: '',
+  totalUnit: '',
+  hasTotal: false,
+})
+
+const data = computed<GaugeData>(() => {
   const d = props.tilesData
-  if (!d.mem && !d.cpu) return { percent: 0, text: '-' }
+  if (!d.mem && !d.cpu) return emptyGauge()
   switch (props.type) {
-    case 'g-cpu':
-      return { percent: d.cpu, text: Math.ceil(d.cpu) + "%" }
+    case 'g-cpu': {
+      const value = Math.ceil(d.cpu)
+      return { percent: d.cpu, current: String(value), currentUnit: '%', total: '', totalUnit: '', hasTotal: false }
+    }
     case 'g-mem':
       return gaugeData(d.mem)
     case 'g-dsk':
@@ -20,17 +40,21 @@ const data = computed(() => {
     case 'g-swp':
       return gaugeData(d.swp)
   }
-  return { percent: 0, text: '-'}
+  return emptyGauge()
 })
 
-const gaugeData = (d:any) :any => {
-  if (!d) return { percent: 0, text: '-' }
-  const curr = HumanReadable.sizeFormat(d.current,0).split(' ')
-  const total = HumanReadable.sizeFormat(d.total,0).split(' ')
-  if (curr[1] == total[1]) curr[1] = ''
+const gaugeData = (d: any): GaugeData => {
+  if (!d) return emptyGauge()
+  const curr = HumanReadable.sizeFormat(d.current, 0).split(' ')
+  const total = HumanReadable.sizeFormat(d.total, 0).split(' ')
+  const currentUnit = curr[1] === total[1] ? '' : (curr[1] ?? '')
   return {
-    percent: Math.ceil(d.current*100/d.total),
-    text: curr[0] + "<sup>" + (curr[1]?? ' ') + "</sup>/" +  total[0] + "<sup>" + (total[1]?? '') + "</sup>"
+    percent: Math.ceil((d.current * 100) / d.total),
+    current: curr[0] ?? '0',
+    currentUnit,
+    total: total[0] ?? '0',
+    totalUnit: total[1] ?? '',
+    hasTotal: true,
   }
 }
 
@@ -52,13 +76,18 @@ const gaugeColor = computed(() => {
   <div class="gauge__outer">
     <div class="gauge__inner">
       <div
-        class="gauge__fill" 
-        :style="{ 
+        class="gauge__fill"
+        :style="{
           transform: `rotate(${cssTransformRotateValue})`,
           background: `rgb(var(--v-theme-${gaugeColor}))`
           }">
       </div>
-      <div class="gauge__cover"><span dir="ltr" v-html="data.text"></span></div>
+      <div class="gauge__cover">
+        <span dir="ltr">
+          {{ data.current }}<sup>{{ data.currentUnit || '\u00a0' }}</sup>
+          <template v-if="data.hasTotal">/{{ data.total }}<sup>{{ data.totalUnit || '\u00a0' }}</sup></template>
+        </span>
+      </div>
     </div>
   </div>
 </template>

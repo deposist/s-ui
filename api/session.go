@@ -4,7 +4,7 @@ import (
 	"encoding/gob"
 	"net/http"
 
-	"github.com/admin8800/s-ui/database/model"
+	"github.com/deposist/s-ui-rus-inst/database/model"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -33,17 +33,6 @@ func SetLoginUser(c *gin.Context, userName string, maxAge int) error {
 	s.Set(loginUser, userName)
 	s.Options(options)
 
-	return s.Save()
-}
-
-func SetMaxAge(c *gin.Context) error {
-	s := sessions.Default(c)
-	s.Options(sessions.Options{
-		Path:     "/",
-		Secure:   requestIsHTTPS(c),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
 	return s.Save()
 }
 

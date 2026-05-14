@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/admin8800/s-ui/config"
-	"github.com/admin8800/s-ui/database/model"
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	suilog "github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 var db *gorm.DB
@@ -45,21 +46,21 @@ func initUser() error {
 
 func OpenDB(dbPath string) error {
 	dir := path.Dir(dbPath)
-	err := os.MkdirAll(dir, 01740)
+	err := os.MkdirAll(dir, 0o750)
 	if err != nil {
 		return err
 	}
 
-	var gormLogger logger.Interface
+	var gormLog gormlogger.Interface
 
 	if config.IsDebug() {
-		gormLogger = logger.Default
+		gormLog = gormlogger.Default
 	} else {
-		gormLogger = logger.Discard
+		gormLog = gormlogger.Discard
 	}
 
 	c := &gorm.Config{
-		Logger: gormLogger,
+		Logger: gormLog,
 	}
 	sep := "?"
 	if strings.Contains(dbPath, "?") {
@@ -75,8 +76,12 @@ func OpenDB(dbPath string) error {
 	if err != nil {
 		return err
 	}
-	sqlDB.SetMaxOpenConns(25)
-	sqlDB.SetMaxIdleConns(5)
+	// SQLite is a single-writer database. Allowing many concurrent open
+	// connections only spreads writers across them and produces SQLITE_BUSY
+	// errors during stats inserts. Keep a small read pool plus one effective
+	// writer driven through `_busy_timeout` to serialize gracefully.
+	sqlDB.SetMaxOpenConns(8)
+	sqlDB.SetMaxIdleConns(4)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	if config.IsDebug() {
@@ -122,6 +127,13 @@ func InitDB(dbPath string) error {
 	err = initUser()
 	if err != nil {
 		return err
+	}
+	// Best-effort post-migration adaptation: rehash legacy plaintext
+	// passwords from older S-UI versions, refresh indexes and the
+	// settings.version pointer. Failures here should not prevent startup,
+	// they are surfaced through the application log.
+	if err := AdaptToCurrentVersion(); err != nil {
+		suilog.Warning("post-migration adapt failed:", err)
 	}
 
 	return nil

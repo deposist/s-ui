@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -10,13 +11,92 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/admin8800/s-ui/logger"
-	"github.com/admin8800/s-ui/util/common"
+	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 )
 
 const maxExternalSubBytes = 4 << 20
+
+var (
+	externalHTTPClientOnce sync.Once
+	externalHTTPClient     *http.Client
+)
+
+// errBlockedExternalAddress is returned by the dialer hook when the resolved
+// IP address points at a private/loopback/etc. range while
+// SUI_ALLOW_PRIVATE_SUB_URLS is not enabled.
+var errBlockedExternalAddress = common.NewError("private url host is not allowed")
+
+// allowPrivateExternalURLs reports whether SUI_ALLOW_PRIVATE_SUB_URLS opts the
+// process out of private-address filtering for external subscription URLs.
+func allowPrivateExternalURLs() bool {
+	return os.Getenv("SUI_ALLOW_PRIVATE_SUB_URLS") == "true"
+}
+
+// getExternalHTTPClient returns a process-wide HTTP client that re-validates
+// every dialed address against isBlockedExternalAddr. Re-validating at dial
+// time prevents DNS-rebinding attacks where validateExternalURL sees a public
+// address but the subsequent connection is steered to a private one.
+func getExternalHTTPClient() *http.Client {
+	externalHTTPClientOnce.Do(func() {
+		dialer := &net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}
+		transport := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				if allowPrivateExternalURLs() {
+					return dialer.DialContext(ctx, network, addr)
+				}
+				host, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				if addr, err := netip.ParseAddr(host); err == nil {
+					if isBlockedExternalAddr(addr) {
+						return nil, errBlockedExternalAddress
+					}
+					return dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
+				}
+				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+				if err != nil {
+					return nil, err
+				}
+				var lastErr error
+				for _, ip := range ips {
+					addr, ok := netip.AddrFromSlice(ip.IP)
+					if !ok || isBlockedExternalAddr(addr) {
+						lastErr = errBlockedExternalAddress
+						continue
+					}
+					conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
+					if err == nil {
+						return conn, nil
+					}
+					lastErr = err
+				}
+				if lastErr == nil {
+					lastErr = errBlockedExternalAddress
+				}
+				return nil, lastErr
+			},
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConns:          10,
+			MaxIdleConnsPerHost:   2,
+		}
+		externalHTTPClient = &http.Client{
+			Timeout:   15 * time.Second,
+			Transport: transport,
+		}
+	})
+	return externalHTTPClient
+}
 
 func GetExternalLink(rawURL string) (string, error) {
 	if err := validateExternalURL(rawURL); err != nil {
@@ -24,9 +104,12 @@ func GetExternalLink(rawURL string) (string, error) {
 		return "", err
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	response, err := client.Get(rawURL)
+	response, err := getExternalHTTPClient().Get(rawURL)
 	if err != nil {
+		if errors.Is(err, errBlockedExternalAddress) {
+			logger.Warning("sub: external URL resolves to blocked address:", err)
+			return "", err
+		}
 		logger.Warning("sub: Error making HTTP request:", err)
 		return "", err
 	}
@@ -74,18 +157,15 @@ func GetExternalSub(url string) ([]map[string]interface{}, error) {
 		}
 		outbounds, ok := jsonData["outbounds"].([]any)
 		if !ok {
-			logger.Warning("sub: Error getting outbounds:", err)
-			return nil, err
+			logger.Warning("sub: missing outbounds field")
+			return nil, common.NewError("invalid subscription: missing outbounds")
 		}
 		for _, outbound := range outbounds {
 			outboundMap, ok := outbound.(map[string]interface{})
 			if ok && len(outboundMap) > 0 {
 				oType, _ := outboundMap["type"].(string)
 				switch oType {
-				case "urltest":
-				case "direct":
-				case "selector":
-				case "block":
+				case "urltest", "direct", "selector", "block":
 					continue
 				default:
 					result = append(result, outboundMap)
@@ -96,14 +176,13 @@ func GetExternalSub(url string) ([]map[string]interface{}, error) {
 			return nil, common.NewError("no result")
 		}
 		return result, nil
-	} else {
-		// if data is a text
-		links := strings.Split(data, "\n")
-		for _, link := range links {
-			linkToJson, _, err := GetOutbound(link, 0)
-			if err == nil {
-				result = append(result, *linkToJson)
-			}
+	}
+	// if data is a text
+	links := strings.Split(data, "\n")
+	for _, link := range links {
+		linkToJson, _, err := GetOutbound(link, 0)
+		if err == nil {
+			result = append(result, *linkToJson)
 		}
 	}
 	if len(result) == 0 {
@@ -127,7 +206,7 @@ func validateExternalURL(rawURL string) error {
 	if strings.EqualFold(host, "localhost") {
 		return common.NewError("localhost url is not allowed")
 	}
-	if os.Getenv("SUI_ALLOW_PRIVATE_SUB_URLS") == "true" {
+	if allowPrivateExternalURLs() {
 		return nil
 	}
 	if addr, err := netip.ParseAddr(host); err == nil {

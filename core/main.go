@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/admin8800/s-ui/logger"
+	"github.com/deposist/s-ui-rus-inst/logger"
 
 	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"

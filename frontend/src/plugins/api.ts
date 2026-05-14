@@ -14,6 +14,13 @@ const api = axios.create({
 
 const pendingRequests = new Map<string, AbortController>()
 
+const isDedupeMethod = (method?: string) => {
+    const m = (method ?? 'get').toLowerCase()
+    // Only deduplicate idempotent reads. Mutating requests with identical
+    // URLs but different bodies would otherwise cancel each other.
+    return m === 'get' || m === 'head' || m === 'options'
+}
+
 const requestKey = (config: any) => {
     const params = config.params ? JSON.stringify(config.params) : ''
     return `${config.method}:${config.url}:${params}`
@@ -21,13 +28,15 @@ const requestKey = (config: any) => {
 
 api.interceptors.request.use(
     (config) => {
-        const key = requestKey(config)
-        if (pendingRequests.has(key)) {
-            pendingRequests.get(key)?.abort('Duplicate request cancelled')
+        if (isDedupeMethod(config.method)) {
+            const key = requestKey(config)
+            if (pendingRequests.has(key)) {
+                pendingRequests.get(key)?.abort('Duplicate request cancelled')
+            }
+            const controller = new AbortController()
+            config.signal = controller.signal
+            pendingRequests.set(key, controller)
         }
-        const controller = new AbortController()
-        config.signal = controller.signal
-        pendingRequests.set(key, controller)
 
         if (config.data instanceof FormData) {
             delete config.headers['Content-Type']
@@ -39,13 +48,15 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
     (response) => {
-        pendingRequests.delete(requestKey(response.config))
+        if (isDedupeMethod(response.config.method)) {
+            pendingRequests.delete(requestKey(response.config))
+        }
         return response
     },
     (error) => {
         if (axios.isCancel(error) || error.code === 'ERR_CANCELED') {
             console.warn(error.message)
-        } else if (error.config) {
+        } else if (error.config && isDedupeMethod(error.config.method)) {
             pendingRequests.delete(requestKey(error.config))
         }
         return Promise.reject(error)

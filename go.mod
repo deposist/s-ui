@@ -1,4 +1,4 @@
-module github.com/admin8800/s-ui
+module github.com/deposist/s-ui-rus-inst
 
 go 1.25.7
 

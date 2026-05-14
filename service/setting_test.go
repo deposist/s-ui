@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/admin8800/s-ui/database"
-	"github.com/admin8800/s-ui/database/model"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
 )
 
 func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
@@ -16,6 +16,14 @@ func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if d := database.GetDB(); d != nil {
+			if sqlDB, err := d.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		}
+	})
+
 	settingService := &SettingService{}
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)

@@ -6,8 +6,9 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"sync"
 
-	"github.com/admin8800/s-ui/logger"
+	"github.com/deposist/s-ui-rus-inst/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,12 +19,29 @@ type Msg struct {
 	Obj     interface{} `json:"obj"`
 }
 
+// getRemoteIp returns the client IP, walking the X-Forwarded-For chain from the
+// transport peer outward and returning the first hop that is not in the
+// configured list of trusted proxies. Without trusted proxies it always
+// returns the transport peer.
 func getRemoteIp(c *gin.Context) string {
 	remoteIP := splitRemoteIP(c.Request.RemoteAddr)
+	if !isTrustedProxy(remoteIP) {
+		return remoteIP
+	}
 	value := c.GetHeader("X-Forwarded-For")
-	if value != "" && isTrustedProxy(remoteIP) {
-		ips := strings.Split(value, ",")
-		return strings.TrimSpace(ips[0])
+	if value == "" {
+		return remoteIP
+	}
+	parts := strings.Split(value, ",")
+	// Walk right-to-left: strip trusted proxies.
+	for i := len(parts) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(parts[i])
+		if hop == "" {
+			continue
+		}
+		if !isTrustedProxy(hop) {
+			return hop
+		}
 	}
 	return remoteIP
 }
@@ -43,24 +61,55 @@ func requestIsHTTPS(c *gin.Context) bool {
 	return isTrustedProxy(splitRemoteIP(c.Request.RemoteAddr)) && strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
 }
 
+var (
+	trustedProxiesMu     sync.Mutex
+	trustedProxiesRaw    string
+	trustedProxiesParsed []netip.Prefix
+)
+
+func parseTrustedProxies() []netip.Prefix {
+	raw := os.Getenv("SUI_TRUSTED_PROXIES")
+	trustedProxiesMu.Lock()
+	defer trustedProxiesMu.Unlock()
+	if raw == trustedProxiesRaw {
+		return trustedProxiesParsed
+	}
+	trustedProxiesRaw = raw
+	if raw == "" {
+		trustedProxiesParsed = nil
+		return nil
+	}
+	var parsed []netip.Prefix
+	for _, item := range strings.Split(raw, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if prefix, err := netip.ParsePrefix(item); err == nil {
+			parsed = append(parsed, prefix)
+			continue
+		}
+		if itemAddr, err := netip.ParseAddr(item); err == nil {
+			parsed = append(parsed, netip.PrefixFrom(itemAddr, itemAddr.BitLen()))
+			continue
+		}
+		logger.Warningf("invalid SUI_TRUSTED_PROXIES entry: %q", item)
+	}
+	trustedProxiesParsed = parsed
+	return parsed
+}
+
 func isTrustedProxy(remoteIP string) bool {
-	trusted := os.Getenv("SUI_TRUSTED_PROXIES")
-	if trusted == "" {
+	prefixes := parseTrustedProxies()
+	if len(prefixes) == 0 {
 		return false
 	}
 	addr, err := netip.ParseAddr(remoteIP)
 	if err != nil {
 		return false
 	}
-	for _, item := range strings.Split(trusted, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		if prefix, err := netip.ParsePrefix(item); err == nil && prefix.Contains(addr) {
-			return true
-		}
-		if itemAddr, err := netip.ParseAddr(item); err == nil && itemAddr == addr {
+	for _, prefix := range prefixes {
+		if prefix.Contains(addr) {
 			return true
 		}
 	}
@@ -69,11 +118,12 @@ func isTrustedProxy(remoteIP string) bool {
 
 func getHostname(c *gin.Context) string {
 	host := c.Request.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
 	if strings.Contains(host, ":") {
-		host, _, _ = net.SplitHostPort(c.Request.Host)
-		if strings.Contains(host, ":") {
-			host = "[" + host + "]"
-		}
+		host = "[" + host + "]"
 	}
 	return host
 }

@@ -2,29 +2,34 @@ package migration
 
 import (
 	"fmt"
-	"log"
 	"os"
+	"strings"
 
-	"github.com/admin8800/s-ui/config"
+	"github.com/deposist/s-ui-rus-inst/config"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-func MigrateDb() {
+// MigrateDb runs schema migrations against the SQLite database located at
+// `config.GetDBPath()`. The legacy variant terminated the process on any
+// error, which made restoring an incompatible backup through the panel kill
+// the whole panel. The function now returns an error so callers can decide
+// what to do (the CLI prints and exits non-zero, the panel falls back to the
+// previous database).
+func MigrateDb() error {
 	// void running on first install
 	path := config.GetDBPath()
-	_, err := os.Stat(path)
-	if err != nil {
-		println("Database not found")
-		return
+	if _, err := os.Stat(path); err != nil {
+		fmt.Println("Database not found")
+		return nil
 	}
 
 	db, err := gorm.Open(sqlite.Open(path))
 	if err != nil {
-		log.Fatal(err)
-		return
+		return fmt.Errorf("open db: %w", err)
 	}
+
 	tx := db.Begin()
 	defer func() {
 		if err == nil {
@@ -33,6 +38,7 @@ func MigrateDb() {
 			tx.Rollback()
 		}
 	}()
+
 	currentVersion := config.GetVersion()
 	dbVersion := ""
 	tx.Raw("SELECT value FROM settings WHERE key = ?", "version").Find(&dbVersion)
@@ -40,40 +46,43 @@ func MigrateDb() {
 
 	if currentVersion == dbVersion {
 		fmt.Println("Database is up to date, no need to migrate")
-		return
+		return nil
 	}
 
 	fmt.Println("Start migrating database...")
 
-	// Before 1.2
+	// Before 1.2 (no version row at all -> very old layout)
 	if dbVersion == "" {
-		err = to1_1(tx)
-		if err != nil {
-			log.Fatal("Migration to 1.1 failed: ", err)
-			return
+		if err = to1_1(tx); err != nil {
+			return fmt.Errorf("migration to 1.1: %w", err)
 		}
-		err = to1_2(tx)
-		if err != nil {
-			log.Fatal("Migration to 1.2 failed: ", err)
-			return
+		if err = to1_2(tx); err != nil {
+			return fmt.Errorf("migration to 1.2: %w", err)
 		}
 		dbVersion = "1.2"
 	}
 
 	// Before 1.3
-	if dbVersion[0:3] == "1.2" {
-		err = to1_3(tx)
-		if err != nil {
-			log.Fatal("Migration to 1.3 failed: ", err)
-			return
+	if strings.HasPrefix(dbVersion, "1.2") {
+		if err = to1_3(tx); err != nil {
+			return fmt.Errorf("migration to 1.3: %w", err)
 		}
 	}
 
-	// Set version
-	err = tx.Exec("UPDATE settings SET value = ? WHERE key = ?", currentVersion, "version").Error
+	// Persist the new version. The settings row is created lazily in older
+	// schemas, so use UPSERT semantics.
+	var count int64
+	if err = tx.Raw("SELECT COUNT(*) FROM settings WHERE key = ?", "version").Scan(&count).Error; err != nil {
+		return fmt.Errorf("count version: %w", err)
+	}
+	if count == 0 {
+		err = tx.Exec("INSERT INTO settings(key, value) VALUES(?, ?)", "version", currentVersion).Error
+	} else {
+		err = tx.Exec("UPDATE settings SET value = ? WHERE key = ?", currentVersion, "version").Error
+	}
 	if err != nil {
-		log.Fatal("Update version failed: ", err)
-		return
+		return fmt.Errorf("update version: %w", err)
 	}
 	fmt.Println("Migration done!")
+	return nil
 }

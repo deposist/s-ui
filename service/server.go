@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/admin8800/s-ui/config"
-	"github.com/admin8800/s-ui/database"
-	"github.com/admin8800/s-ui/database/model"
-	"github.com/admin8800/s-ui/logger"
+	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/logger"
 
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -140,7 +140,9 @@ func (s *ServerService) GetSingboxInfo() map[string]interface{} {
 	isRunning := corePtr.IsRunning()
 	uptime := uint32(0)
 	if isRunning {
-		uptime = corePtr.GetInstance().Uptime()
+		if instance := corePtr.GetInstance(); instance != nil {
+			uptime = instance.Uptime()
+		}
 	}
 	return map[string]interface{}{
 		"running": isRunning,

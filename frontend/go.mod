@@ -1,3 +1,3 @@
-module github.com/admin8800/s-ui/frontend
+module github.com/deposist/s-ui-rus-inst/frontend
 
 go 1.25.7
