@@ -28,7 +28,7 @@ const routes = [
         path: '/clients',
         name: 'pages.clients',
         component: () => import('@/views/Clients.vue'),
-      },  
+      },
       {
         path: '/outbounds',
         name: 'pages.outbounds',
@@ -83,32 +83,21 @@ const router = createRouter({
   routes,
 })
 
-const DEFAULT_TITLE = 'S-UI'
-let intervalId:any
+let intervalId: any
 
-// Navigation guard to check authentication state
+// The session cookie is HttpOnly (set by api/session.go) so it cannot be
+// observed from the client; auth is enforced server-side. Every API call
+// returns `Invalid login` when the cookie is missing or expired, and
+// httputil._handleMsg redirects the user to /login in that case. The router
+// guard below only handles the UX detail of pulling fresh data on first
+// navigation to a protected page and stopping the polling timer when we
+// land on /login.
 router.beforeEach((to) => {
-  // Check the session cookie
-  const sessionCookie = document.cookie.split(';').find(cookie => cookie.trim().startsWith('s-ui='))
-  const isAuthenticated = !!sessionCookie
-
-  // If the route requires authentication and the user is not authenticated, redirect to /login
-  if (to.meta.requiresAuth && !isAuthenticated) {
-    return '/login'
-  }
-  if (to.path === '/login' && isAuthenticated) {
-    // If already authenticated and visiting /login, redirect to '/'
-    return '/'
-  }
-
-  // Load default data
   if (to.path !== '/login') {
     loadDataInterval()
-  } else {
-    if (intervalId) {
-      clearInterval(intervalId)
-      intervalId = undefined
-    }
+  } else if (intervalId) {
+    clearInterval(intervalId)
+    intervalId = undefined
   }
 })
 
