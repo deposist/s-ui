@@ -8,6 +8,9 @@ on:
         required: true
         default: "v1.4.1"
         type: string
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -41,7 +44,11 @@ jobs:
       - name: 规范化发布标签
         id: vars
         run: |
-          TAG="${{ inputs.tag }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
           case "$TAG" in
             v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
             *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;
