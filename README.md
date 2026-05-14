@@ -20,7 +20,79 @@ Advanced Web panel built on `SagerNet/Sing-Box`.
 - Race-free core lifecycle, online-stats and token store.
 - Frontend: `v-html` removed from log/IP/rule import surfaces, code splitting re-enabled, Axios `AbortController` instead of deprecated `CancelToken`, ESLint flat config.
 - Backup import auto-adapts old databases (1.0/1.1/1.2/1.3/1.4.x) — restoring a legacy backup runs the schema migrations and rehashes any plaintext passwords transparently. Fresh binaries on top of an existing 1.x DB upgrade automatically on start.
+- Bilingual (English / Russian) `install.sh` and `s-ui` management menu, language switchable from menu item **21. Language**.
+- Default panel timezone changed to `Europe/Moscow`; default frontend locale changed to English.
 - See [CHANGELOG.md](CHANGELOG.md) for the full list and an upgrade guide.
+
+## Key differences vs `admin8800/s-ui`
+
+This fork is binary-compatible with `admin8800/s-ui` — drop the new
+binary on top of an existing 1.x install, the panel migrates the DB
+automatically on first start. The intent is to harden security and
+reliability without changing the protocol surface.
+
+- **Auth and session security.** `admin8800/s-ui` stores passwords in
+  plaintext, ships an `admin/admin` default, and has no login rate
+  limiter. This fork uses bcrypt with lazy migration, generates a
+  random first-run password (logged once), and rate-limits failed
+  logins. Cookies are `HttpOnly` + `SameSite=Lax` + HTTPS-aware
+  `Secure`.
+- **`X-Forwarded-For` handling.** `admin8800/s-ui` always trusts the
+  leftmost `X-Forwarded-For` value. This fork ignores the header
+  unless `SUI_TRUSTED_PROXIES` is configured and walks the chain
+  right-to-left; spoofed headers cannot reach IP-based logic.
+- **External subscription fetcher.** `admin8800/s-ui` performed
+  fetches with `InsecureSkipVerify=true` and no validation of the
+  target host. This fork validates the URL, blocks private/loopback
+  targets by default (opt back in with
+  `SUI_ALLOW_PRIVATE_SUB_URLS=true`), caps the response at 4 MiB, and
+  re-validates the resolved IP at dial time so DNS rebinding cannot
+  bypass the filter.
+- **SQL safety.** Replaced unsafe string concatenation in
+  `service/config.go` and `service/inbounds.go` with parameterised
+  queries; the inbound user-fetch query enforces a static allow-list
+  of inbound types.
+- **Backup import / upgrade.** `admin8800/s-ui` left WAL/SHM sidecars
+  next to the imported database, which corrupted restores from
+  another host (the historical "1.4.1 backup will not restore" bug).
+  This fork rewrites `ImportDB` to close the live DB, clean
+  sidecars, stage the upload, run schema migrations and the new
+  `AdaptToCurrentVersion` adapter (rehashes legacy plaintext
+  passwords, refreshes indexes, bumps `settings.version`), and roll
+  back to the previous DB on any failure.
+- **Listen address resilience.** When the saved `webListen` /
+  `subListen` IP no longer exists on the host (typical after
+  restoring a backup from a different machine), the panel logs a
+  warning and binds on every interface instead of failing with
+  `EADDRNOTAVAIL` and looping under systemd.
+- **WARP registration.** Talks to the current Cloudflare WARP API
+  (`v0a4005`) with proper first-party headers, falls back to
+  `v0a2158`, retries transient TLS handshake failures. The original
+  fork frequently failed with `TLS handshake timeout` / `EOF`.
+- **Race-free runtime.** `core.Core`, the v2 token store, online
+  stats, and the last-update bookkeeping are protected by the
+  appropriate `sync.Mutex` / `sync.RWMutex` and pass
+  `go test -race ./...`.
+- **HTTP server hardening.** `Read/Write/Header/Idle` timeouts and
+  `tls.MinVersion = 1.2` on both the panel and the subscription
+  endpoint.
+- **Frontend hygiene.** `v-html` removed from logs, rule import
+  errors, IP lists, and the gauge tile. Axios moved onto an
+  exported instance, `AbortController` replaces deprecated
+  `CancelToken`, dedupe limited to idempotent reads. Vite code
+  splitting is re-enabled.
+- **Localization & defaults.** Bilingual `install.sh` and `s-ui`
+  management menu (English / Russian), language switchable at
+  runtime. Default `timeLocation` switched from `Asia/Shanghai` to
+  `Europe/Moscow`. Default frontend locale switched from
+  Simplified Chinese to English.
+- **Tests.** Regression coverage for password hashing, plaintext
+  migration, login rate limiter, X-Forwarded-For trust matrix,
+  external URL validation, dialer-side block of private addresses,
+  default port omission in `subURI`, backup inclusion of `services`
+  / `tokens`, and legacy backup import. The build matrix runs with
+  `go test -race` and the build-tag set
+  `with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale`.
 
 
 ## Overview
@@ -322,7 +394,75 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 - Race-free жизненный цикл core, онлайн-статистика и хранилище токенов.
 - Фронтенд: убран `v-html` из логов/IP-листов/импорта правил, включён code splitting, заменён устаревший `axios.CancelToken` на `AbortController`, ESLint flat config.
 - Импорт бэкапа автоматически адаптирует базы старых версий (1.0/1.1/1.2/1.3/1.4.x) — миграция схемы и перешивка plaintext-паролей выполняются прозрачно. Свежий бинарник поверх существующей базы 1.x обновляется автоматически при старте.
+- Двуязычные `install.sh` и меню `s-ui` (английский / русский), переключение языка из меню (пункт **21. Language**).
+- Часовой пояс панели по умолчанию: `Europe/Moscow`. Локаль фронтенда по умолчанию: `en`.
 - Полный список изменений и руководство по обновлению — в [CHANGELOG.md](CHANGELOG.md).
+
+## Ключевые отличия от `admin8800/s-ui`
+
+Этот форк бинарно совместим с `admin8800/s-ui` — новый бинарник можно
+ставить поверх работающей установки 1.x, схема БД автоматически
+обновится при первом старте. Цель форка — усилить безопасность и
+надёжность, не меняя протокол.
+
+- **Авторизация и сессия.** `admin8800/s-ui` хранит пароли в открытом
+  виде, ставит `admin/admin` по умолчанию и не имеет лимита логинов.
+  В этом форке используется bcrypt с ленивой миграцией, при первой
+  установке генерируется случайный пароль (выводится в журнал один
+  раз), есть лимит на неуспешные логины, cookie сессии — `HttpOnly` +
+  `SameSite=Lax` + `Secure` при HTTPS.
+- **`X-Forwarded-For`.** `admin8800/s-ui` всегда доверяет крайнему
+  левому значению. В форке заголовок игнорируется без переменной
+  `SUI_TRUSTED_PROXIES`, а цепочка обходится справа налево —
+  поддельный заголовок не может обойти IP-логику.
+- **Загрузчик внешних подписок.** В оригинале запросы шли с
+  `InsecureSkipVerify=true` и без валидации целевого хоста. В форке
+  есть валидация URL, блок приватных/loopback адресов по умолчанию
+  (опционально через `SUI_ALLOW_PRIVATE_SUB_URLS=true`), ограничение
+  ответа 4 МиБ и повторная валидация IP при dial — DNS rebinding
+  больше не работает.
+- **Безопасность SQL.** Заменили склейку строк в `service/config.go`
+  и `service/inbounds.go` на параметризованные запросы; в выборке
+  пользователей по inbound — статический whitelist допустимых типов.
+- **Импорт бэкапа / обновление.** `admin8800/s-ui` оставлял WAL/SHM
+  сайдкары рядом с загруженной БД, и восстановление с другого
+  сервера ломало базу (известная проблема «1.4.1-бэкап не
+  восстанавливается»). Здесь `ImportDB` переписан: закрытие живой БД,
+  очистка сайдкаров, staging upload, миграции и новый
+  `AdaptToCurrentVersion` (перешивка plaintext-паролей в bcrypt,
+  обновление индексов, поднятие `settings.version`), откат к
+  предыдущей БД при любой ошибке.
+- **Листен-адрес, устойчивый к переезду.** Если в `webListen` /
+  `subListen` сохранён IP, которого нет на текущем хосте (типично
+  после восстановления бэкапа с другой машины), панель пишет
+  warning и слушает на всех интерфейсах вместо краша
+  `EADDRNOTAVAIL` под systemd.
+- **WARP-регистрация.** Поддержка актуального API Cloudflare
+  (`v0a4005`) с заголовками первого клиента, фоллбэк на `v0a2158`,
+  ретраи переходящих TLS-ошибок. В оригинальном форке регулярно
+  падало с `TLS handshake timeout` / `EOF`.
+- **Race-free runtime.** `core.Core`, хранилище токенов v2,
+  online-статистика и last-update защищены `sync.Mutex` /
+  `sync.RWMutex` и проходят `go test -race ./...`.
+- **HTTP server hardening.** Таймауты `Read/Write/Header/Idle` и
+  `tls.MinVersion = 1.2` для панели и для эндпоинта подписки.
+- **Чистота фронтенда.** `v-html` удалён из логов, ошибок импорта
+  правил, IP-листов и gauge-плитки. Axios через экспортируемый
+  instance, `AbortController` вместо устаревшего `CancelToken`,
+  дедупликация только для идемпотентных запросов, code splitting
+  Vite восстановлен.
+- **Локализация и значения по умолчанию.** Двуязычные `install.sh`
+  и меню `s-ui` (английский / русский), язык переключается на лету.
+  Часовой пояс по умолчанию переключён с `Asia/Shanghai` на
+  `Europe/Moscow`. Локаль фронтенда по умолчанию — английский
+  (раньше был упрощённый китайский).
+- **Тесты.** Регрессионное покрытие для bcrypt-хеширования и
+  миграции plaintext-паролей, лимита логинов, поведения
+  `X-Forwarded-For`, валидации внешних URL, блокировки приватных
+  адресов на стороне dialer, опускания дефолтного порта в `subURI`,
+  включения `services` / `tokens` в бэкап и импорта легаси-бэкапа.
+  CI-матрица гоняет `go test -race` и build tags
+  `with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale`.
 
 
 ## Краткий обзор

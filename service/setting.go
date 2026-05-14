@@ -52,7 +52,7 @@ var defaultValueMap = map[string]string{
 	"webURI":        "",
 	"sessionMaxAge": "0",
 	"trafficAge":    "30",
-	"timeLocation":  "Asia/Shanghai",
+	"timeLocation":  "Europe/Moscow",
 	"subListen":     "",
 	"subPort":       "2096",
 	"subPath":       "/sub/",

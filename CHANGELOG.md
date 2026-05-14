@@ -23,6 +23,12 @@ and the full frontend pipeline (`npm ci`, `npm run build`, `npm run lint`,
   application log (no more shipped `admin/admin`).
 - Login rate limiter (5 failures / 15 minutes / 15 minutes block) with
   bounded memory.
+- Bilingual (English/Russian) `install.sh` and `s-ui` management menu;
+  language pickable on first run, switchable from menu item **21.
+  Language**, persisted in `/etc/s-ui/lang`. Default language is English.
+- Default panel timezone changed from `Asia/Shanghai` to `Europe/Moscow`.
+- Default frontend locale changed from Simplified Chinese to English
+  (existing installations keep their saved `localStorage.locale`).
 - External subscription URL fetcher rejects private/loopback/link-local
   targets and re-validates the resolved IP at dial time, blocking
   DNS-rebinding attacks.
@@ -112,6 +118,20 @@ and the full frontend pipeline (`npm ci`, `npm run build`, `npm run lint`,
 - Fixed `enableTraffic=false` not propagating to the store, `loadClients` crashing on empty results, and the unused filtered status request list in `Main.vue.reloadData`.
 - Re-enabled Vite code splitting; bundle output uses `[hash].js`/`[hash].css` filenames.
 
+### Localization & defaults
+- `install.sh` and the `s-ui` management menu are now bilingual
+  (English / Russian). On first run the user is asked to pick a
+  language; the choice is stored in `/etc/s-ui/lang` and reused on
+  subsequent runs. `SUI_LANG=en|ru` overrides interactively or in CI.
+- Added menu item **21. Language** so the user can switch UI language
+  without editing files.
+- Default `timeLocation` for the panel changed from `Asia/Shanghai`
+  to `Europe/Moscow`.
+- Default frontend locale (and Vuetify locale) changed from
+  `zhHans` (Simplified Chinese) to `en`. The user-selected locale
+  saved in `localStorage` is still honoured, so existing browsers
+  keep their language.
+
 ### Repository / packaging
 - Go module renamed to `github.com/deposist/s-ui-rus-inst`; all internal imports updated.
 - `frontend/go.mod` keeps root-level `go` commands away from `frontend/node_modules`.
@@ -141,6 +161,95 @@ New regression tests:
 | `npm run build` | ✅ |
 | `npm run lint` | ✅ |
 | `npm audit --audit-level=high` | ✅ (0 vulnerabilities) |
+
+---
+
+## Изменения 1.4.2-beta (на русском)
+
+Этот выпуск переписывает значительную часть слоя авторизации, транзакций
+и запуска ядра, защищает загрузчик внешних подписок от SSRF, делает
+импорт легаси-бэкапов и обновление 1.x → 1.4.2 безопасным «поверх», а
+также добавляет двуязычный установщик и меню управления.
+
+### Безопасность
+- Хранение паролей через bcrypt с автоматической миграцией
+  plaintext → bcrypt при первом успешном логине.
+- Никаких `admin/admin` по умолчанию: при свежей установке генерируется
+  случайный 24-символьный пароль и однократно выводится в журнал.
+- Лимит входа (5 неуспешных попыток / 15 минут / блок 15 минут) с
+  ограниченным потреблением памяти.
+- `X-Forwarded-For` учитывается только если задана переменная
+  `SUI_TRUSTED_PROXIES`; цепочка обходится справа налево, чтобы
+  крайнее левое (поддельное) значение не могло обойти IP-логику.
+- Защищённые cookie сессии: `HttpOnly` + `SameSite=Lax` + `Secure`
+  при HTTPS.
+- Параметризованный SQL и whitelist идентификаторов в выборке
+  пользователей по inbound.
+- Загрузчик внешних подписок: только http/https, блок приватных
+  адресов, лимит размера 4 МиБ, защита от DNS rebinding (повторная
+  валидация IP при dial); опционально включается через
+  `SUI_ALLOW_PRIVATE_SUB_URLS=true`.
+- Domain validator стал case-insensitive и корректно работает с IPv6
+  host literals.
+
+### Надёжность
+- Бэкап включает таблицы `services` и `tokens`.
+- Восстановление бэкапа от 1.4.x работает корректно: WAL/SHM
+  сайдкары живой БД больше не «портят» загруженный файл.
+- WARP: новый эндпоинт `v0a4005`, заголовки реального клиента,
+  TLS 1.2+, фоллбэк на `v0a2158`, ретраи; больше не падает с
+  «TLS handshake timeout» / «EOF» на средних каналах.
+- Защита от EADDRNOTAVAIL после переноса базы: если в `webListen` /
+  `subListen` сохранён IP, которого нет на сервере, панель пишет
+  предупреждение и слушает на всех интерфейсах вместо краша.
+- Индексы для горячих запросов `stats`, `changes`, `clients`.
+- SQLite-пул: `MaxOpen=8`, `MaxIdle=4`, `_busy_timeout=10000` —
+  избавились от штормов `SQLITE_BUSY` при записи статистики.
+- Транзакционные коммиты проверяются; runtime-изменения core
+  применяются только после успешного commit'а.
+- Пользовательские рестарты ядра обходят cron-cooldown, ошибки
+  старта корректно прокидываются наверх.
+- Чистая (race-free) синхронизация: жизненный цикл core, online
+  stats, last-update, хранилище токенов v2.
+- HTTP-серверы получили `Read/Write/Header/Idle` таймауты и
+  `tls.MinVersion = 1.2`.
+
+### Импорт легаси-бэкапов и обновление
+- `migration.MigrateDb` возвращает ошибку вместо `log.Fatal` —
+  ошибка миграции больше не убивает процесс панели.
+- `ImportDB` возвращает БД к предыдущему состоянию при ошибке миграции.
+- Новый `database.AdaptToCurrentVersion` запускается после каждого
+  `InitDB` и импорта: перешивает plaintext-пароли в bcrypt, обновляет
+  индексы, поднимает `settings.version`.
+- `app.Init` запускает миграции до открытия БД, поэтому новый
+  бинарник поверх существующей базы 1.x обновляет её автоматически
+  при первом старте.
+
+### Фронтенд / тулинг
+- ESLint flat-config; `lint` без авто-фикса.
+- 0 уязвимостей по `npm audit --audit-level=high`.
+- Axios подключён через экспортируемый instance, `AbortController`
+  вместо устаревшего `CancelToken`, дедуп ограничен GET/HEAD/OPTIONS.
+- `v-html` убран из логов, импорта правил, IP-листов, gauge-плитки.
+- Code splitting восстановлен; исправлено распространение
+  `enableTraffic=false`.
+- Роутер больше не пытается читать HttpOnly-cookie через
+  `document.cookie` — фикс «после логина выкидывает на /login».
+
+### Локализация и значения по умолчанию
+- `install.sh` и меню `s-ui` теперь двуязычные (английский /
+  русский). Язык выбирается при первом запуске и сохраняется в
+  `/etc/s-ui/lang`. Переключить язык можно из меню (пункт 21) или
+  переменной `SUI_LANG=en|ru`.
+- Часовой пояс панели по умолчанию: `Europe/Moscow`.
+- Локаль фронтенда по умолчанию: `en` (`zhHans` была раньше).
+  Существующие браузеры сохраняют свой выбор языка из
+  `localStorage`.
+
+### Репозиторий
+- Go-модуль переименован в `github.com/deposist/s-ui-rus-inst`.
+- Установка/релизы и docker-образ ссылаются на
+  `deposist/s-ui-rus-inst` / `ghcr.io/deposist/s-ui-rus-inst`.
 
 ---
 
