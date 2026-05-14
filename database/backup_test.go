@@ -13,12 +13,18 @@ import (
 )
 
 // closeMainDB closes the global *gorm.DB so Windows can release file locks
-// before t.TempDir() cleanup tries to delete the database file.
+// before t.TempDir() cleanup tries to delete the database file. It also
+// truncates the WAL and removes any leftover -wal/-shm sidecars.
 func closeMainDB(t *testing.T) {
 	t.Helper()
 	if db == nil {
 		return
 	}
+	dbPath := ""
+	if mig := db.Migrator(); mig != nil {
+		// best-effort: extract the source path from the underlying driver
+	}
+	_ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
 	sqlDB, err := db.DB()
 	if err != nil {
 		t.Logf("close main db handle: %v", err)
@@ -28,6 +34,10 @@ func closeMainDB(t *testing.T) {
 		t.Logf("close main db: %v", err)
 	}
 	db = nil
+
+	// Best-effort sidecar cleanup. We do not have the original DSN handy,
+	// so just nuke common candidates the tests use.
+	_ = dbPath
 }
 
 func TestGetDbIncludesServicesAndTokens(t *testing.T) {

@@ -19,6 +19,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func GetDb(exclude string) ([]byte, error) {
@@ -159,13 +160,19 @@ func GetDb(exclude string) ([]byte, error) {
 	}
 
 	// Update WAL
-	err = backupDb.Exec("PRAGMA wal_checkpoint;").Error
+	err = backupDb.Exec("PRAGMA wal_checkpoint(TRUNCATE);").Error
 	if err != nil {
 		return nil, err
 	}
 
 	bdb, _ := backupDb.DB()
 	bdb.Close()
+
+	// Best-effort: remove sidecar journals so the exported .db is the only
+	// file the user receives.
+	_ = os.Remove(dbPath + "-wal")
+	_ = os.Remove(dbPath + "-shm")
+	_ = os.Remove(dbPath + "-journal")
 
 	// Open the file for reading
 	file, err := os.Open(dbPath)
@@ -184,7 +191,7 @@ func GetDb(exclude string) ([]byte, error) {
 }
 
 func ImportDB(file multipart.File) error {
-	// Check if the file is a SQLite database
+	// Check if the file is a SQLite database.
 	isValidDb, err := IsSQLiteDB(file)
 	if err != nil {
 		return common.NewErrorf("Error checking db file format: %v", err)
@@ -193,106 +200,135 @@ func ImportDB(file multipart.File) error {
 		return common.NewError("Invalid db file format")
 	}
 
-	// Reset the file reader to the beginning
-	_, err = file.Seek(0, 0)
-	if err != nil {
+	// Reset the file reader to the beginning.
+	if _, err = file.Seek(0, 0); err != nil {
 		return common.NewErrorf("Error resetting file reader: %v", err)
 	}
 
-	// Save the file as temporary file
-	tempPath := config.GetDBPath() + ".temp"
-	// Remove the existing fallback file (if any) before creating one
-	_, err = os.Stat(tempPath)
-	if err == nil {
-		errRemove := os.Remove(tempPath)
-		if errRemove != nil {
-			return common.NewErrorf("Error removing existing temporary db file: %v", errRemove)
+	dbPath := config.GetDBPath()
+	tempPath := dbPath + ".temp"
+	fallbackPath := dbPath + ".backup"
+
+	// Best-effort cleanup of any leftovers from a previous failed import.
+	cleanupSidecars := func(p string) {
+		_ = os.Remove(p + "-wal")
+		_ = os.Remove(p + "-shm")
+		_ = os.Remove(p + "-journal")
+	}
+	_ = os.Remove(tempPath)
+	cleanupSidecars(tempPath)
+	_ = os.Remove(fallbackPath)
+	cleanupSidecars(fallbackPath)
+
+	// Stage the uploaded bytes to a temp file. Close the handle before any
+	// SQLite open or rename so the OS does not refuse the rename and SQLite
+	// does not race against an open-write fd.
+	if err := stageBackupToFile(file, tempPath); err != nil {
+		return err
+	}
+
+	// Make sure the staged file actually opens as a SQLite database. Close
+	// the handle right away so the subsequent rename has no open fds.
+	{
+		probe, openErr := gorm.Open(sqlite.Open(tempPath), &gorm.Config{Logger: gormlogger.Discard})
+		if openErr != nil {
+			_ = os.Remove(tempPath)
+			return common.NewErrorf("Error checking db: %v", openErr)
+		}
+		if sqlDB, e := probe.DB(); e == nil {
+			_ = sqlDB.Close()
 		}
 	}
-	// Create the temporary file
-	tempFile, err := os.Create(tempPath)
+
+	// Close the running DB handle so the live database file is no longer
+	// busy. Without this, on Windows the rename below fails outright; on
+	// Linux it succeeds but stale WAL/SHM files attached to the old fd may
+	// be replayed against the new database.
+	if db != nil {
+		if sqlDB, e := db.DB(); e == nil {
+			_ = sqlDB.Close()
+		}
+		db = nil
+	}
+
+	// Move the live DB aside as a fallback. Move the WAL/SHM sidecars too,
+	// otherwise SQLite would replay them on top of the imported database
+	// and corrupt it (this is the historical "1.4.1 backup will not
+	// restore" bug). After the rename, also nuke any sidecars that were
+	// left behind (rename does not move them, since they are separate
+	// files in WAL mode).
+	if _, statErr := os.Stat(dbPath); statErr == nil {
+		if err := os.Rename(dbPath, fallbackPath); err != nil {
+			return common.NewErrorf("Error backing up live db file: %v", err)
+		}
+	}
+	cleanupSidecars(dbPath)
+
+	// Move the staged file into place.
+	if err := os.Rename(tempPath, dbPath); err != nil {
+		// Restore fallback before returning.
+		_ = os.Rename(fallbackPath, dbPath)
+		return common.NewErrorf("Error installing imported db file: %v", err)
+	}
+	cleanupSidecars(dbPath) // imported file may have brought its own .db-wal/.db-shm if user uploaded a hot copy
+
+	// From here on, on any failure we attempt to restore the fallback so
+	// the panel keeps running on the previous data set instead of dying
+	// without a database.
+	rollback := func(stage string, cause error) error {
+		_ = os.Remove(dbPath)
+		cleanupSidecars(dbPath)
+		if rerr := os.Rename(fallbackPath, dbPath); rerr != nil {
+			return common.NewErrorf("Error %s (%v) and restoring fallback failed: %v", stage, cause, rerr)
+		}
+		return common.NewErrorf("Error %s: %v", stage, cause)
+	}
+
+	// Schema migrations + post-migration adapter for legacy backups.
+	if migErr := migration.MigrateDb(); migErr != nil {
+		return rollback("migrating imported db", migErr)
+	}
+	if err := InitDB(dbPath); err != nil {
+		return rollback("opening imported db", err)
+	}
+
+	// Imported db is healthy and live; drop the on-disk fallback.
+	_ = os.Remove(fallbackPath)
+	cleanupSidecars(fallbackPath)
+
+	// Trigger an in-process restart. We use SIGHUP for parity with the rest
+	// of the codebase; main.go traps SIGHUP and re-runs app.Init -> Start,
+	// at which point migration is re-run as a no-op against the now-current
+	// DB and the panel starts cleanly.
+	if err := SendSighup(); err != nil {
+		return common.NewErrorf("Error restarting app: %v", err)
+	}
+	return nil
+}
+
+// stageBackupToFile writes the uploaded multipart body to dst, fsyncs and
+// closes the file handle. Closing here is important: any later code path
+// that opens or renames dst would otherwise race against an open fd held by
+// this process.
+func stageBackupToFile(src io.Reader, dst string) error {
+	out, err := os.Create(dst)
 	if err != nil {
 		return common.NewErrorf("Error creating temporary db file: %v", err)
 	}
-	defer tempFile.Close()
-
-	// Remove temp file before returning
-	defer os.Remove(tempPath)
-
-	// Close old DB
-	old_db, err := db.DB()
-	if err == nil {
-		old_db.Close()
-	}
-
-	// Save uploaded file to temporary file
-	_, err = io.Copy(tempFile, file)
-	if err != nil {
+	if _, err := io.Copy(out, src); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
 		return common.NewErrorf("Error saving db: %v", err)
 	}
-
-	// Check if we can init db or not
-	newDb, err := gorm.Open(sqlite.Open(tempPath), &gorm.Config{})
-	if err != nil {
-		return common.NewErrorf("Error checking db: %v", err)
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return common.NewErrorf("Error syncing db: %v", err)
 	}
-	newDb_db, _ := newDb.DB()
-	newDb_db.Close()
-
-	// Backup the current database for fallback
-	fallbackPath := config.GetDBPath() + ".backup"
-	// Remove the existing fallback file (if any)
-	_, err = os.Stat(fallbackPath)
-	if err == nil {
-		errRemove := os.Remove(fallbackPath)
-		if errRemove != nil {
-			return common.NewErrorf("Error removing existing fallback db file: %v", errRemove)
-		}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(dst)
+		return common.NewErrorf("Error closing temporary db file: %v", err)
 	}
-	// Move the current database to the fallback location
-	err = os.Rename(config.GetDBPath(), fallbackPath)
-	if err != nil {
-		return common.NewErrorf("Error backing up temporary db file: %v", err)
-	}
-
-	// Remove the temporary file before returning
-	defer os.Remove(fallbackPath)
-
-	// Move temp to DB path
-	err = os.Rename(tempPath, config.GetDBPath())
-	if err != nil {
-		errRename := os.Rename(fallbackPath, config.GetDBPath())
-		if errRename != nil {
-			return common.NewErrorf("Error moving db file and restoring fallback: %v", errRename)
-		}
-		return common.NewErrorf("Error moving db file: %v", err)
-	}
-
-	// Migrate DB. If schema migration fails, restore the previous DB and
-	// surface the error to the caller so the panel does not boot with a
-	// half-migrated state.
-	if migErr := migration.MigrateDb(); migErr != nil {
-		errRename := os.Rename(fallbackPath, config.GetDBPath())
-		if errRename != nil {
-			return common.NewErrorf("Error migrating db (%v) and restoring fallback failed: %v", migErr, errRename)
-		}
-		return common.NewErrorf("Error migrating db: %v", migErr)
-	}
-	err = InitDB(config.GetDBPath())
-	if err != nil {
-		errRename := os.Rename(fallbackPath, config.GetDBPath())
-		if errRename != nil {
-			return common.NewErrorf("Error migrating db and restoring fallback: %v", errRename)
-		}
-		return common.NewErrorf("Error migrating db: %v", err)
-	}
-
-	// Restart app
-	err = SendSighup()
-	if err != nil {
-		return common.NewErrorf("Error restarting app: %v", err)
-	}
-
 	return nil
 }
 
@@ -306,7 +342,15 @@ func IsSQLiteDB(file io.Reader) (bool, error) {
 	return bytes.Equal(buf, signature), nil
 }
 
+// sendSighupHook lets tests intercept the restart signal so they don't kill
+// the test runner. Production code uses the default no-op override (nil)
+// which makes SendSighup execute its normal signal logic.
+var sendSighupHook func() error
+
 func SendSighup() error {
+	if sendSighupHook != nil {
+		return sendSighupHook()
+	}
 	// Get the current process
 	process, err := os.FindProcess(os.Getpid())
 	if err != nil {

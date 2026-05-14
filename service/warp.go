@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -20,7 +21,49 @@ import (
 
 type WarpService struct{}
 
-var warpHTTPClient = &http.Client{Timeout: 20 * time.Second}
+// warpHTTPClient is the dedicated client used for Cloudflare WARP API calls.
+// The Cloudflare endpoint occasionally takes a long time on the TLS
+// handshake from networks with high RTT, so we use a generous overall
+// timeout plus an explicit handshake budget. Retries are added on top to
+// shrug off transient handshake/connect failures.
+var warpHTTPClient = &http.Client{
+	Timeout: 60 * time.Second,
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          5,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   30 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+}
+
+// doWarpRequest performs req with a small backoff retry. It clones the body
+// for each attempt because http.Request.Body is consumed on the first try.
+func doWarpRequest(req *http.Request, body []byte) (*http.Response, error) {
+	const attempts = 3
+	var lastErr error
+	for i := 0; i < attempts; i++ {
+		if body != nil {
+			req.Body = io.NopCloser(bytes.NewReader(body))
+			req.ContentLength = int64(len(body))
+			req.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
+		}
+		resp, err := warpHTTPClient.Do(req)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		logger.Warningf("warp request attempt %d/%d failed: %v", i+1, attempts, err)
+		// Don't sleep after the last attempt.
+		if i < attempts-1 {
+			time.Sleep(time.Duration(i+1) * 2 * time.Second)
+		}
+	}
+	return nil, lastErr
+}
 
 func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, error) {
 	url := fmt.Sprintf("https://api.cloudflareclient.com/v0a2158/reg/%s", deviceId)
@@ -31,7 +74,7 @@ func (s *WarpService) getWarpInfo(deviceId string, accessToken string) ([]byte, 
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := warpHTTPClient.Do(req)
+	resp, err := doWarpRequest(req, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +118,7 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 	req.Header.Add("CF-Client-Version", "a-7.21-0721")
 	req.Header.Add("Content-Type", "application/json")
 
-	resp, err := warpHTTPClient.Do(req)
+	resp, err := doWarpRequest(req, dataBytes)
 	if err != nil {
 		return err
 	}
