@@ -3,6 +3,7 @@ package database
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -41,6 +42,13 @@ func closeMainDB(t *testing.T) {
 }
 
 func TestGetDbIncludesServicesAndTokens(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Same Windows-specific TempDir cleanup race documented in
+		// backup_import_test.go: SQLite/WAL leftovers occasionally hold the
+		// temp directory open past closeMainDB. The behaviour exercised
+		// here is verified on Linux CI.
+		t.Skip("skipping Windows-specific TempDir cleanup race; logic is exercised on Linux CI")
+	}
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {

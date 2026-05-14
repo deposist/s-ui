@@ -165,7 +165,7 @@ func (s *Server) Start() (err error) {
 		return err
 	}
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
-	listener, err := net.Listen("tcp", listenAddr)
+	listener, err := network.ListenWithFallback(listenAddr, listen, strconv.Itoa(port))
 	if err != nil {
 		return err
 	}
