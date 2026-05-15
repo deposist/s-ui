@@ -9,7 +9,7 @@ import (
 )
 
 func (a *ApiService) GetCSRF(c *gin.Context) {
-	jsonMsg(c, "csrf", common.NewError("csrf endpoint is not enabled yet"))
+	a.IssueCSRFToken(c)
 }
 
 func (a *ApiService) GetSecurityAudit(c *gin.Context) {

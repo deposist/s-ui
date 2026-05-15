@@ -13,6 +13,8 @@ const api = axios.create({
 })
 
 const pendingRequests = new Map<string, AbortController>()
+let csrfToken: string | null = null
+let csrfTokenPromise: Promise<string> | null = null
 
 const isDedupeMethod = (method?: string) => {
     const m = (method ?? 'get').toLowerCase()
@@ -26,8 +28,43 @@ const requestKey = (config: any) => {
     return `${config.method}:${config.url}:${params}`
 }
 
+const normalizeURL = (url?: string) => (url ?? '').replace(/^\.\//, '').replace(/^\//, '')
+
+const needsCSRFToken = (method?: string, url?: string) => {
+    const m = (method ?? 'get').toLowerCase()
+    if (!['post', 'put', 'patch', 'delete'].includes(m)) {
+        return false
+    }
+    const normalized = normalizeURL(url)
+    return normalized.startsWith('api/') && normalized !== 'api/login'
+}
+
+const fetchCSRFToken = async () => {
+    if (csrfToken) {
+        return csrfToken
+    }
+    if (!csrfTokenPromise) {
+        csrfTokenPromise = axios.get('api/csrf', {
+            baseURL: './',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        }).then((response) => {
+            const token = response.data?.obj?.token
+            if (typeof token !== 'string' || token.length === 0) {
+                throw new Error('CSRF token was not returned')
+            }
+            csrfToken = token
+            return token
+        }).finally(() => {
+            csrfTokenPromise = null
+        })
+    }
+    return csrfTokenPromise
+}
+
 api.interceptors.request.use(
-    (config) => {
+    async (config) => {
         if (isDedupeMethod(config.method)) {
             const key = requestKey(config)
             if (pendingRequests.has(key)) {
@@ -40,6 +77,9 @@ api.interceptors.request.use(
 
         if (config.data instanceof FormData) {
             delete config.headers['Content-Type']
+        }
+        if (needsCSRFToken(config.method, config.url)) {
+            config.headers['X-CSRF-Token'] = await fetchCSRFToken()
         }
         return config
     },
@@ -58,6 +98,9 @@ api.interceptors.response.use(
             console.warn(error.message)
         } else if (error.config && isDedupeMethod(error.config.method)) {
             pendingRequests.delete(requestKey(error.config))
+        }
+        if (error.response?.status === 403 && error.response?.data?.msg === 'Invalid CSRF token') {
+            csrfToken = null
         }
         return Promise.reject(error)
     }

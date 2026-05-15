@@ -31,6 +31,9 @@ logs, or support chats.
 - Security audit events are stored in the new `audit_events` table and exposed
   through `/api/security/audit`. Event details are redacted before storage.
   The default retention setting is `30` days.
+- Browser API mutations now require a session-bound CSRF token from
+  `GET /api/csrf` and reject missing, wrong, or expired tokens with HTTP 403.
+  `/apiv2/*` token API requests are not affected.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.

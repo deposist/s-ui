@@ -17,6 +17,10 @@ All notable changes to this project are documented in this file.
 - Added the `audit_events` table, redaction helper, retention setting, and
   `/api/security/audit` endpoint. Login, logout, logout-all-admins, credential
   changes, and API token create/delete actions now write redacted audit events.
+- Added CSRF protection for browser `/api/*` mutating requests. `GET /api/csrf`
+  issues a session-bound token, frontend requests send it as `X-CSRF-Token`,
+  and invalid or expired tokens return HTTP 403. Bearer-token `/apiv2/*`
+  requests are not affected.
 
 ### API
 

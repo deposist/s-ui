@@ -27,6 +27,7 @@ func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 			checkLogin(c)
 		}
 	})
+	g.Use(a.csrfMiddleware)
 	a.registerGroupedRoutes(g)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
