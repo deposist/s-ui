@@ -755,3 +755,9 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 </details>
 
 #### Благодарность автору оригинального проекта: alireza0
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=deposist/s-ui-rus-inst&type=date&theme=dark" />
+  <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=deposist/s-ui-rus-inst&type=date" />
+  <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=deposist/s-ui-rus-inst&type=date" />
+</picture>
