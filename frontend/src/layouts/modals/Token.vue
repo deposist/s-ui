@@ -31,6 +31,8 @@
             <tr>
               <th>#</th>
               <th>{{ $t('admin.api.token') }}</th>
+              <th>{{ $t('admin.api.scope') }}</th>
+              <th>{{ $t('admin.api.enabled') }}</th>
               <th>{{ $t('client.desc') }}</th>
               <th>{{ $t('date.expiry') }}</th>
               <th>{{ $t('actions.del') }}</th>
@@ -40,6 +42,16 @@
             <tr v-for="(token, index) of tokens" :key="token.id">
               <td>{{ token.id }}</td>
               <td>{{ token.token }}</td>
+              <td>{{ token.scope }}</td>
+              <td>
+                <v-switch
+                  :model-value="token.enabled"
+                  color="success"
+                  density="compact"
+                  hide-details
+                  @update:model-value="setTokenEnabled(token.id, Boolean($event))"
+                ></v-switch>
+              </td>
               <td>{{ token.desc }}</td>
               <td>{{ dateFormatted(token.expiry) }}</td>
               <td>
@@ -94,6 +106,15 @@
                   <v-text-field :label="$t('date.expiry')" v-model.number="newToken.expiry" min="0" type="number" :suffix="$t('date.d')"></v-text-field>
                 </v-col>
               </v-row>
+              <v-row>
+                <v-col>
+                  <v-select
+                    :items="tokenScopes"
+                    :label="$t('admin.api.scope')"
+                    v-model="newToken.scope"
+                  ></v-select>
+                </v-col>
+              </v-row>
             </v-card-text>
             <v-card-actions>
               <v-spacer></v-spacer>
@@ -146,7 +167,9 @@ export default {
         desc: '',
         token: '',
         expiry: 0,
+        scope: 'full',
       },
+      tokenScopes: ['full'],
       delOverlay: new Array<boolean>(0),
     }
   },
@@ -178,6 +201,7 @@ export default {
           desc: '',
           token: '',
           expiry: 30,
+          scope: 'full',
         }
     },
     showAddToken() {
@@ -187,11 +211,19 @@ export default {
     async addToken() {
       this.loading = true
       this.newToken.expiry = this.newToken.expiry>0 ? this.newToken.expiry : 0
-      const response = await HttpUtils.post('api/addToken', { desc: this.newToken.desc, expiry: this.newToken.expiry })
+      const response = await HttpUtils.post('api/addToken', { desc: this.newToken.desc, expiry: this.newToken.expiry, scope: this.newToken.scope })
       if (response.success) {
         this.newToken.token = response.obj
         this.loadData()
         this.showNewToken = false
+      }
+      this.loading = false
+    },
+    async setTokenEnabled(id: number, enabled: boolean) {
+      this.loading = true
+      const response = await HttpUtils.post('api/setTokenEnabled', { id, enabled })
+      if (response.success) {
+        this.loadData()
       }
       this.loading = false
     },

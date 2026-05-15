@@ -46,6 +46,7 @@ var defaultValueMap = map[string]string{
 	"webDomain":             "",
 	"webPort":               "2095",
 	"secret":                common.Random(32),
+	"installSalt":           common.Random(32),
 	"webCertFile":           "",
 	"webKeyFile":            "",
 	"webPath":               "/app/",
@@ -115,6 +116,7 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 
 	// Due to security principles
 	delete(allSetting, "secret")
+	delete(allSetting, "installSalt")
 	delete(allSetting, "sessionGeneration")
 	delete(allSetting, "config")
 	delete(allSetting, "version")
@@ -254,6 +256,16 @@ func (s *SettingService) GetSecret() ([]byte, error) {
 		}
 	}
 	return []byte(secret), err
+}
+
+func (s *SettingService) GetInstallSalt() ([]byte, error) {
+	salt, err := s.getString("installSalt")
+	if salt == defaultValueMap["installSalt"] {
+		if saveErr := s.saveSetting("installSalt", salt); saveErr != nil {
+			logger.Warning("save install salt failed:", saveErr)
+		}
+	}
+	return []byte(salt), err
 }
 
 func (s *SettingService) GetSessionMaxAge() (int, error) {

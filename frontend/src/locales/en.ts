@@ -167,6 +167,8 @@ export default {
       title: "API Tokens",
       msg: "Please copy the token below and store it somewhere safe. It will not be shown again.",
       token: "Token",
+      scope: "Scope",
+      enabled: "Enabled",
     },
   },
   setting: {

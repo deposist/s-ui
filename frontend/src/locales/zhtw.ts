@@ -167,6 +167,8 @@ export default {
       title: "API 憑據",
       msg: "請複製下面的憑據並儲存在安全的地方。它將不再顯示。",
       token: "憑據",
+      scope: "作用域",
+      enabled: "已啟用",
     },
   },
   setting: {

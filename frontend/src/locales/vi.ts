@@ -166,7 +166,9 @@ export default {
     api: {
       title: "Mã thông báo API",
       msg: "Vui lòng sao chép mã thông báo bên dưới và lưu trữ nó ở nơi an toàn. Nó sẽ không được hiển thị lại.",
-      token: "Mã thông báo"
+      token: "Mã thông báo",
+      scope: "Scope",
+      enabled: "Enabled",
     },
   },
   setting: {

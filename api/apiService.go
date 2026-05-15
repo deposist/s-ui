@@ -416,11 +416,13 @@ func (a *ApiService) AddToken(c *gin.Context) {
 		return
 	}
 	desc := c.Request.FormValue("desc")
-	token, err := a.UserService.AddToken(loginUser, expiryInt, desc)
+	scope := c.DefaultPostForm("scope", "full")
+	token, err := a.UserService.AddToken(loginUser, expiryInt, desc, scope)
 	if err == nil {
 		a.recordAudit(c, loginUser, "api_token_created", "api_token", service.AuditSeverityWarn, map[string]any{
 			"desc":   desc,
 			"expiry": expiryInt,
+			"scope":  scope,
 		})
 	}
 	jsonObj(c, token, err)
@@ -435,6 +437,23 @@ func (a *ApiService) DeleteToken(c *gin.Context) {
 		})
 	}
 	jsonMsg(c, "", err)
+}
+
+func (a *ApiService) SetTokenEnabled(c *gin.Context) {
+	id := c.Request.FormValue("id")
+	enabled, err := strconv.ParseBool(c.Request.FormValue("enabled"))
+	if err != nil {
+		jsonMsg(c, "", err)
+		return
+	}
+	err = a.UserService.SetTokenEnabled(id, enabled)
+	if err == nil {
+		a.recordAudit(c, GetLoginUser(c), "api_token_enabled_changed", "api_token", service.AuditSeverityWarn, map[string]any{
+			"id":      id,
+			"enabled": enabled,
+		})
+	}
+	jsonMsg(c, "save", err)
 }
 
 func (a *ApiService) GetSingboxConfig(c *gin.Context) {

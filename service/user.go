@@ -1,7 +1,10 @@
 package service
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
@@ -12,6 +15,8 @@ import (
 
 type UserService struct {
 }
+
+const defaultAPITokenScope = "full"
 
 func (s *UserService) GetFirstUser() (*model.User, error) {
 	db := database.GetDB()
@@ -132,18 +137,30 @@ func (s *UserService) updatePasswordHash(user *model.User, password string) erro
 }
 
 func (s *UserService) LoadTokens() ([]byte, error) {
+	if err := s.migrateLegacyTokens(); err != nil {
+		return nil, err
+	}
 	db := database.GetDB()
 	var tokens []model.Tokens
-	err := db.Model(model.Tokens{}).Preload("User").Where("expiry == 0 or expiry > ?", time.Now().Unix()).Find(&tokens).Error
+	err := db.Model(model.Tokens{}).Preload("User").
+		Where("enabled = ? AND token_hash <> '' AND (expiry = 0 OR expiry > ?)", true, time.Now().Unix()).
+		Find(&tokens).Error
 	if err != nil {
 		return nil, err
 	}
 	var result []map[string]interface{}
 	for _, t := range tokens {
+		if t.User == nil {
+			continue
+		}
 		result = append(result, map[string]interface{}{
-			"token":    t.Token,
-			"expiry":   t.Expiry,
-			"username": t.User.Username,
+			"id":          t.Id,
+			"tokenHash":   t.TokenHash,
+			"tokenPrefix": t.TokenPrefix,
+			"scope":       normalizeTokenScope(t.Scope),
+			"enabled":     t.Enabled,
+			"expiry":      t.Expiry,
+			"username":    t.User.Username,
 		})
 	}
 	jsonResult, _ := json.MarshalIndent(result, "", "  ")
@@ -151,17 +168,28 @@ func (s *UserService) LoadTokens() ([]byte, error) {
 }
 
 func (s *UserService) GetUserTokens(username string) (*[]model.Tokens, error) {
+	if err := s.migrateLegacyTokens(); err != nil {
+		return nil, err
+	}
 	db := database.GetDB()
 	var token []model.Tokens
-	err := db.Model(model.Tokens{}).Select("id,desc,'****' as token,expiry,user_id").Where("user_id = (select id from users where username = ?)", username).Find(&token).Error
+	err := db.Model(model.Tokens{}).
+		Select("id, desc, token_prefix, scope, enabled, expiry, user_id, created_at, updated_at, last_used_at, last_used_ip").
+		Where("user_id = (select id from users where username = ?)", username).
+		Order("id desc").
+		Find(&token).Error
 	if err != nil && !database.IsNotFound(err) {
 		println(err.Error())
 		return nil, err
 	}
+	for i := range token {
+		token[i].Token = maskedToken(token[i].TokenPrefix)
+		token[i].Scope = normalizeTokenScope(token[i].Scope)
+	}
 	return &token, nil
 }
 
-func (s *UserService) AddToken(username string, expiry int64, desc string) (string, error) {
+func (s *UserService) AddToken(username string, expiry int64, desc string, scope string) (string, error) {
 	db := database.GetDB()
 	var userId uint
 	err := db.Model(model.User{}).Where("username = ?", username).Select("id").Scan(&userId).Error
@@ -171,20 +199,113 @@ func (s *UserService) AddToken(username string, expiry int64, desc string) (stri
 	if expiry > 0 {
 		expiry = expiry*86400 + time.Now().Unix()
 	}
+	plainToken := common.Random(32)
+	tokenHash, err := s.HashAPIToken(plainToken)
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().Unix()
 	token := &model.Tokens{
-		Token:  common.Random(32),
-		Desc:   desc,
-		Expiry: expiry,
-		UserId: userId,
+		Desc:        desc,
+		TokenHash:   tokenHash,
+		TokenPrefix: tokenPrefix(plainToken),
+		Scope:       normalizeTokenScope(scope),
+		Enabled:     true,
+		Expiry:      expiry,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		UserId:      userId,
 	}
 	err = db.Create(token).Error
 	if err != nil {
 		return "", err
 	}
-	return token.Token, nil
+	return plainToken, nil
 }
 
 func (s *UserService) DeleteToken(id string) error {
 	db := database.GetDB()
 	return db.Model(model.Tokens{}).Where("id = ?", id).Delete(&model.Tokens{}).Error
+}
+
+func (s *UserService) SetTokenEnabled(id string, enabled bool) error {
+	return database.GetDB().Model(model.Tokens{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"enabled":    enabled,
+			"updated_at": time.Now().Unix(),
+		}).Error
+}
+
+func (s *UserService) RecordTokenUse(id uint, ip string) error {
+	return database.GetDB().Model(model.Tokens{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"last_used_at": time.Now().Unix(),
+			"last_used_ip": ip,
+		}).Error
+}
+
+func (s *UserService) HashAPIToken(token string) (string, error) {
+	salt, err := (&SettingService{}).GetInstallSalt()
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	hash.Write(salt)
+	hash.Write([]byte{0})
+	hash.Write([]byte(token))
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func (s *UserService) migrateLegacyTokens() error {
+	db := database.GetDB()
+	var tokens []model.Tokens
+	if err := db.Model(model.Tokens{}).Where("(token_hash = '' OR token_hash IS NULL) AND token <> ''").Find(&tokens).Error; err != nil {
+		return err
+	}
+	for _, token := range tokens {
+		tokenHash, err := s.HashAPIToken(token.Token)
+		if err != nil {
+			return err
+		}
+		now := time.Now().Unix()
+		updates := map[string]interface{}{
+			"token":        "",
+			"token_hash":   tokenHash,
+			"token_prefix": tokenPrefix(token.Token),
+			"scope":        normalizeTokenScope(token.Scope),
+			"enabled":      true,
+			"updated_at":   now,
+		}
+		if token.CreatedAt == 0 {
+			updates["created_at"] = now
+		}
+		if err := db.Model(model.Tokens{}).Where("id = ?", token.Id).Updates(updates).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func normalizeTokenScope(scope string) string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return defaultAPITokenScope
+	}
+	return scope
+}
+
+func tokenPrefix(token string) string {
+	if len(token) <= 8 {
+		return token
+	}
+	return token[:8]
+}
+
+func maskedToken(prefix string) string {
+	if prefix == "" {
+		return "****"
+	}
+	return "****" + prefix
 }

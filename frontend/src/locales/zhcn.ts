@@ -167,6 +167,8 @@ export default {
       title: "API 令牌",
       msg: "请复制令牌并保存到安全的地方。它将不再显示。",
       token: "令牌",
+      scope: "作用域",
+      enabled: "已启用",
     },
   },
   setting: {

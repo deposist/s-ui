@@ -34,6 +34,12 @@ logs, or support chats.
 - Browser API mutations now require a session-bound CSRF token from
   `GET /api/csrf` and reject missing, wrong, or expired tokens with HTTP 403.
   `/apiv2/*` token API requests are not affected.
+- API tokens are migrated from plaintext to salted SHA-256 hashes on load.
+  New tokens are shown once, then stored only as hash and prefix metadata.
+  Token enable/disable controls are available in the Admins API token dialog.
+- Use `Authorization: Bearer <token>` for `/apiv2/*`. The legacy `Token`
+  header remains temporarily supported, writes an audit event, and returns
+  `Deprecation: true` plus `Sunset: Sat, 15 Aug 2026 00:00:00 GMT`.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.
@@ -49,8 +55,8 @@ logs, or support chats.
 - Production deployments that enable encrypted secret storage should set a
   stable `SUI_SECRETBOX_KEY` value and keep it outside the repository and CI
   logs.
-- Legacy `Token` header sunset details will be announced with the scoped API
-  token migration in this release branch.
+- Legacy `Token` header sunset date: `2026-08-15`. Move integrations to
+  `Authorization: Bearer <token>` before that date.
 
 ## Rollback
 

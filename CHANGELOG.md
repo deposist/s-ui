@@ -21,6 +21,12 @@ All notable changes to this project are documented in this file.
   issues a session-bound token, frontend requests send it as `X-CSRF-Token`,
   and invalid or expired tokens return HTTP 403. Bearer-token `/apiv2/*`
   requests are not affected.
+- API tokens are now migrated from plaintext to salted SHA-256 hashes using
+  the per-install `installSalt`; new tokens are shown only once, stored as
+  hash/prefix metadata, and can be enabled or disabled from the Admins UI.
+- `/apiv2/*` now accepts `Authorization: Bearer <token>` as the primary API
+  token transport. The legacy `Token` header still works, emits audit events,
+  and returns `Deprecation` plus `Sunset: Sat, 15 Aug 2026 00:00:00 GMT`.
 
 ### API
 

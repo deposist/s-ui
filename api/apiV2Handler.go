@@ -2,19 +2,25 @@ package api
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/gin-gonic/gin"
 )
 
 type TokenInMemory struct {
-	Token    string
-	Expiry   int64
-	Username string
+	ID          uint   `json:"id"`
+	TokenHash   string `json:"tokenHash"`
+	TokenPrefix string `json:"tokenPrefix"`
+	Scope       string `json:"scope"`
+	Enabled     bool   `json:"enabled"`
+	Expiry      int64  `json:"expiry"`
+	Username    string `json:"username"`
 }
 
 type APIv2Handler struct {
@@ -22,6 +28,11 @@ type APIv2Handler struct {
 	tokensMu sync.RWMutex
 	tokens   map[string]TokenInMemory
 }
+
+const (
+	apiUsernameKey          = "apiUsername"
+	legacyTokenHeaderSunset = "Sat, 15 Aug 2026 00:00:00 GMT"
+)
 
 func NewAPIv2Handler(g *gin.RouterGroup) *APIv2Handler {
 	a := &APIv2Handler{
@@ -41,7 +52,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 }
 
 func (a *APIv2Handler) postHandler(c *gin.Context) {
-	username := a.findUsername(c)
+	username := c.GetString(apiUsernameKey)
 	action := c.Param("postAction")
 
 	switch action {
@@ -100,26 +111,44 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 }
 
 func (a *APIv2Handler) findUsername(c *gin.Context) string {
-	token := c.Request.Header.Get("Token")
+	token, legacyHeader := apiTokenFromRequest(c)
 	if token == "" {
+		return ""
+	}
+	tokenHash, err := a.UserService.HashAPIToken(token)
+	if err != nil {
+		logger.Warning("unable to hash API token:", err)
 		return ""
 	}
 	now := time.Now().Unix()
 	a.tokensMu.RLock()
 	defer a.tokensMu.RUnlock()
-	t, ok := a.tokens[token]
+	t, ok := a.tokens[tokenHash]
 	if !ok {
+		return ""
+	}
+	if !t.Enabled {
 		return ""
 	}
 	if t.Expiry > 0 && t.Expiry < now {
 		return ""
 	}
+	if legacyHeader {
+		c.Header("Deprecation", "true")
+		c.Header("Sunset", legacyTokenHeaderSunset)
+		a.recordAudit(c, t.Username, "legacy_token_header_used", "api_token", service.AuditSeverityWarn, map[string]any{
+			"tokenPrefix": t.TokenPrefix,
+			"sunset":      legacyTokenHeaderSunset,
+		})
+	}
+	_ = a.UserService.RecordTokenUse(t.ID, getRemoteIp(c))
 	return t.Username
 }
 
 func (a *APIv2Handler) checkToken(c *gin.Context) {
 	username := a.findUsername(c)
 	if username != "" {
+		c.Set(apiUsernameKey, username)
 		c.Next()
 		return
 	}
@@ -142,9 +171,21 @@ func (a *APIv2Handler) ReloadTokens() {
 	}
 	newMap := make(map[string]TokenInMemory, len(loaded))
 	for _, t := range loaded {
-		newMap[t.Token] = t
+		newMap[t.TokenHash] = t
 	}
 	a.tokensMu.Lock()
 	a.tokens = newMap
 	a.tokensMu.Unlock()
+}
+
+func apiTokenFromRequest(c *gin.Context) (string, bool) {
+	auth := strings.TrimSpace(c.GetHeader("Authorization"))
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[len("bearer "):]), false
+	}
+	token := strings.TrimSpace(c.GetHeader("Token"))
+	if token == "" {
+		return "", false
+	}
+	return token, true
 }
