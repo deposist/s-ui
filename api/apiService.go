@@ -26,6 +26,7 @@ type ApiService struct {
 	service.PanelService
 	service.StatsService
 	service.ServerService
+	service.AuditService
 }
 
 func (a *ApiService) LoadData(c *gin.Context) {
@@ -261,13 +262,20 @@ func (a *ApiService) postActions(c *gin.Context) (string, json.RawMessage, error
 
 func (a *ApiService) Login(c *gin.Context) {
 	remoteIP := getRemoteIp(c)
+	username := c.Request.FormValue("user")
 	if err := checkLoginRateLimit(remoteIP); err != nil {
+		a.recordAudit(c, username, "login_blocked", "auth", service.AuditSeverityWarn, map[string]any{
+			"reason": "rate_limit",
+		})
 		jsonMsg(c, "", err)
 		return
 	}
-	loginUser, err := a.UserService.Login(c.Request.FormValue("user"), c.Request.FormValue("pass"), remoteIP)
+	loginUser, err := a.UserService.Login(username, c.Request.FormValue("pass"), remoteIP)
 	if err != nil {
 		recordLoginFailure(remoteIP)
+		a.recordAudit(c, username, "login_failed", "auth", service.AuditSeverityWarn, map[string]any{
+			"reason": err.Error(),
+		})
 		jsonMsg(c, "", err)
 		return
 	}
@@ -286,8 +294,12 @@ func (a *ApiService) Login(c *gin.Context) {
 	err = SetLoginUser(c, loginUser, sessionMaxAge, sessionGeneration)
 	if err == nil {
 		logger.Info("user ", loginUser, " login success")
+		a.recordAudit(c, loginUser, "login_success", "auth", service.AuditSeverityInfo, nil)
 	} else {
 		logger.Warning("login failed: ", err)
+		a.recordAudit(c, loginUser, "login_session_failed", "auth", service.AuditSeverityWarn, map[string]any{
+			"reason": err.Error(),
+		})
 	}
 
 	jsonMsg(c, "", nil)
@@ -301,6 +313,10 @@ func (a *ApiService) ChangePass(c *gin.Context) {
 	err := a.UserService.ChangePass(id, oldPass, newUsername, newPass)
 	if err == nil {
 		logger.Info("change user credentials success")
+		a.recordAudit(c, GetLoginUser(c), "admin_credentials_changed", "admin", service.AuditSeverityWarn, map[string]any{
+			"targetUserId": id,
+			"newUsername":  newUsername,
+		})
 		jsonMsg(c, "save", nil)
 	} else {
 		logger.Warning("change user credentials failed:", err)
@@ -362,6 +378,7 @@ func (a *ApiService) Logout(c *gin.Context) {
 	loginUser := GetLoginUser(c)
 	if loginUser != "" {
 		logger.Infof("user %s logout", loginUser)
+		a.recordAudit(c, loginUser, "logout", "auth", service.AuditSeverityInfo, nil)
 	}
 	ClearSession(c)
 	jsonMsg(c, "", nil)
@@ -374,6 +391,7 @@ func (a *ApiService) LogoutAllAdmins(c *gin.Context) {
 		if loginUser != "" {
 			logger.Infof("user %s logged out all admin web sessions", loginUser)
 		}
+		a.recordAudit(c, loginUser, "logout_all_admins", "auth", service.AuditSeverityWarn, nil)
 		ClearSession(c)
 	}
 	jsonMsg(c, "logoutAllAdmins", err)
@@ -399,12 +417,23 @@ func (a *ApiService) AddToken(c *gin.Context) {
 	}
 	desc := c.Request.FormValue("desc")
 	token, err := a.UserService.AddToken(loginUser, expiryInt, desc)
+	if err == nil {
+		a.recordAudit(c, loginUser, "api_token_created", "api_token", service.AuditSeverityWarn, map[string]any{
+			"desc":   desc,
+			"expiry": expiryInt,
+		})
+	}
 	jsonObj(c, token, err)
 }
 
 func (a *ApiService) DeleteToken(c *gin.Context) {
 	tokenId := c.Request.FormValue("id")
 	err := a.UserService.DeleteToken(tokenId)
+	if err == nil {
+		a.recordAudit(c, GetLoginUser(c), "api_token_deleted", "api_token", service.AuditSeverityWarn, map[string]any{
+			"id": tokenId,
+		})
+	}
 	jsonMsg(c, "", err)
 }
 

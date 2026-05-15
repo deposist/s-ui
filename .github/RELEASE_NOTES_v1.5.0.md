@@ -28,6 +28,9 @@ logs, or support chats.
 - Secret values are not returned by `api/settings`; the response exposes
   `<key>HasSecret` markers instead, and saving an empty secret field keeps the
   existing encrypted value.
+- Security audit events are stored in the new `audit_events` table and exposed
+  through `/api/security/audit`. Event details are redacted before storage.
+  The default retention setting is `30` days.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.

@@ -23,9 +23,11 @@ import (
 )
 
 func GetDb(exclude string) ([]byte, error) {
-	exclude_changes, exclude_stats := false, false
+	exclude_audit, exclude_changes, exclude_stats := false, false, false
 	for _, table := range strings.Split(exclude, ",") {
-		if table == "changes" {
+		if table == "audit" || table == "audit_events" {
+			exclude_audit = true
+		} else if table == "changes" {
 			exclude_changes = true
 		} else if table == "stats" {
 			exclude_stats = true
@@ -56,6 +58,7 @@ func GetDb(exclude string) ([]byte, error) {
 		&model.Stats{},
 		&model.Client{},
 		&model.Changes{},
+		&model.AuditEvent{},
 	)
 	if err != nil {
 		return nil, err
@@ -72,6 +75,7 @@ func GetDb(exclude string) ([]byte, error) {
 	var clients []model.Client
 	var stats []model.Stats
 	var changes []model.Changes
+	var auditEvents []model.AuditEvent
 
 	// Perform scans and handle errors
 	if err := db.Model(&model.Setting{}).Scan(&settings).Error; err != nil {
@@ -154,6 +158,16 @@ func GetDb(exclude string) ([]byte, error) {
 		}
 		if len(changes) > 0 {
 			if err := backupDb.Save(changes).Error; err != nil {
+				return nil, err
+			}
+		}
+	}
+	if !exclude_audit {
+		if err := db.Model(&model.AuditEvent{}).Scan(&auditEvents).Error; err != nil {
+			return nil, err
+		}
+		if len(auditEvents) > 0 {
+			if err := backupDb.Save(auditEvents).Error; err != nil {
 				return nil, err
 			}
 		}

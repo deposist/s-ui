@@ -14,6 +14,9 @@ All notable changes to this project are documented in this file.
   with the legacy `settings.secret` compatibility key with a startup warning.
 - Secret-aware settings are masked from `api/settings` as `<key>HasSecret`;
   saving an empty value keeps the previously stored secret.
+- Added the `audit_events` table, redaction helper, retention setting, and
+  `/api/security/audit` endpoint. Login, logout, logout-all-admins, credential
+  changes, and API token create/delete actions now write redacted audit events.
 
 ### API
 

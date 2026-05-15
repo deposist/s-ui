@@ -273,6 +273,10 @@ func (s *SettingService) GetTrafficAge() (int, error) {
 	return s.getInt("trafficAge")
 }
 
+func (s *SettingService) GetAuditRetentionDays() (int, error) {
+	return s.getInt("auditRetentionDays")
+}
+
 func (s *SettingService) GetTimeLocation() (*time.Location, error) {
 	l, err := s.getString("timeLocation")
 	if err != nil {

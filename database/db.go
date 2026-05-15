@@ -117,6 +117,7 @@ func InitDB(dbPath string) error {
 		&model.Stats{},
 		&model.Client{},
 		&model.Changes{},
+		&model.AuditEvent{},
 	)
 	if err != nil {
 		return err
@@ -143,6 +144,7 @@ func ensureIndexes() error {
 	indexes := []string{
 		"CREATE INDEX IF NOT EXISTS idx_stats_lookup ON stats(date_time, resource, tag)",
 		"CREATE INDEX IF NOT EXISTS idx_changes_lookup ON changes(date_time, actor, key)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_events_lookup ON audit_events(date_time, actor, event)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
 	}
 	for _, query := range indexes {
