@@ -21,7 +21,24 @@
   <v-row>
     <v-col cols="12" justify="center" align="center">
       <v-btn color="primary" @click="showChangesModal('')" style="margin: 0 5px;">{{ $t('admin.changes') }}</v-btn>
-      <v-btn color="primary" @click="showTokenModal()">{{ $t('admin.api.token') }}</v-btn>
+      <v-btn color="primary" @click="showTokenModal()" style="margin: 0 5px;">{{ $t('admin.api.token') }}</v-btn>
+      <v-menu v-model="logoutAllMenu" :close-on-content-click="false" location="bottom center">
+        <template v-slot:activator="{ props }">
+          <v-btn color="error" variant="outlined" prepend-icon="mdi-logout-variant" v-bind="props" style="margin: 0 5px;">
+            {{ $t('admin.logoutAll') }}
+          </v-btn>
+        </template>
+        <v-card rounded="lg" max-width="420">
+          <v-card-title>{{ $t('admin.logoutAll') }}</v-card-title>
+          <v-divider></v-divider>
+          <v-card-text>{{ $t('admin.logoutAllConfirm') }}</v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn color="success" variant="outlined" @click="logoutAllMenu = false">{{ $t('no') }}</v-btn>
+            <v-btn color="error" variant="tonal" @click="logoutAllAdmins">{{ $t('yes') }}</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-menu>
     </v-col>
   </v-row>
   <v-row>
@@ -73,6 +90,7 @@ import TokenModal from '@/layouts/modals/Token.vue'
 import { i18n } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
 import { Ref, ref, inject, onMounted } from 'vue'
+import router from '@/router'
 
 const loading:Ref = inject('loading')?? ref(false)
 
@@ -157,5 +175,16 @@ const showTokenModal = () => {
 }
 const closeTokenModal = () => {
   tokenModal.value.visible = false
+}
+
+const logoutAllMenu = ref(false)
+const logoutAllAdmins = async () => {
+  loading.value = true
+  const response = await HttpUtils.post('api/logoutAllAdmins', {})
+  loading.value = false
+  logoutAllMenu.value = false
+  if (response.success) {
+    router.push('/login')
+  }
 }
 </script>

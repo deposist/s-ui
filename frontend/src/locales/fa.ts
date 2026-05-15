@@ -137,6 +137,7 @@ export default {
     close: "بستن",
     restartApp: "ریستارت پنل",
     restartSb: "ریستارت سینگ‌باکس",
+    logoutAllAdmins: "خروج همه مدیران",
   },
   login: {
     title: "ورود",
@@ -157,6 +158,8 @@ export default {
     date: "تاریخ",
     time: "ساعت",
     changes: "تغییرات",
+    logoutAll: "خروج همه مدیران",
+    logoutAllConfirm: "همه نشست‌های وب مدیران، از جمله نشست فعلی شما، نامعتبر می‌شوند. توکن‌های API تغییری نمی‌کنند. ادامه می‌دهید؟",
     actor: "مجری",
     key: "کلید",
     action: "عمل",

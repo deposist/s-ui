@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.0] - 2026-05-15 - security foundation and realtime platform
+
+### Security
+
+- Added an Admins panel action to invalidate all admin web sessions at once.
+  The action rotates the session generation and clears the initiator's current
+  cookie; API tokens are not revoked.
+
+### Localization
+
+- `install.sh` and the `s-ui` management menu now also offer Chinese as
+  option **3. 中文**; `SUI_LANG=zh` is supported for non-interactive installs.
+
 ## [1.4.3] - 2026-05-15 - sing-box runtime update
 
 This release updates the embedded sing-box runtime from `v1.13.4` to

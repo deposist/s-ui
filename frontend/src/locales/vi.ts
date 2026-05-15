@@ -137,6 +137,7 @@ export default {
     close: "Đóng",
     restartApp: "Khởi động lại ứng dụng",
     restartSb: "Khởi động lại Singbox",
+    logoutAllAdmins: "Đăng xuất tất cả quản trị viên",
   },
   login: {
     title: "Đăng nhập",
@@ -157,6 +158,8 @@ export default {
     date: "Ngày",
     time: "Thời gian",
     changes: "Thay đổi",
+    logoutAll: "Đăng xuất tất cả quản trị viên",
+    logoutAllConfirm: "Tất cả phiên web của quản trị viên sẽ bị vô hiệu hóa, bao gồm phiên hiện tại của bạn. Mã thông báo API không bị ảnh hưởng. Tiếp tục?",
     actor: "Diễn viên",
     key: "Khóa",
     action: "Hành động",

@@ -137,6 +137,7 @@ export default {
     close: "Close",
     restartApp: "Restart App",
     restartSb: "Restart Singbox",
+    logoutAllAdmins: "Log out all admins",
   },
   login: {
     title: "Login",
@@ -157,6 +158,8 @@ export default {
     date: "Date",
     time: "Time",
     changes: "Changes",
+    logoutAll: "Log out all admins",
+    logoutAllConfirm: "All admin web sessions will be invalidated, including your current session. API tokens are not affected. Continue?",
     actor: "Actor",
     key: "Key",
     action: "Action",

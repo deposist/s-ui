@@ -1,5 +1,5 @@
 #!/bin/bash
-# S-UI management menu with bilingual UI (English / Russian).
+# S-UI management menu with multilingual UI (English / Russian / Chinese).
 # Language is persisted in /etc/s-ui/lang and can be switched from
 # menu item 21.
 
@@ -13,14 +13,14 @@ LANG_FILE="/etc/s-ui/lang"
 load_language() {
     if [[ -n "${SUI_LANG}" ]]; then
         case "${SUI_LANG}" in
-            en|ru) lang="${SUI_LANG}"; return ;;
+            en|ru|zh) lang="${SUI_LANG}"; return ;;
         esac
     fi
     if [[ -f "${LANG_FILE}" ]]; then
         local saved
         saved=$(cat "${LANG_FILE}" 2>/dev/null | tr -d '[:space:]')
         case "${saved}" in
-            en|ru) lang="${saved}"; return ;;
+            en|ru|zh) lang="${saved}"; return ;;
         esac
     fi
     lang="en"
@@ -33,6 +33,123 @@ save_language() {
 
 t() {
     local key="$1"
+    if [[ "${lang}" == "zh" ]]; then
+        case "${key}" in
+            run_as_root)         echo "错误：必须使用 root 权限运行此脚本！"; return ;;
+            detect_failed)       echo "检测系统失败，请联系作者！"; return ;;
+            current_release)     echo "当前系统发行版为：$2"; return ;;
+            debug_tag)           echo "[调试]"; return ;;
+            error_tag)           echo "[错误]"; return ;;
+            info_tag)            echo "[信息]"; return ;;
+            default_n)           echo "默认$2"; return ;;
+            press_enter_main)    echo "按回车返回主菜单："; return ;;
+            restart_service_q)   echo "重启 $2 服务"; return ;;
+            install_force_q)     echo "此功能将强制重装最新版本，数据不会丢失。是否继续？"; return ;;
+            cancelled)           echo "已取消"; return ;;
+            update_done)         echo "更新完成，面板已自动重启"; return ;;
+            enter_panel_version) echo "请输入面板版本（例如 v1.4.1）："; return ;;
+            version_required)    echo "面板版本不能为空。正在退出。"; return ;;
+            downloading_version) echo "正在下载并安装面板版本 $2..."; return ;;
+            uninstall_q)         echo "确定要卸载面板吗？"; return ;;
+            uninstall_done)      echo "卸载成功。如果要删除此脚本，请在退出脚本后运行 rm /usr/local/s-ui -f。"; return ;;
+            reset_admin_warn)    echo "不建议将管理员账号密码设置为默认值！"; return ;;
+            reset_admin_q)       echo "确定要将管理员账号密码重置为默认值吗？"; return ;;
+            set_admin_warn)      echo "不建议将管理员账号密码设置为过于复杂的文本。"; return ;;
+            set_username_p)      echo "请设置用户名："; return ;;
+            set_password_p)      echo "请设置密码："; return ;;
+            reset_settings_q)    echo "确定要将设置重置为默认值吗？"; return ;;
+            enter_panel_port)    echo "请输入面板端口（留空则使用现有/默认值）："; return ;;
+            enter_panel_path)    echo "请输入面板路径（留空则使用现有/默认值）："; return ;;
+            enter_sub_port)      echo "请输入订阅端口（留空则使用现有/默认值）："; return ;;
+            enter_sub_path)      echo "请输入订阅路径（留空则使用现有/默认值）："; return ;;
+            initializing)        echo "正在初始化，请稍候..."; return ;;
+            could_not_get_uri)   echo "获取当前 URI 失败"; return ;;
+            panel_url)           echo "你可以通过以下 URL 访问面板："; return ;;
+            already_running)     echo "$2 正在运行，无需再次启动；如果需要重启，请选择重启"; return ;;
+            start_ok)            echo "$2 启动成功"; return ;;
+            start_fail)          echo "启动 $2 失败，可能是启动时间超过两秒，请稍后查看日志信息"; return ;;
+            already_stopped)     echo "$2 已停止，无需再次停止！"; return ;;
+            stop_ok)             echo "$2 停止成功"; return ;;
+            stop_fail)           echo "停止 $2 失败，可能是停止时间超过两秒，请稍后查看日志信息"; return ;;
+            restart_ok)          echo "$2 重启成功"; return ;;
+            restart_fail)        echo "重启 $2 失败，可能是启动时间超过两秒，请稍后查看日志信息"; return ;;
+            enable_ok)           echo "已成功设置 $2 开机自启"; return ;;
+            enable_fail)         echo "设置 $2 开机自启失败"; return ;;
+            disable_ok)          echo "已成功取消 $2 开机自启"; return ;;
+            disable_fail)        echo "取消 $2 开机自启失败"; return ;;
+            download_fail)       echo "下载脚本失败，请检查当前机器是否可以连接 Github"; return ;;
+            script_updated)      echo "脚本升级成功，请重新运行脚本"; return ;;
+            already_installed)   echo "面板已安装，请勿重复安装"; return ;;
+            install_first)       echo "请先安装面板"; return ;;
+            status_running)      echo "$2 状态：运行中"; return ;;
+            status_stopped)      echo "$2 状态：未运行"; return ;;
+            status_missing)      echo "$2 状态：未安装"; return ;;
+            autostart_yes)       echo "$2 开机自启：是"; return ;;
+            autostart_no)        echo "$2 开机自启：否"; return ;;
+            invalid_choice)      echo "无效选择"; return ;;
+
+            enable_bbr)          echo "启用 BBR"; return ;;
+            disable_bbr)         echo "禁用 BBR"; return ;;
+            back_main)           echo "返回主菜单"; return ;;
+            select_option)       echo "请选择一个选项："; return ;;
+            bbr_already_off)     echo "当前未启用 BBR。"; return ;;
+            bbr_to_cubic_ok)     echo "已成功将 BBR 替换为 CUBIC。"; return ;;
+            bbr_to_cubic_fail)   echo "将 BBR 替换为 CUBIC 失败。请检查系统配置。"; return ;;
+            bbr_already_on)      echo "BBR 已启用！"; return ;;
+            bbr_enabled)         echo "BBR 启用成功。"; return ;;
+            bbr_enable_fail)     echo "启用 BBR 失败。请检查系统配置。"; return ;;
+            os_not_supported)    echo "不支持的操作系统。请检查脚本并手动安装必要的软件包。"; return ;;
+            installing_acme)     echo "正在安装 acme..."; return ;;
+            acme_install_fail)   echo "安装 acme 失败"; return ;;
+            acme_install_ok)     echo "安装 acme 成功"; return ;;
+            ssl_get)             echo "获取 SSL"; return ;;
+            ssl_revoke)          echo "吊销证书"; return ;;
+            ssl_force_renew)     echo "强制续签"; return ;;
+            ssl_self_signed)     echo "自签名证书"; return ;;
+
+            menu_title)          echo "S-UI 管理脚本"; return ;;
+            menu_exit)           echo "退出"; return ;;
+            menu_install)        echo "安装"; return ;;
+            menu_update)         echo "更新"; return ;;
+            menu_custom_version) echo "自定义版本"; return ;;
+            menu_uninstall)      echo "卸载"; return ;;
+            menu_reset_admin)    echo "将管理员账号密码重置为默认值"; return ;;
+            menu_set_admin)      echo "设置管理员账号密码"; return ;;
+            menu_view_admin)     echo "查看管理员账号密码"; return ;;
+            menu_reset_settings) echo "重置面板设置"; return ;;
+            menu_set_settings)   echo "设置面板设置"; return ;;
+            menu_view_settings)  echo "查看面板设置"; return ;;
+            menu_start)          echo "启动 S-UI"; return ;;
+            menu_stop)           echo "停止 S-UI"; return ;;
+            menu_restart)        echo "重启 S-UI"; return ;;
+            menu_status)         echo "查看 S-UI 状态"; return ;;
+            menu_log)            echo "查看 S-UI 日志"; return ;;
+            menu_enable_auto)    echo "启用 S-UI 开机自启"; return ;;
+            menu_disable_auto)   echo "禁用 S-UI 开机自启"; return ;;
+            menu_bbr)            echo "启用或禁用 BBR"; return ;;
+            menu_ssl)            echo "SSL 证书管理"; return ;;
+            menu_ssl_cf)         echo "Cloudflare SSL 证书"; return ;;
+            menu_language)       echo "语言"; return ;;
+            enter_choice_range)  echo "请输入你的选择 [0-21]："; return ;;
+            enter_valid_number)  echo "请输入正确的数字 [0-21]"; return ;;
+            lang_select)         echo "Select language / Выберите язык / 请选择语言"; return ;;
+            lang_set_to)         echo "语言已设置为：$2"; return ;;
+
+            usage_title)         echo "S-UI 控制菜单用法"; return ;;
+            usage_main)          echo "s-ui              - 管理员管理脚本"; return ;;
+            usage_start)         echo "s-ui start        - 启动 s-ui"; return ;;
+            usage_stop)          echo "s-ui stop         - 停止 s-ui"; return ;;
+            usage_restart)       echo "s-ui restart      - 重启 s-ui"; return ;;
+            usage_status)        echo "s-ui status       - 查看当前 s-ui 状态"; return ;;
+            usage_enable)        echo "s-ui enable       - 启用开机自启"; return ;;
+            usage_disable)       echo "s-ui disable      - 禁用开机自启"; return ;;
+            usage_log)           echo "s-ui log          - 查看 s-ui 日志"; return ;;
+            usage_update)        echo "s-ui update       - 更新"; return ;;
+            usage_install)       echo "s-ui install      - 安装"; return ;;
+            usage_uninstall)     echo "s-ui uninstall    - 卸载"; return ;;
+            usage_help)          echo "s-ui help         - 管理菜单帮助"; return ;;
+        esac
+    fi
     case "${lang}:${key}" in
         en:run_as_root)         echo "Error: this script must be run as root!";;
         ru:run_as_root)         echo "Ошибка: этот скрипт нужно запускать с правами root!";;
@@ -226,8 +343,8 @@ t() {
         ru:enter_choice_range)  echo "Введите ваш выбор [0-21]: ";;
         en:enter_valid_number)  echo "Enter a valid number [0-21]";;
         ru:enter_valid_number)  echo "Введите корректное число [0-21]";;
-        en:lang_select)         echo "Select language / Выберите язык";;
-        ru:lang_select)         echo "Select language / Выберите язык";;
+        en:lang_select)         echo "Select language / Выберите язык / 请选择语言";;
+        ru:lang_select)         echo "Select language / Выберите язык / 请选择语言";;
         en:lang_set_to)         echo "Language set to: $2";;
         ru:lang_set_to)         echo "Язык установлен: $2";;
 
@@ -868,10 +985,12 @@ choose_language() {
     echo "$(t lang_select):"
     echo "  1) English"
     echo "  2) Русский"
-    read -rp "[1-2]: " lang_choice
+    echo "  3) 中文"
+    read -rp "[1-3]: " lang_choice
     case "${lang_choice}" in
         1|en|EN|English) lang="en" ;;
         2|ru|RU|Russian|Русский) lang="ru" ;;
+        3|zh|ZH|Chinese|中文|简体中文) lang="zh" ;;
         *) ;;
     esac
     save_language

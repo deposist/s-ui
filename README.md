@@ -35,7 +35,7 @@ Advanced Web panel built on `SagerNet/Sing-Box`.
 - Race-free core lifecycle, online-stats and token store.
 - Frontend: `v-html` removed from log/IP/rule import surfaces, code splitting re-enabled, Axios `AbortController` instead of deprecated `CancelToken`, ESLint flat config.
 - Backup import auto-adapts old databases (1.0/1.1/1.2/1.3/1.4.x) — restoring a legacy backup runs the schema migrations and rehashes any plaintext passwords transparently. Fresh binaries on top of an existing 1.x DB upgrade automatically on start.
-- Bilingual (English / Russian) `install.sh` and `s-ui` management menu, language switchable from menu item **21. Language**.
+- Multilingual (English / Russian / Chinese) `install.sh` and `s-ui` management menu, language switchable from menu item **21. Language**.
 - Default panel timezone changed to `Europe/Moscow`; default frontend locale changed to English.
 - See [CHANGELOG.md](CHANGELOG.md) for the full list and an upgrade guide.
 
@@ -96,8 +96,8 @@ reliability without changing the protocol surface.
   exported instance, `AbortController` replaces deprecated
   `CancelToken`, dedupe limited to idempotent reads. Vite code
   splitting is re-enabled.
-- **Localization & defaults.** Bilingual `install.sh` and `s-ui`
-  management menu (English / Russian), language switchable at
+- **Localization & defaults.** Multilingual `install.sh` and `s-ui`
+  management menu (English / Russian / Chinese), language switchable at
   runtime. Default `timeLocation` switched from `Asia/Shanghai` to
   `Europe/Moscow`. Default frontend locale switched from
   Simplified Chinese to English.
@@ -409,7 +409,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 - Race-free жизненный цикл core, онлайн-статистика и хранилище токенов.
 - Фронтенд: убран `v-html` из логов/IP-листов/импорта правил, включён code splitting, заменён устаревший `axios.CancelToken` на `AbortController`, ESLint flat config.
 - Импорт бэкапа автоматически адаптирует базы старых версий (1.0/1.1/1.2/1.3/1.4.x) — миграция схемы и перешивка plaintext-паролей выполняются прозрачно. Свежий бинарник поверх существующей базы 1.x обновляется автоматически при старте.
-- Двуязычные `install.sh` и меню `s-ui` (английский / русский), переключение языка из меню (пункт **21. Language**).
+- Многоязычные `install.sh` и меню `s-ui` (английский / русский / китайский), переключение языка из меню (пункт **21. Language**).
 - Часовой пояс панели по умолчанию: `Europe/Moscow`. Локаль фронтенда по умолчанию: `en`.
 - Полный список изменений и руководство по обновлению — в [CHANGELOG.md](CHANGELOG.md).
 
@@ -466,8 +466,8 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
   instance, `AbortController` вместо устаревшего `CancelToken`,
   дедупликация только для идемпотентных запросов, code splitting
   Vite восстановлен.
-- **Локализация и значения по умолчанию.** Двуязычные `install.sh`
-  и меню `s-ui` (английский / русский), язык переключается на лету.
+- **Локализация и значения по умолчанию.** Многоязычные `install.sh`
+  и меню `s-ui` (английский / русский / китайский), язык переключается на лету.
   Часовой пояс по умолчанию переключён с `Asia/Shanghai` на
   `Europe/Moscow`. Локаль фронтенда по умолчанию — английский
   (раньше был упрощённый китайский).

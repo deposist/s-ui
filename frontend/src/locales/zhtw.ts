@@ -137,6 +137,7 @@ export default {
     close: "關閉",
     restartApp: "重啟面板",
     restartSb: "重啟 Singbox",
+    logoutAllAdmins: "登出所有管理員",
   },
   login: {
     title: "登錄",
@@ -157,6 +158,8 @@ export default {
     date: "日期",
     time: "時間",
     changes: "更改",
+    logoutAll: "登出所有管理員",
+    logoutAllConfirm: "所有管理員 Web 工作階段都將失效，包括你目前的工作階段。API 憑據不受影響。是否繼續？",
     actor: "執行者",
     key: "鍵",
     action: "操作",

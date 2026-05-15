@@ -278,7 +278,12 @@ func (a *ApiService) Login(c *gin.Context) {
 		logger.Infof("Unable to get session's max age from DB")
 	}
 
-	err = SetLoginUser(c, loginUser, sessionMaxAge)
+	sessionGeneration, err := a.SettingService.GetSessionGeneration()
+	if err != nil {
+		logger.Warning("unable to get session generation:", err)
+	}
+
+	err = SetLoginUser(c, loginUser, sessionMaxAge, sessionGeneration)
 	if err == nil {
 		logger.Info("user ", loginUser, " login success")
 	} else {
@@ -360,6 +365,18 @@ func (a *ApiService) Logout(c *gin.Context) {
 	}
 	ClearSession(c)
 	jsonMsg(c, "", nil)
+}
+
+func (a *ApiService) LogoutAllAdmins(c *gin.Context) {
+	loginUser := GetLoginUser(c)
+	_, err := a.SettingService.RotateSessionGeneration()
+	if err == nil {
+		if loginUser != "" {
+			logger.Infof("user %s logged out all admin web sessions", loginUser)
+		}
+		ClearSession(c)
+	}
+	jsonMsg(c, "logoutAllAdmins", err)
 }
 
 func (a *ApiService) LoadTokens() ([]byte, error) {

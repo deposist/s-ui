@@ -51,6 +51,7 @@ var defaultValueMap = map[string]string{
 	"webPath":       "/app/",
 	"webURI":        "",
 	"sessionMaxAge": "0",
+	"sessionGeneration": "",
 	"trafficAge":    "30",
 	"timeLocation":  "Europe/Moscow",
 	"subListen":     "",
@@ -97,6 +98,7 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 
 	// Due to security principles
 	delete(allSetting, "secret")
+	delete(allSetting, "sessionGeneration")
 	delete(allSetting, "config")
 	delete(allSetting, "version")
 
@@ -236,6 +238,15 @@ func (s *SettingService) GetSecret() ([]byte, error) {
 
 func (s *SettingService) GetSessionMaxAge() (int, error) {
 	return s.getInt("sessionMaxAge")
+}
+
+func (s *SettingService) GetSessionGeneration() (string, error) {
+	return s.getString("sessionGeneration")
+}
+
+func (s *SettingService) RotateSessionGeneration() (string, error) {
+	generation := common.Random(32)
+	return generation, s.setString("sessionGeneration", generation)
 }
 
 func (s *SettingService) GetTrafficAge() (int, error) {

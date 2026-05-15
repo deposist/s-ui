@@ -58,6 +58,8 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 	case "deleteToken":
 		a.ApiService.DeleteToken(c)
 		a.apiv2.ReloadTokens()
+	case "logoutAllAdmins":
+		a.ApiService.LogoutAllAdmins(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}

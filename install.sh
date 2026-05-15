@@ -1,7 +1,7 @@
 #!/bin/bash
-# S-UI installer with bilingual UI (English / Russian).
+# S-UI installer with multilingual UI (English / Russian / Chinese).
 # Language choice can be supplied non-interactively via env:
-#   SUI_LANG=en|ru  bash install.sh ...
+#   SUI_LANG=en|ru|zh  bash install.sh ...
 # A version tag (e.g. "v1.4.2-beta") may be provided as the only positional
 # argument to install a specific release.
 
@@ -15,14 +15,14 @@ LANG_FILE="/etc/s-ui/lang"
 ask_language() {
     if [[ -n "${SUI_LANG}" ]]; then
         case "${SUI_LANG}" in
-            en|ru) lang="${SUI_LANG}"; return ;;
+            en|ru|zh) lang="${SUI_LANG}"; return ;;
         esac
     fi
     if [[ -f "${LANG_FILE}" ]]; then
         local saved
         saved=$(cat "${LANG_FILE}" 2>/dev/null | tr -d '[:space:]')
         case "${saved}" in
-            en|ru) lang="${saved}"; return ;;
+            en|ru|zh) lang="${saved}"; return ;;
         esac
     fi
     if [[ ! -t 0 ]]; then
@@ -31,18 +31,57 @@ ask_language() {
         return
     fi
     echo
-    echo "Select language / Выберите язык:"
+    echo "Select language / Выберите язык / 请选择语言:"
     echo "  1) English"
     echo "  2) Русский"
-    read -rp "[1-2, default 1]: " lang_choice
+    echo "  3) 中文"
+    read -rp "[1-3, default 1]: " lang_choice
     case "${lang_choice}" in
         2|ru|RU|Russian|Русский) lang="ru" ;;
+        3|zh|ZH|Chinese|中文|简体中文) lang="zh" ;;
         *) lang="en" ;;
     esac
 }
 
 t() {
     local key="$1"
+    if [[ "${lang}" == "zh" ]]; then
+        case "${key}" in
+            run_as_root)        echo "致命错误：请使用 root 权限运行此脚本"; return ;;
+            detect_failed)      echo "检测系统失败，请联系作者！"; return ;;
+            current_release)    echo "当前系统发行版为：$2"; return ;;
+            arch_label)         echo "架构：$2"; return ;;
+            arch_unsupported)   echo "不支持的 CPU 架构！"; return ;;
+            running)            echo "正在执行..."; return ;;
+            migrate)            echo "正在迁移..."; return ;;
+            install_done)       echo "安装/更新完成！出于安全考虑，建议修改面板设置"; return ;;
+            continue_settings)  echo "是否继续修改设置 [y/n]？"; return ;;
+            enter_panel_port)   echo "请输入面板端口（留空则使用现有/默认值）："; return ;;
+            enter_panel_path)   echo "请输入面板路径（留空则使用现有/默认值）："; return ;;
+            enter_sub_port)     echo "请输入订阅端口（留空则使用现有/默认值）："; return ;;
+            enter_sub_path)     echo "请输入订阅路径（留空则使用现有/默认值）："; return ;;
+            initializing)       echo "正在初始化，请稍候..."; return ;;
+            change_admin)       echo "是否修改管理员账号密码 [y/n]？"; return ;;
+            set_username)       echo "请设置用户名："; return ;;
+            set_password)       echo "请设置密码："; return ;;
+            current_admin)      echo "当前管理员账号密码："; return ;;
+            cancelled)          echo "已取消..."; return ;;
+            fresh_install_creds) echo "这是全新安装，出于安全考虑将生成随机登录信息："; return ;;
+            username_label)     echo "用户名：$2"; return ;;
+            password_label)     echo "密码：$2"; return ;;
+            lost_creds)         echo "如果忘记登录信息，可以输入 s-ui 打开配置菜单"; return ;;
+            upgrade_keep_settings) echo "这是升级安装，将保留旧设置；如果忘记登录信息，可以输入 s-ui 打开配置菜单"; return ;;
+            stop_singbox)       echo "正在停止 sing-box 服务..."; return ;;
+            bin_dir_exists)     echo "/usr/local/s-ui/bin 目录已存在！请检查其中内容，并在迁移后手动删除"; return ;;
+            fetching_latest)    echo "已获取 s-ui 最新版本：$2，开始安装..."; return ;;
+            rate_limited)       echo "获取 s-ui 版本失败，可能是 Github API 限制导致，请稍后重试"; return ;;
+            download_failed)    echo "下载 s-ui 失败，请确认服务器可以访问 Github"; return ;;
+            installing_specific) echo "开始安装 s-ui $2"; return ;;
+            download_failed_specific) echo "下载 s-ui $2 失败，请检查该版本是否存在"; return ;;
+            installed_running)  echo "s-ui $2 安装完成，现已启动并运行..."; return ;;
+            panel_url)          echo "你可以通过以下 URL 访问面板："; return ;;
+        esac
+    fi
     case "${lang}:${key}" in
         # generic
         en:run_as_root)        echo "Critical error: run this script as root";;
