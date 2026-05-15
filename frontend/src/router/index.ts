@@ -2,6 +2,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Login from '@/views/Login.vue'
 import Data from '@/store/modules/data'
+import Realtime from '@/store/modules/realtime'
 
 const routes = [
   {
@@ -95,9 +96,11 @@ let intervalId: any
 router.beforeEach((to) => {
   if (to.path !== '/login') {
     loadDataInterval()
+    Realtime().connect()
   } else if (intervalId) {
     clearInterval(intervalId)
     intervalId = undefined
+    Realtime().disconnect()
   }
 })
 

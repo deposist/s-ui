@@ -53,6 +53,10 @@ logs, or support chats.
 - Telegram notifications are disabled by default. `POST /api/telegram/test`
   returns `{success, errorClass}` without raw Telegram responses, and event
   delivery is best-effort only after Telegram is explicitly enabled.
+- Realtime WebSocket foundation is available under `/api/realtime/*` and uses
+  one-time `wsToken` authentication. Slow clients are dropped, connection
+  counts are limited per user/IP, and `logoutAllAdmins` closes active sockets
+  with code `4401`. The frontend has a polling fallback.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.

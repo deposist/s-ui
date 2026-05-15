@@ -44,6 +44,10 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	telegram := g.Group("/telegram")
 	telegram.POST("/test", a.ApiService.TestTelegram)
 
+	realtime := g.Group("/realtime")
+	realtime.GET("/ws-token", a.ApiService.IssueWSToken)
+	realtime.GET("/ws", a.ApiService.RealtimeWS)
+
 	observability := g.Group("/observability")
 	observability.GET("/history", a.ApiService.GetObservabilityHistory)
 	observability.GET("/core-history", a.ApiService.GetCoreHistory)

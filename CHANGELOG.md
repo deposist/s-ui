@@ -48,6 +48,11 @@ All notable changes to this project are documented in this file.
   `POST /api/telegram/test`. Bot token and proxy-related settings are
   secret-aware; login, logout-all-admins, and core restart events notify only
   when Telegram is explicitly enabled.
+- Added authenticated realtime WebSocket foundation under
+  `/api/realtime/ws-token` and `/api/realtime/ws` with one-time tokens,
+  bounded client queues, per-user/per-IP connection limits, and frontend
+  polling fallback. `logoutAllAdmins` closes active realtime sockets with
+  close code `4401`.
 
 ### Localization
 

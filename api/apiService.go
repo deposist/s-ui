@@ -412,6 +412,7 @@ func (a *ApiService) LogoutAllAdmins(c *gin.Context) {
 		a.TelegramService.NotifyTelegramEvent("logout_all_admins", map[string]string{
 			"user": loginUser,
 		})
+		CloseRealtimeSessions(wsCloseAuth, "admin sessions invalidated")
 		ClearSession(c)
 	}
 	jsonMsg(c, "logoutAllAdmins", err)
