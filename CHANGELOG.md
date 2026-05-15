@@ -39,6 +39,11 @@ All notable changes to this project are documented in this file.
 - Added grouped API route placeholders for the `1.5.0` security,
   notification, observability, and bulk outbound-check work while preserving
   the existing one-level `/api/<action>` endpoints.
+- Added `GET /api/observability/history`,
+  `GET /api/observability/core-history`, and `GET /api/version`.
+- Added `POST /api/checkOutbounds` for bounded bulk outbound checks with
+  concurrency `8`, per-outbound timeout `5s`, total timeout `60s`, and an
+  HTTPS/public-IP target validator.
 
 ### Localization
 

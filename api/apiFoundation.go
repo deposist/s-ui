@@ -1,8 +1,16 @@
 package api
 
 import (
+	"context"
+	"net"
+	"net/netip"
+	"net/url"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
 
+	"github.com/deposist/s-ui-rus-inst/config"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/gin-gonic/gin"
@@ -30,16 +38,107 @@ func (a *ApiService) TestTelegram(c *gin.Context) {
 
 func (a *ApiService) GetObservabilityHistory(c *gin.Context) {
 	jsonObj(c, gin.H{
-		"samples": []any{},
+		"samples": a.ObservabilityService.History(),
 	}, nil)
 }
 
 func (a *ApiService) GetCoreHistory(c *gin.Context) {
 	jsonObj(c, gin.H{
-		"samples": []any{},
+		"samples": a.ObservabilityService.CoreHistory(),
+	}, nil)
+}
+
+func (a *ApiService) GetVersionInfo(c *gin.Context) {
+	jsonObj(c, gin.H{
+		"version": config.GetVersion(),
 	}, nil)
 }
 
 func (a *ApiService) CheckOutbounds(c *gin.Context) {
-	a.GetCheckOutbound(c)
+	target := c.DefaultPostForm("target", "https://www.gstatic.com/generate_204")
+	if err := validateOutboundCheckTarget(c.Request.Context(), target); err != nil {
+		jsonMsg(c, "checkOutbounds", err)
+		return
+	}
+	outbounds, err := a.OutboundService.GetAll()
+	if err != nil {
+		jsonMsg(c, "checkOutbounds", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	defer cancel()
+
+	type checkResult struct {
+		Tag     string `json:"tag"`
+		OK      bool   `json:"ok"`
+		Delay   uint16 `json:"delay"`
+		Error   string `json:"error,omitempty"`
+		Skipped bool   `json:"skipped,omitempty"`
+	}
+	results := make([]checkResult, len(*outbounds))
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i, outbound := range *outbounds {
+		tag, _ := outbound["tag"].(string)
+		if tag == "" {
+			results[i] = checkResult{Skipped: true, Error: "missing tag"}
+			continue
+		}
+		results[i].Tag = tag
+		wg.Add(1)
+		go func(index int, outboundTag string) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[index].Error = ctx.Err().Error()
+				return
+			}
+			checkCtx, cancelCheck := context.WithTimeout(ctx, 5*time.Second)
+			defer cancelCheck()
+			check := a.ConfigService.CheckOutboundWithContext(checkCtx, outboundTag, target)
+			results[index].OK = check.OK
+			results[index].Delay = check.Delay
+			results[index].Error = check.Error
+		}(i, tag)
+	}
+	wg.Wait()
+	jsonObj(c, gin.H{
+		"target":  target,
+		"results": results,
+	}, nil)
+}
+
+func validateOutboundCheckTarget(ctx context.Context, rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return common.NewError("check target must be an HTTPS URL")
+	}
+	host := parsed.Hostname()
+	if strings.EqualFold(host, "localhost") {
+		return common.NewError("check target host is not allowed")
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			return common.NewError("check target IP is not allowed")
+		}
+		return nil
+	}
+	resolveCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(resolveCtx, host)
+	if err != nil {
+		return err
+	}
+	for _, addr := range addrs {
+		ip, ok := netip.AddrFromSlice(addr.IP)
+		if !ok || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			return common.NewError("check target resolves to a disallowed IP")
+		}
+	}
+	return nil
 }

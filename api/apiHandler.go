@@ -35,6 +35,7 @@ func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 
 func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	g.GET("/csrf", a.ApiService.GetCSRF)
+	g.GET("/version", a.ApiService.GetVersionInfo)
 	g.POST("/checkOutbounds", a.ApiService.CheckOutbounds)
 
 	security := g.Group("/security")
