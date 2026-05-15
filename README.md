@@ -1,4 +1,6 @@
 ## S-UI
+<img width="492" height="450" alt="image" src="https://github.com/user-attachments/assets/cfc9da97-f8ea-4c68-961c-2bf164932272" />
+
 <p align="center">
   <a href="https://github.com/deposist/s-ui-rus-inst/releases/latest">
     <img src="https://img.shields.io/github/v/release/deposist/s-ui-rus-inst?style=for-the-badge&label=release" alt="Release">
