@@ -24,11 +24,14 @@ RUN apk update && apk add --no-cache \
 
 ENV CC=gcc
 
+# Pin libcronet to the release matching sing-box v1.13.11 NaiveProxy (Chromium 147)
+ARG CRONET_TAG=v147.0.7727.49-1
 RUN CRONET_ARCH="$TARGETARCH" && \
-    CRONET_URL="https://github.com/SagerNet/cronet-go/releases/latest/download/libcronet-linux-${CRONET_ARCH}.so"; \
+    CRONET_URL="https://github.com/SagerNet/cronet-go/releases/download/${CRONET_TAG}/libcronet-linux-${CRONET_ARCH}.so"; \
     echo "Downloading $CRONET_URL" && \
     wget -q -O ./libcronet.so "$CRONET_URL" && \
-    chmod 755 ./libcronet.so
+    chmod 755 ./libcronet.so && \
+    echo "libcronet.so sha256: $(sha256sum ./libcronet.so)"
 
 COPY . .
 COPY --from=front-builder /app/dist/ /app/web/html/
