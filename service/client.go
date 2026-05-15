@@ -39,7 +39,7 @@ func (s *ClientService) GetAll() (*[]model.Client, error) {
 	db := database.GetDB()
 	var clients []model.Client
 	err := db.Model(model.Client{}).
-		Select("`id`, `enable`, `name`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`").
+		Select("`id`, `enable`, `name`, `sub_secret`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`").
 		Scan(&clients).Error
 	if err != nil {
 		return nil, err
@@ -55,6 +55,10 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 	case "new", "edit":
 		var client model.Client
 		err = json.Unmarshal(data, &client)
+		if err != nil {
+			return nil, err
+		}
+		err = s.prepareClientSubSecret(tx, &client, act == "edit")
 		if err != nil {
 			return nil, err
 		}
@@ -88,6 +92,12 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
+		for _, client := range clients {
+			err = s.prepareClientSubSecret(tx, client, false)
+			if err != nil {
+				return nil, err
+			}
+		}
 		err = s.updateLinksWithFixedInbounds(tx, clients, hostname)
 		if err != nil {
 			return nil, err
@@ -103,6 +113,10 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 			return nil, err
 		}
 		for _, client := range clients {
+			err = s.prepareClientSubSecret(tx, client, true)
+			if err != nil {
+				return nil, err
+			}
 			changedInboundIds, err := s.findInboundsChanges(tx, client, true)
 			if err != nil {
 				return nil, err

@@ -27,6 +27,12 @@ All notable changes to this project are documented in this file.
 - `/apiv2/*` now accepts `Authorization: Bearer <token>` as the primary API
   token transport. The legacy `Token` header still works, emits audit events,
   and returns `Deprecation` plus `Sunset: Sat, 15 Aug 2026 00:00:00 GMT`.
+- Added per-client subscription secrets. New `/sub/<secret>`,
+  `/sub/json/<secret>`, `/sub/clash/<secret>`, `/json/<secret>`, and
+  `/clash/<secret>` routes are supported; legacy `/sub/<name>` remains enabled
+  until `subSecretRequired=true`.
+- Subscription endpoints now sanitize response headers, validate configured
+  subscription paths, and apply a per-IP rate limit.
 
 ### API
 

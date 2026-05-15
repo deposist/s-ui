@@ -62,6 +62,15 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 
 	g := engine.Group(subPath)
 	NewSubHandler(g)
+	if subPath != "/" {
+		rootHandler := &SubHandler{}
+		root := engine.Group("/")
+		root.Use(rateLimitMiddleware())
+		root.GET("/json/:subid", rootHandler.json)
+		root.HEAD("/json/:subid", rootHandler.subHeaders)
+		root.GET("/clash/:subid", rootHandler.clash)
+		root.HEAD("/clash/:subid", rootHandler.subHeaders)
+	}
 
 	return engine, nil
 }

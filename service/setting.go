@@ -64,6 +64,7 @@ var defaultValueMap = map[string]string{
 	"subUpdates":            "12",
 	"subEncode":             "true",
 	"subShowInfo":           "false",
+	"subSecretRequired":     "false",
 	"subURI":                "",
 	"subJsonExt":            "",
 	"subClashExt":           "",
@@ -238,6 +239,9 @@ func (s *SettingService) GetWebPath() (string, error) {
 }
 
 func (s *SettingService) SetWebPath(webPath string) error {
+	if err := validateURLPath(webPath); err != nil {
+		return err
+	}
 	if !strings.HasPrefix(webPath, "/") {
 		webPath = "/" + webPath
 	}
@@ -333,6 +337,9 @@ func (s *SettingService) GetSubPath() (string, error) {
 }
 
 func (s *SettingService) SetSubPath(subPath string) error {
+	if err := validateURLPath(subPath); err != nil {
+		return err
+	}
 	if !strings.HasPrefix(subPath, "/") {
 		subPath = "/" + subPath
 	}
@@ -364,6 +371,10 @@ func (s *SettingService) GetSubEncode() (bool, error) {
 
 func (s *SettingService) GetSubShowInfo() (bool, error) {
 	return s.getBool("subShowInfo")
+}
+
+func (s *SettingService) GetSubSecretRequired() (bool, error) {
+	return s.getBool("subSecretRequired")
 }
 
 func (s *SettingService) GetSubURI() (string, error) {
@@ -444,6 +455,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		// Correct Pathes start and ends with `/`
 		if key == "webPath" ||
 			key == "subPath" {
+			if err = validateURLPath(obj); err != nil {
+				return err
+			}
 			if !strings.HasPrefix(obj, "/") {
 				obj = "/" + obj
 			}
@@ -478,4 +492,19 @@ func (s *SettingService) GetSubClashExt() (string, error) {
 func (s *SettingService) fileExists(path string) error {
 	_, err := os.Stat(path)
 	return err
+}
+
+func validateURLPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if strings.Contains(path, "\\") || strings.Contains(path, "..") {
+		return common.NewError("invalid path")
+	}
+	for _, r := range path {
+		if r < 0x20 || r == 0x7f {
+			return common.NewError("invalid path")
+		}
+	}
+	return nil
 }

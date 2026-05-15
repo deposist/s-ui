@@ -40,6 +40,13 @@ logs, or support chats.
 - Use `Authorization: Bearer <token>` for `/apiv2/*`. The legacy `Token`
   header remains temporarily supported, writes an audit event, and returns
   `Deprecation: true` plus `Sunset: Sat, 15 Aug 2026 00:00:00 GMT`.
+- Subscription URLs now have per-client secrets. Legacy `/sub/<name>` links
+  keep working by default, while `/sub/<secret>`, `/sub/json/<secret>`,
+  `/sub/clash/<secret>`, `/json/<secret>`, and `/clash/<secret>` are available
+  for hardened clients. Set `subSecretRequired=true` after rotating published
+  links if name-based subscription URLs must be disabled.
+- Subscription responses sanitize profile headers and enforce a per-IP rate
+  limit.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.

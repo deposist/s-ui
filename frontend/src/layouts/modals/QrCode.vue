@@ -121,11 +121,14 @@ export default {
     }
   },
   computed: {
+    subscriptionId() {
+      return this.client.subSecret || this.client.name
+    },
     clientSub() {
-      return Data().subURI + this.client.name
+      return Data().subURI + this.subscriptionId
     },
     singbox() {
-      const url = Data().subURI + this.client.name + "?format=json"
+      const url = Data().subURI + "json/" + this.subscriptionId
       return "sing-box://import-remote-profile?url=" +  encodeURIComponent(url) + "#" + this.client.name
     },
     clientLinks() {

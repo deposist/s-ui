@@ -146,6 +146,7 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_changes_lookup ON changes(date_time, actor, key)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_lookup ON audit_events(date_time, actor, event)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
+		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
 	}
 	for _, query := range indexes {
 		if err := db.Exec(query).Error; err != nil {

@@ -10,6 +10,9 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
+
+	"gorm.io/gorm"
 )
 
 type SubService struct {
@@ -47,11 +50,22 @@ func (s *SubService) GetSubs(subId string) (*string, []string, error) {
 func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	db := database.GetDB()
 	client := &model.Client{}
-	err := db.Model(model.Client{}).Where("enable = true and name = ?", subId).First(client).Error
+	err := db.Model(model.Client{}).Where("enable = true and sub_secret = ?", subId).First(client).Error
+	if err == nil {
+		return client, j.ensureClientSubSecret(db, client)
+	}
+	if err != nil && !database.IsNotFound(err) {
+		return nil, err
+	}
+	required, _ := j.SettingService.GetSubSecretRequired()
+	if required {
+		return nil, gorm.ErrRecordNotFound
+	}
+	err = db.Model(model.Client{}).Where("enable = true and name = ?", subId).First(client).Error
 	if err != nil {
 		return nil, err
 	}
-	return client, nil
+	return client, j.ensureClientSubSecret(db, client)
 }
 
 func (s *SubService) getClientHeaders(client *model.Client) []string {
@@ -90,4 +104,12 @@ func (s *SubService) formatTraffic(trafficBytes int64) string {
 	} else {
 		return fmt.Sprintf("%.2fEB", float64(trafficBytes)/float64(1024*1024*1024*1024*1024))
 	}
+}
+
+func (s *SubService) ensureClientSubSecret(db *gorm.DB, client *model.Client) error {
+	if client.SubSecret != "" {
+		return nil
+	}
+	client.SubSecret = common.Random(32)
+	return db.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_secret", client.SubSecret).Error
 }

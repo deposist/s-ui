@@ -1,6 +1,8 @@
 package sub
 
 import (
+	"strings"
+
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/service"
 
@@ -20,40 +22,61 @@ func NewSubHandler(g *gin.RouterGroup) {
 }
 
 func (s *SubHandler) initRouter(g *gin.RouterGroup) {
+	g.Use(rateLimitMiddleware())
 	g.GET("/:subid", s.subs)
 	g.HEAD("/:subid", s.subHeaders)
+	g.GET("/json/:subid", s.json)
+	g.HEAD("/json/:subid", s.subHeaders)
+	g.GET("/clash/:subid", s.clash)
+	g.HEAD("/clash/:subid", s.subHeaders)
 }
 
 func (s *SubHandler) subs(c *gin.Context) {
-	var headers []string
-	var result *string
-	var err error
-	subId := c.Param("subid")
 	format, isFormat := c.GetQuery("format")
 	if isFormat {
 		switch format {
 		case "json":
-			result, headers, err = s.JsonService.GetJson(subId, format)
+			s.json(c)
 		case "clash":
-			result, headers, err = s.ClashService.GetClash(subId)
-		}
-		if err != nil || result == nil {
-			logger.Error(err)
+			s.clash(c)
+		default:
 			c.String(400, "Error!")
-			return
 		}
-	} else {
-		result, headers, err = s.SubService.GetSubs(subId)
-		if err != nil || result == nil {
-			logger.Error(err)
-			c.String(400, "Error!")
-			return
-		}
+		return
 	}
 
-	s.addHeaders(c, headers)
+	var headers []string
+	var result *string
+	var err error
+	subId := c.Param("subid")
+	result, headers, err = s.SubService.GetSubs(subId)
+	if err != nil || result == nil {
+		logger.Error(err)
+		c.String(400, "Error!")
+		return
+	}
 
-	c.String(200, *result)
+	s.writeResult(c, result, headers)
+}
+
+func (s *SubHandler) json(c *gin.Context) {
+	result, headers, err := s.JsonService.GetJson(c.Param("subid"), "json")
+	if err != nil || result == nil {
+		logger.Error(err)
+		c.String(400, "Error!")
+		return
+	}
+	s.writeResult(c, result, headers)
+}
+
+func (s *SubHandler) clash(c *gin.Context) {
+	result, headers, err := s.ClashService.GetClash(c.Param("subid"))
+	if err != nil || result == nil {
+		logger.Error(err)
+		c.String(400, "Error!")
+		return
+	}
+	s.writeResult(c, result, headers)
 }
 
 func (s *SubHandler) subHeaders(c *gin.Context) {
@@ -72,7 +95,24 @@ func (s *SubHandler) subHeaders(c *gin.Context) {
 }
 
 func (s *SubHandler) addHeaders(c *gin.Context, headers []string) {
-	c.Writer.Header().Set("Subscription-Userinfo", headers[0])
-	c.Writer.Header().Set("Profile-Update-Interval", headers[1])
-	c.Writer.Header().Set("Profile-Title", headers[2])
+	if len(headers) < 3 {
+		return
+	}
+	c.Writer.Header().Set("Subscription-Userinfo", sanitizeHeaderValue(headers[0]))
+	c.Writer.Header().Set("Profile-Update-Interval", sanitizeHeaderValue(headers[1]))
+	c.Writer.Header().Set("Profile-Title", sanitizeHeaderValue(headers[2]))
+}
+
+func (s *SubHandler) writeResult(c *gin.Context, result *string, headers []string) {
+	s.addHeaders(c, headers)
+	c.String(200, *result)
+}
+
+func sanitizeHeaderValue(value string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' || r == 0x7f || r < 0x20 {
+			return -1
+		}
+		return r
+	}, value)
 }

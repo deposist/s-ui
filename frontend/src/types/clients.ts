@@ -10,6 +10,7 @@ export interface Client {
   id?: number
 	enable: boolean
 	name: string
+  subSecret?: string
 	config?: Config
 	inbounds: number[]
   links?: Link[]
