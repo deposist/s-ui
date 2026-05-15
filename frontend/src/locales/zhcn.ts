@@ -216,6 +216,13 @@ export default {
     autoReset: "自动重置",
     resetDays: "重置天数",
     nextReset: "下次重置",
+    limitIp: "IP 限制",
+    ipLimitMode: "IP 模式",
+    ipLimitWarn: "强制模式只拒绝新连接；现有连接不会被关闭。",
+    lastIpCount: "IP",
+    ipHistory: "IP 历史",
+    firstSeen: "首次出现",
+    lastSeen: "最后出现",
   },
   bulk: {
     order: "排序",

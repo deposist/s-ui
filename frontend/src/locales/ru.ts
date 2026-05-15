@@ -217,6 +217,13 @@ export default {
     autoReset: "Авто сброс",
     resetDays: "Дней до сброса",
     nextReset: "Следующий сброс",
+    limitIp: "Лимит IP",
+    ipLimitMode: "Режим IP",
+    ipLimitWarn: "Enforce отклоняет только новые подключения; активные подключения не закрываются.",
+    lastIpCount: "IP",
+    ipHistory: "История IP",
+    firstSeen: "Первый раз",
+    lastSeen: "Последний раз",
   },
   bulk: {
     order: "Порядок",

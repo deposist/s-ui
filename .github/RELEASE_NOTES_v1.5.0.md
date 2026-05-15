@@ -57,6 +57,11 @@ logs, or support chats.
   one-time `wsToken` authentication. Slow clients are dropped, connection
   counts are limited per user/IP, and `logoutAllAdmins` closes active sockets
   with code `4401`. The frontend has a polling fallback.
+- Client IP monitoring stores observed IPs through an in-memory batch
+  aggregator and periodic flush. The default mode is `monitor`; `enforce`
+  rejects only new over-limit connections and does not close active sessions.
+  The Clients page shows IP counts, recent IP history, clear history, and an
+  enforcement warning.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.

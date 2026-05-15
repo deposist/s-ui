@@ -7,6 +7,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/ipmonitor"
 
 	"gorm.io/gorm"
 )
@@ -45,7 +46,7 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 		onlineResourcesMu.Lock()
 		onlineResources = &currentOnlines
 		onlineResourcesMu.Unlock()
-		return nil
+		return ipmonitor.Flush()
 	}
 
 	db := database.GetDB()
@@ -87,9 +88,12 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 	onlineResourcesMu.Unlock()
 
 	if !enableTraffic {
-		return nil
+		return ipmonitor.FlushTo(tx)
 	}
-	return tx.Create(&stats).Error
+	if err := tx.Create(&stats).Error; err != nil {
+		return err
+	}
+	return ipmonitor.FlushTo(tx)
 }
 
 func (s *StatsService) GetStats(resource string, tag string, limit int) ([]model.Stats, error) {

@@ -216,6 +216,13 @@ export default {
     autoReset: "Auto Reset",
     resetDays: "Reset Days",
     nextReset: "Next Reset",
+    limitIp: "IP Limit",
+    ipLimitMode: "IP Mode",
+    ipLimitWarn: "Enforcement only rejects new connections; active connections stay open.",
+    lastIpCount: "IPs",
+    ipHistory: "IP History",
+    firstSeen: "First Seen",
+    lastSeen: "Last Seen",
   },
   bulk: {
     order: "Order",

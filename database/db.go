@@ -115,6 +115,7 @@ func InitDB(dbPath string) error {
 		&model.User{},
 		&model.Tokens{},
 		&model.Stats{},
+		&model.ClientIP{},
 		&model.Client{},
 		&model.Changes{},
 		&model.AuditEvent{},
@@ -147,6 +148,7 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_lookup ON audit_events(date_time, actor, event)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
+		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
 	}
 	for _, query := range indexes {
 		if err := db.Exec(query).Error; err != nil {

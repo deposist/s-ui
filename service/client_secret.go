@@ -8,6 +8,9 @@ import (
 )
 
 func (s *ClientService) prepareClientSubSecret(tx *gorm.DB, client *model.Client, preserveExisting bool) error {
+	if client.IPLimitMode == "" {
+		client.IPLimitMode = "monitor"
+	}
 	if client.SubSecret != "" {
 		return nil
 	}

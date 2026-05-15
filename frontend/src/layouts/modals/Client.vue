@@ -104,6 +104,30 @@
                 </v-col>
               </v-row>
               <v-row>
+                <v-col cols="12" sm="6" md="4">
+                  <v-text-field
+                    v-model.number="client.limitIp"
+                    type="number"
+                    min="0"
+                    :label="$t('client.limitIp')"
+                    hide-details
+                  ></v-text-field>
+                </v-col>
+                <v-col cols="12" sm="6" md="4">
+                  <v-select
+                    v-model="client.ipLimitMode"
+                    :items="ipLimitModes"
+                    :label="$t('client.ipLimitMode')"
+                    hide-details
+                  ></v-select>
+                </v-col>
+                <v-col cols="12" sm="6" md="4" v-if="client.ipLimitMode === 'enforce'">
+                  <v-alert density="compact" type="warning" variant="tonal">
+                    {{ $t('client.ipLimitWarn') }}
+                  </v-alert>
+                </v-col>
+              </v-row>
+              <v-row>
                 <v-col>
                   <v-select
                     v-model="clientInbounds"
@@ -242,6 +266,7 @@ export default {
       links: <Link[]>[],
       extLinks: <Link[]>[],
       subLinks: <Link[]>[],
+      ipLimitModes: ['monitor', 'enforce'],
     }
   },
   methods: {

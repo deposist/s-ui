@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/ipmonitor"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common/atomic"
@@ -74,13 +75,32 @@ func (c *StatsTracker) loadOrCreateCounter(obj *map[string]Counter, name string)
 }
 
 func (c *StatsTracker) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) net.Conn {
+	sourceIP := sourceIPFromMetadata(metadata)
+	if !ipmonitor.Allow(metadata.User, sourceIP) {
+		_ = conn.Close()
+		return conn
+	}
+	ipmonitor.Record(metadata.User, sourceIP)
 	readCounter, writeCounter := c.getReadCounters(metadata.Inbound, matchOutbound.Tag(), metadata.User)
 	return bufio.NewInt64CounterConn(conn, readCounter, writeCounter)
 }
 
 func (c *StatsTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) network.PacketConn {
+	sourceIP := sourceIPFromMetadata(metadata)
+	if !ipmonitor.Allow(metadata.User, sourceIP) {
+		_ = conn.Close()
+		return conn
+	}
+	ipmonitor.Record(metadata.User, sourceIP)
 	readCounter, writeCounter := c.getReadCounters(metadata.Inbound, matchOutbound.Tag(), metadata.User)
 	return bufio.NewInt64CounterPacketConn(conn, readCounter, nil, writeCounter, nil)
+}
+
+func sourceIPFromMetadata(metadata adapter.InboundContext) string {
+	if metadata.Source.Addr.IsValid() {
+		return metadata.Source.Addr.String()
+	}
+	return ""
 }
 
 func (c *StatsTracker) GetStats() *[]model.Stats {

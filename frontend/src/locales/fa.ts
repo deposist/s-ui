@@ -216,6 +216,13 @@ export default {
     autoReset: "بازنشانی خودکار",
     resetDays: "روزهای بازنشانی",
     nextReset: "بازنشانی بعدی",
+    limitIp: "IP Limit",
+    ipLimitMode: "IP Mode",
+    ipLimitWarn: "Enforcement only rejects new connections; active connections stay open.",
+    lastIpCount: "IPs",
+    ipHistory: "IP History",
+    firstSeen: "First Seen",
+    lastSeen: "Last Seen",
   },
   bulk: {
     order: "ترتیب",

@@ -53,6 +53,10 @@ All notable changes to this project are documented in this file.
   bounded client queues, per-user/per-IP connection limits, and frontend
   polling fallback. `logoutAllAdmins` closes active realtime sockets with
   close code `4401`.
+- Added batched client IP monitoring with `client_ips`, per-client `limitIp`
+  and `ipLimitMode`, last-online/IP-count metadata, Admins-audited clear
+  action, and Clients UI controls. `monitor` is the default mode; `enforce`
+  rejects only new over-limit connections and never closes active connections.
 
 ### Localization
 

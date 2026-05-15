@@ -35,6 +35,35 @@
     :tag="stats.tag"
     @close="closeStats"
   />
+  <v-dialog v-model="ipModal.visible" width="600">
+    <v-card :loading="ipModal.loading" class="rounded-lg">
+      <v-card-title>{{ $t('client.ipHistory') }} - {{ ipModal.client }}</v-card-title>
+      <v-divider></v-divider>
+      <v-card-text>
+        <v-table density="compact">
+          <thead>
+            <tr>
+              <th>IP</th>
+              <th>{{ $t('client.firstSeen') }}</th>
+              <th>{{ $t('client.lastSeen') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in ipModal.rows" :key="row.ip">
+              <td>{{ row.ip }}</td>
+              <td>{{ formatTime(row.firstSeen) }}</td>
+              <td>{{ formatTime(row.lastSeen) }}</td>
+            </tr>
+          </tbody>
+        </v-table>
+      </v-card-text>
+      <v-card-actions>
+        <v-btn color="error" variant="outlined" @click="clearClientIps">{{ $t('reset') }}</v-btn>
+        <v-spacer></v-spacer>
+        <v-btn variant="outlined" @click="ipModal.visible = false">{{ $t('actions.close') }}</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
   <v-row justify="center" align="center">
     <v-col cols="auto">
       <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
@@ -185,6 +214,11 @@
             <template v-else>-</template>
           </div>
         </template>
+        <template v-slot:item.lastIpCount="{ item }">
+          <v-chip size="small" label @click="showClientIps(item.name)">
+            {{ item.lastIpCount ?? 0 }}
+          </v-chip>
+        </template>
         <template v-slot:item.actions="{ item }">
         <v-icon
           class="me-2"
@@ -240,6 +274,7 @@
 </style>
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import HttpUtils from '@/plugins/httputil'
 import ClientModal from '@/layouts/modals/Client.vue'
 import ClientAddBulk from '@/layouts/modals/ClientAddBulk.vue'
 import ClientEditBulk from '@/layouts/modals/ClientEditBulk.vue'
@@ -302,6 +337,7 @@ const headers = [
   { title: i18n.global.t('stats.volume'), key: 'volume' },
   { title: i18n.global.t('date.expiry'), key: 'expiry' },
   { title: i18n.global.t('online'), key: 'online' },
+  { title: i18n.global.t('client.lastIpCount'), key: 'lastIpCount' },
   { key: 'data-table-group', width: 0 },
 ]
 
@@ -351,6 +387,39 @@ const stats = ref({
   resource: "user",
   tag: "",
 })
+
+const ipModal = ref({
+  visible: false,
+  loading: false,
+  client: '',
+  rows: <any[]>[],
+})
+
+const showClientIps = async (clientName: string) => {
+  ipModal.value.visible = true
+  ipModal.value.loading = true
+  ipModal.value.client = clientName
+  const response = await HttpUtils.get('api/ip-monitor/' + encodeURIComponent(clientName))
+  if (response.success) {
+    ipModal.value.rows = response.obj ?? []
+  }
+  ipModal.value.loading = false
+}
+
+const clearClientIps = async () => {
+  ipModal.value.loading = true
+  const response = await HttpUtils.post('api/ip-monitor/' + encodeURIComponent(ipModal.value.client) + '/clear', {})
+  if (response.success) {
+    ipModal.value.rows = []
+    Data().loadData()
+  }
+  ipModal.value.loading = false
+}
+
+const formatTime = (value: number) => {
+  if (!value) return '-'
+  return new Date(value * 1000).toLocaleString(locale)
+}
 
 const showStats = (tag: string) => {
   stats.value.tag = tag

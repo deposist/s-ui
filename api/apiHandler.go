@@ -48,6 +48,10 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	realtime.GET("/ws-token", a.ApiService.IssueWSToken)
 	realtime.GET("/ws", a.ApiService.RealtimeWS)
 
+	ipMonitor := g.Group("/ip-monitor")
+	ipMonitor.GET("/:client", a.ApiService.GetClientIPHistory)
+	ipMonitor.POST("/:client/clear", a.ApiService.ClearClientIPHistory)
+
 	observability := g.Group("/observability")
 	observability.GET("/history", a.ApiService.GetObservabilityHistory)
 	observability.GET("/core-history", a.ApiService.GetCoreHistory)

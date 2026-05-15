@@ -23,10 +23,12 @@ import (
 )
 
 func GetDb(exclude string) ([]byte, error) {
-	exclude_audit, exclude_changes, exclude_stats := false, false, false
+	exclude_audit, exclude_changes, exclude_client_ips, exclude_stats := false, false, false, false
 	for _, table := range strings.Split(exclude, ",") {
 		if table == "audit" || table == "audit_events" {
 			exclude_audit = true
+		} else if table == "client_ips" {
+			exclude_client_ips = true
 		} else if table == "changes" {
 			exclude_changes = true
 		} else if table == "stats" {
@@ -56,6 +58,7 @@ func GetDb(exclude string) ([]byte, error) {
 		&model.User{},
 		&model.Tokens{},
 		&model.Stats{},
+		&model.ClientIP{},
 		&model.Client{},
 		&model.Changes{},
 		&model.AuditEvent{},
@@ -73,6 +76,7 @@ func GetDb(exclude string) ([]byte, error) {
 	var users []model.User
 	var tokens []model.Tokens
 	var clients []model.Client
+	var clientIPs []model.ClientIP
 	var stats []model.Stats
 	var changes []model.Changes
 	var auditEvents []model.AuditEvent
@@ -139,6 +143,15 @@ func GetDb(exclude string) ([]byte, error) {
 	} else if len(clients) > 0 {
 		if err := backupDb.Save(clients).Error; err != nil {
 			return nil, err
+		}
+	}
+	if !exclude_client_ips {
+		if err := db.Model(&model.ClientIP{}).Scan(&clientIPs).Error; err != nil {
+			return nil, err
+		} else if len(clientIPs) > 0 {
+			if err := backupDb.Save(clientIPs).Error; err != nil {
+				return nil, err
+			}
 		}
 	}
 
