@@ -4,14 +4,14 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** the original `alireza0/s-ui` project was blocked and removed by GitHub. This repository is a complete backup based on the last original version, `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.4.2-beta`).
+**Note:** the original `alireza0/s-ui` project was blocked and removed by GitHub. This repository is a complete backup based on the last original version, `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.4.3`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
 > **Disclaimer:** this project is intended only for personal learning and knowledge sharing. Do not use it for illegal purposes.
 
 
-## What's new in 1.4.2-beta
+## What's new in 1.4.3
 
 - bcrypt password storage with automatic plaintext-to-bcrypt migration on first login.
 - Random admin password on first install (printed once to the application log).
@@ -141,12 +141,12 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/in
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install the 1.4.2 Beta (security/reliability hardening)
+## Install v1.4.3 (sing-box 1.13.11 + security hardening)
 
-To install or upgrade to the current beta build (`v1.4.2-beta`):
+To install or upgrade to the current beta build (`v1.4.3`):
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.4.2-beta
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.4.3
 ```
 
 Or from a local clone:
@@ -154,7 +154,7 @@ Or from a local clone:
 ```sh
 git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
 cd s-ui-rus-inst
-sudo bash install.sh v1.4.2-beta
+sudo bash install.sh v1.4.3
 ```
 
 The installer is fully compatible with existing installations: settings,
@@ -378,14 +378,14 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** оригинальный проект `alireza0/s-ui` был заблокирован и удалён GitHub. Этот репозиторий — полная резервная копия последней оригинальной версии `v1.4.1` с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.4.2-beta`).
+**Примечание:** оригинальный проект `alireza0/s-ui` был заблокирован и удалён GitHub. Этот репозиторий — полная резервная копия последней оригинальной версии `v1.4.1` с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.4.3`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
 > **Отказ от ответственности:** этот проект предназначен только для личного обучения и обмена опытом. Не используйте его в незаконных целях.
 
 
-## Что нового в 1.4.2-beta
+## Что нового в 1.4.3
 
 - Хранение паролей через bcrypt с автоматической миграцией plaintext-паролей при первом успешном логине.
 - При первой установке генерируется случайный пароль администратора (выводится в журнал приложения один раз).
@@ -511,12 +511,12 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/in
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка беты 1.4.2 (исправления безопасности и надёжности)
+## Установка v1.4.3 (sing-box 1.13.11 + исправления безопасности)
 
-Установка или обновление до текущей беты (`v1.4.2-beta`):
+Установка или обновление до текущей беты (`v1.4.3`):
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.4.2-beta
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.4.3
 ```
 
 Либо из локального клона:
@@ -524,7 +524,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 ```sh
 git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
 cd s-ui-rus-inst
-sudo bash install.sh v1.4.2-beta
+sudo bash install.sh v1.4.3
 ```
 
 Установщик полностью совместим с уже работающими установками: настройки,

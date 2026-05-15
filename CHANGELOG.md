@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.3] - 2026-05-15 - sing-box runtime update
+
+This release updates the embedded sing-box runtime from `v1.13.4` to
+`v1.13.11` and keeps the panel, REST API, frontend forms, and database
+schema unchanged.
+
+### Runtime
+
+- Updated `github.com/sagernet/sing-box` to `v1.13.11`.
+- Accepted the matching upstream dependency set, including `sing v0.8.9`,
+  `sing-tun v0.8.9`, `sing-quic v0.6.1`, and the April 2026 `cronet-go`
+  modules required by NaiveProxy.
+- Pinned the Linux release workflow to the full `cronet-go` commit
+  `e4926ba205fae5351e3d3eeafff7e7029654424a` so release builds do not use a
+  short commit prefix for the source checkout.
+
+### Compatibility and Security
+
+- No database migration is required; stored inbound/outbound/endpoint/service
+  JSON remains compatible with `sing-box v1.13.11`.
+- No web UI fields were added because `sing-box 1.13.5` through `1.13.11`
+  only contain fixes and runtime updates, including the fake-ip DNS fix,
+  NaiveProxy update, and process searcher regression fix.
+- Production upgrades should deploy the full release archive or rebuilt image
+  so the updated `libcronet.so`/`libcronet.dll` stays in sync with the new
+  binary.
+
+### Verification
+
+- `go mod verify`
+- `go test ./...`
+- `go test -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale" ./...`
+
 ## [1.4.2-beta] — 2026-05-14 — security and reliability hardening
 
 This release rewrites large parts of the auth, transaction, and runtime
