@@ -22,6 +22,12 @@ logs, or support chats.
 - Admins can invalidate all active web sessions from the Admins panel. This
   rotates the web session generation and clears the initiator cookie. API
   tokens are not revoked by this action.
+- Secret-aware settings now use an AES-GCM/HKDF secretbox helper. Set
+  `SUI_SECRETBOX_KEY` in production; otherwise the panel falls back to
+  `settings.secret` for compatibility and logs a warning.
+- Secret values are not returned by `api/settings`; the response exposes
+  `<key>HasSecret` markers instead, and saving an empty secret field keeps the
+  existing encrypted value.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.

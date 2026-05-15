@@ -9,6 +9,11 @@ All notable changes to this project are documented in this file.
 - Added an Admins panel action to invalidate all admin web sessions at once.
   The action rotates the session generation and clears the initiator's current
   cookie; API tokens are not revoked.
+- Added an AES-GCM/HKDF secretbox helper for sensitive settings. New
+  secret-aware settings are encrypted with `SUI_SECRETBOX_KEY` when set, or
+  with the legacy `settings.secret` compatibility key with a startup warning.
+- Secret-aware settings are masked from `api/settings` as `<key>HasSecret`;
+  saving an empty value keeps the previously stored secret.
 
 ### API
 

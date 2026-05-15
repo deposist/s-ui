@@ -42,32 +42,39 @@ var defaultConfig = `{
 }`
 
 var defaultValueMap = map[string]string{
-	"webListen":     "",
-	"webDomain":     "",
-	"webPort":       "2095",
-	"secret":        common.Random(32),
-	"webCertFile":   "",
-	"webKeyFile":    "",
-	"webPath":       "/app/",
-	"webURI":        "",
-	"sessionMaxAge": "0",
-	"sessionGeneration": "",
-	"trafficAge":    "30",
-	"timeLocation":  "Europe/Moscow",
-	"subListen":     "",
-	"subPort":       "2096",
-	"subPath":       "/sub/",
-	"subDomain":     "",
-	"subCertFile":   "",
-	"subKeyFile":    "",
-	"subUpdates":    "12",
-	"subEncode":     "true",
-	"subShowInfo":   "false",
-	"subURI":        "",
-	"subJsonExt":    "",
-	"subClashExt":   "",
-	"config":        defaultConfig,
-	"version":       config.GetVersion(),
+	"webListen":             "",
+	"webDomain":             "",
+	"webPort":               "2095",
+	"secret":                common.Random(32),
+	"webCertFile":           "",
+	"webKeyFile":            "",
+	"webPath":               "/app/",
+	"webURI":                "",
+	"sessionMaxAge":         "0",
+	"sessionGeneration":     "",
+	"trafficAge":            "30",
+	"timeLocation":          "Europe/Moscow",
+	"subListen":             "",
+	"subPort":               "2096",
+	"subPath":               "/sub/",
+	"subDomain":             "",
+	"subCertFile":           "",
+	"subKeyFile":            "",
+	"subUpdates":            "12",
+	"subEncode":             "true",
+	"subShowInfo":           "false",
+	"subURI":                "",
+	"subJsonExt":            "",
+	"subClashExt":           "",
+	"auditRetentionDays":    "30",
+	"telegramEnabled":       "false",
+	"telegramBotToken":      "",
+	"telegramChatID":        "",
+	"telegramProxyURL":      "",
+	"telegramProxyUsername": "",
+	"telegramProxyPassword": "",
+	"config":                defaultConfig,
+	"version":               config.GetVersion(),
 }
 
 type SettingService struct {
@@ -81,18 +88,28 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 		return nil, err
 	}
 	allSetting := map[string]string{}
+	existingKeys := map[string]bool{}
 
 	for _, setting := range settings {
+		existingKeys[setting.Key] = true
+		if isEncryptedSettingKey(setting.Key) {
+			writeSecretSettingMarker(allSetting, setting.Key, setting.Value)
+			continue
+		}
 		allSetting[setting.Key] = setting.Value
 	}
 
 	for key, defaultValue := range defaultValueMap {
-		if _, exists := allSetting[key]; !exists {
+		if !existingKeys[key] {
 			err = s.saveSetting(key, defaultValue)
 			if err != nil {
 				return nil, err
 			}
-			allSetting[key] = defaultValue
+			if isEncryptedSettingKey(key) {
+				writeSecretSettingMarker(allSetting, key, defaultValue)
+			} else {
+				allSetting[key] = defaultValue
+			}
 		}
 	}
 
@@ -130,6 +147,9 @@ func (s *SettingService) getString(key string) (string, error) {
 		return value, nil
 	} else if err != nil {
 		return "", err
+	}
+	if isEncryptedSettingKey(key) {
+		return s.decryptSettingValue(key, setting.Value)
 	}
 	return setting.Value, nil
 }
@@ -382,6 +402,18 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		return err
 	}
 	for key, obj := range settings {
+		if strings.HasSuffix(key, "HasSecret") {
+			continue
+		}
+		if isEncryptedSettingKey(key) {
+			if obj == "" {
+				continue
+			}
+			obj, err = s.encryptSettingValue(key, obj)
+			if err != nil {
+				return err
+			}
+		}
 		// Secure file existence check
 		if obj != "" && (key == "webCertFile" ||
 			key == "webKeyFile" ||
