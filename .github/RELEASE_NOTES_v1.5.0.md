@@ -22,6 +22,9 @@ logs, or support chats.
 - Admins can invalidate all active web sessions from the Admins panel. This
   rotates the web session generation and clears the initiator cookie. API
   tokens are not revoked by this action.
+- Grouped API routes were added as the compatibility layer for upcoming
+  security, notification, observability, and bulk outbound-check features.
+  Existing `/api/<action>` URLs remain supported.
 - The installer and `s-ui` management menu now include Chinese as language
   option `3`. Non-interactive installs can use `SUI_LANG=zh`.
 - The embedded `sing-box` runtime remains `v1.13.11` from the `v1.4.3`

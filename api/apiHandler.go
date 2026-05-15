@@ -27,8 +27,24 @@ func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 			checkLogin(c)
 		}
 	})
+	a.registerGroupedRoutes(g)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
+}
+
+func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
+	g.GET("/csrf", a.ApiService.GetCSRF)
+	g.POST("/checkOutbounds", a.ApiService.CheckOutbounds)
+
+	security := g.Group("/security")
+	security.GET("/audit", a.ApiService.GetSecurityAudit)
+
+	telegram := g.Group("/telegram")
+	telegram.POST("/test", a.ApiService.TestTelegram)
+
+	observability := g.Group("/observability")
+	observability.GET("/history", a.ApiService.GetObservabilityHistory)
+	observability.GET("/core-history", a.ApiService.GetCoreHistory)
 }
 
 func (a *APIHandler) postHandler(c *gin.Context) {

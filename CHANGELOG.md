@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file.
   The action rotates the session generation and clears the initiator's current
   cookie; API tokens are not revoked.
 
+### API
+
+- Added grouped API route placeholders for the `1.5.0` security,
+  notification, observability, and bulk outbound-check work while preserving
+  the existing one-level `/api/<action>` endpoints.
+
 ### Localization
 
 - `install.sh` and the `s-ui` management menu now also offer Chinese as
