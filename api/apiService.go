@@ -28,6 +28,7 @@ type ApiService struct {
 	service.ServerService
 	service.AuditService
 	service.ObservabilityService
+	service.TelegramService
 }
 
 func (a *ApiService) LoadData(c *gin.Context) {
@@ -277,6 +278,10 @@ func (a *ApiService) Login(c *gin.Context) {
 		a.recordAudit(c, username, "login_failed", "auth", service.AuditSeverityWarn, map[string]any{
 			"reason": err.Error(),
 		})
+		a.TelegramService.NotifyTelegramEvent("login_failed", map[string]string{
+			"user": username,
+			"ip":   remoteIP,
+		})
 		jsonMsg(c, "", err)
 		return
 	}
@@ -296,6 +301,10 @@ func (a *ApiService) Login(c *gin.Context) {
 	if err == nil {
 		logger.Info("user ", loginUser, " login success")
 		a.recordAudit(c, loginUser, "login_success", "auth", service.AuditSeverityInfo, nil)
+		a.TelegramService.NotifyTelegramEvent("login_success", map[string]string{
+			"user": loginUser,
+			"ip":   remoteIP,
+		})
 	} else {
 		logger.Warning("login failed: ", err)
 		a.recordAudit(c, loginUser, "login_session_failed", "auth", service.AuditSeverityWarn, map[string]any{
@@ -349,6 +358,13 @@ func (a *ApiService) RestartApp(c *gin.Context) {
 
 func (a *ApiService) RestartSb(c *gin.Context) {
 	err := a.ConfigService.RestartCore()
+	if err != nil {
+		a.TelegramService.NotifyTelegramEvent("core_restart_failed", map[string]string{
+			"error": err.Error(),
+		})
+	} else {
+		a.TelegramService.NotifyTelegramEvent("core_restarted", nil)
+	}
 	jsonMsg(c, "restartSb", err)
 }
 
@@ -393,6 +409,9 @@ func (a *ApiService) LogoutAllAdmins(c *gin.Context) {
 			logger.Infof("user %s logged out all admin web sessions", loginUser)
 		}
 		a.recordAudit(c, loginUser, "logout_all_admins", "auth", service.AuditSeverityWarn, nil)
+		a.TelegramService.NotifyTelegramEvent("logout_all_admins", map[string]string{
+			"user": loginUser,
+		})
 		ClearSession(c)
 	}
 	jsonMsg(c, "logoutAllAdmins", err)

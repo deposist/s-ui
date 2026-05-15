@@ -50,6 +50,9 @@ logs, or support chats.
 - Observability endpoints now expose bounded in-memory system/core history and
   `GET /api/version`. `POST /api/checkOutbounds` checks all outbounds with
   concurrency and timeout bounds and rejects non-HTTPS or private-IP targets.
+- Telegram notifications are disabled by default. `POST /api/telegram/test`
+  returns `{success, errorClass}` without raw Telegram responses, and event
+  delivery is best-effort only after Telegram is explicitly enabled.
 - Grouped API routes were added as the compatibility layer for upcoming
   security, notification, observability, and bulk outbound-check features.
   Existing `/api/<action>` URLs remain supported.

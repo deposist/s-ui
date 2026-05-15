@@ -33,7 +33,7 @@ func (a *ApiService) GetSecurityAudit(c *gin.Context) {
 }
 
 func (a *ApiService) TestTelegram(c *gin.Context) {
-	jsonMsg(c, "telegram test", common.NewError("telegram notifier is disabled"))
+	jsonObj(c, a.TelegramService.TestTelegram(), nil)
 }
 
 func (a *ApiService) GetObservabilityHistory(c *gin.Context) {

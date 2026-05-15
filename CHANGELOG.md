@@ -44,6 +44,10 @@ All notable changes to this project are documented in this file.
 - Added `POST /api/checkOutbounds` for bounded bulk outbound checks with
   concurrency `8`, per-outbound timeout `5s`, total timeout `60s`, and an
   HTTPS/public-IP target validator.
+- Added disabled-by-default Telegram notification service and
+  `POST /api/telegram/test`. Bot token and proxy-related settings are
+  secret-aware; login, logout-all-admins, and core restart events notify only
+  when Telegram is explicitly enabled.
 
 ### Localization
 
