@@ -41,6 +41,12 @@ func hasWSTokenForTest(token string) bool {
 	return ok
 }
 
+func wsTokenCountForTest() int {
+	wsTokens.Lock()
+	defer wsTokens.Unlock()
+	return len(wsTokens.tokens)
+}
+
 func TestConsumeWSTokenIsOneTime(t *testing.T) {
 	resetRealtimeForTest()
 	setWSTokenForTest("token", "admin")
@@ -102,6 +108,65 @@ func TestWSOriginAllowedAcceptsRequestHostAndWebDomain(t *testing.T) {
 				t.Fatalf("allowed=%v, want %v", allowed, tt.wantAllowed)
 			}
 		})
+	}
+}
+
+func TestIssueWSTokenRejectsForeignOriginAndAudits(t *testing.T) {
+	resetRateLimitState()
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	resetRealtimeForTest()
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.GET("/login", func(c *gin.Context) {
+		generation, err := settingService.GetSessionGeneration()
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if err := SetLoginUser(c, "admin", 0, generation); err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/api/realtime/ws-token", (&ApiService{}).IssueWSToken)
+
+	loginRecorder := httptest.NewRecorder()
+	loginReq := httptest.NewRequest(http.MethodGet, "/login", nil)
+	router.ServeHTTP(loginRecorder, loginReq)
+	if loginRecorder.Code != http.StatusNoContent {
+		t.Fatalf("login returned %d", loginRecorder.Code)
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://panel.example/api/realtime/ws-token", nil)
+	req.Host = "panel.example"
+	req.Header.Set("Origin", "https://evil.example")
+	for _, c := range loginRecorder.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("unexpected status %d", recorder.Code)
+	}
+	if wsTokenCountForTest() != 0 {
+		t.Fatal("foreign Origin request issued a websocket token")
+	}
+
+	var event model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "ws_origin_rejected").First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	if event.Actor != "admin" {
+		t.Fatalf("unexpected audit actor: %q", event.Actor)
+	}
+	if strings.Contains(string(event.Details), "ws-token") || strings.Contains(string(event.Details), "token") {
+		t.Fatalf("websocket token leaked to audit details: %s", event.Details)
 	}
 }
 

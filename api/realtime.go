@@ -54,6 +54,9 @@ func (a *ApiService) IssueWSToken(c *gin.Context) {
 		jsonMsg(c, "wsToken", common.NewError("invalid login"))
 		return
 	}
+	if !a.validateWSOrigin(c, user) {
+		return
+	}
 	token := common.Random(32)
 	wsTokens.Lock()
 	wsTokens.tokens[token] = realtimeToken{user: user, expiresAt: time.Now().Add(wsTokenTTL)}
