@@ -1,6 +1,9 @@
 package redact
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValueRedactsSensitiveKeys(t *testing.T) {
 	input := map[string]any{
@@ -24,5 +27,46 @@ func TestValueRedactsSensitiveKeys(t *testing.T) {
 	}
 	if nested["port"] != 2095 {
 		t.Fatalf("non-secret nested field changed: %#v", nested["port"])
+	}
+}
+
+func TestValueRedactsSensitiveStringValues(t *testing.T) {
+	botToken := "1234567890:" + strings.Repeat("A", 35)
+	base32Secret := "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+	input := map[string]any{
+		"message": "Authorization: Bearer secret.jwt.value",
+		"nested": map[string]any{
+			"caption": "telegram token " + botToken,
+			"codes":   []string{"Token: legacy-token", base32Secret},
+		},
+	}
+	redacted := Value(input).(map[string]any)
+	if got := redacted["message"].(string); got != "Authorization: Bearer "+Marker {
+		t.Fatalf("authorization header was not redacted: %q", got)
+	}
+	nested := redacted["nested"].(map[string]any)
+	if got := nested["caption"].(string); strings.Contains(got, botToken) || !strings.Contains(got, Marker) {
+		t.Fatalf("telegram token was not redacted: %q", got)
+	}
+	codes := nested["codes"].([]string)
+	if codes[0] != "Token: "+Marker {
+		t.Fatalf("legacy token header was not redacted: %q", codes[0])
+	}
+	if codes[1] != Marker {
+		t.Fatalf("base32 secret was not redacted: %q", codes[1])
+	}
+}
+
+func TestValueRedactsMapStringString(t *testing.T) {
+	input := map[string]string{
+		"plain":        "Token: legacy-token",
+		"refreshToken": "secret",
+	}
+	redacted := Value(input).(map[string]string)
+	if redacted["plain"] != "Token: "+Marker {
+		t.Fatalf("plain string value was not redacted: %q", redacted["plain"])
+	}
+	if redacted["refreshToken"] != Marker {
+		t.Fatalf("sensitive key was not redacted: %q", redacted["refreshToken"])
 	}
 }

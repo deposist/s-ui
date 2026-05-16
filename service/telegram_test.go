@@ -2,6 +2,7 @@ package service
 
 import (
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -84,6 +85,33 @@ func TestNotifyTelegramEventReturnsBeforeSendCompletes(t *testing.T) {
 	case <-sendDone:
 	case <-time.After(time.Second):
 		t.Fatal("send did not complete after release")
+	}
+}
+
+func TestNotifyTelegramEventRedactsSensitiveFields(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	enableTelegramForTest(t, settingService)
+
+	sent := make(chan string, 1)
+	notifier := newTelegramNotifier(telegramQueueCapacity, func(text string) TelegramResult {
+		sent <- text
+		return TelegramResult{Success: true}
+	}, func(string, map[string]any) {})
+	notifier.backoff = nil
+	replaceDefaultTelegramNotifierForTest(t, notifier)
+
+	(&TelegramService{}).NotifyTelegramEvent("manual_backup", map[string]string{
+		"caption":       "Authorization: Bearer secret.jwt.value",
+		"telegramToken": "1234567890:" + strings.Repeat("A", 35),
+	})
+
+	got := receiveString(t, sent, "redacted notification")
+	if strings.Contains(got, "secret.jwt.value") || strings.Contains(got, "1234567890:") {
+		t.Fatalf("telegram notification leaked sensitive value: %q", got)
+	}
+	if !strings.Contains(got, "Authorization: Bearer [REDACTED]") ||
+		!strings.Contains(got, "telegramToken: [REDACTED]") {
+		t.Fatalf("telegram notification was not redacted: %q", got)
 	}
 }
 

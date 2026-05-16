@@ -11,6 +11,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-rus-inst/util/redact"
 	"github.com/deposist/s-ui-rus-inst/util/ssrf"
 )
 
@@ -186,10 +187,15 @@ func (s *TelegramService) NotifyTelegramEvent(event string, fields map[string]st
 	if err != nil || !enabled {
 		return
 	}
-	msg := "S-UI event: " + event
+	msg := "S-UI event: " + redact.String(event)
 	for key, value := range fields {
 		if value == "" {
 			continue
+		}
+		if redact.IsSensitiveKey(key) {
+			value = redact.Marker
+		} else {
+			value = redact.String(value)
 		}
 		msg += "\n" + key + ": " + value
 	}
@@ -214,7 +220,7 @@ func (s *TelegramService) send(text string) TelegramResult {
 	}
 	payload, err := json.Marshal(map[string]string{
 		"chat_id": chatID,
-		"text":    text,
+		"text":    redact.String(text),
 	})
 	if err != nil {
 		return TelegramResult{ErrorClass: "payload"}
