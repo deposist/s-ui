@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/util/common"
 	"github.com/deposist/s-ui-rus-inst/util/redact"
 	"github.com/deposist/s-ui-rus-inst/util/ssrf"
+	"golang.org/x/net/proxy"
 )
 
 type TelegramService struct {
@@ -29,6 +32,8 @@ const telegramQueueCapacity = 256
 var (
 	telegramHTTPClientMu sync.RWMutex
 	telegramHTTPClient   = &http.Client{Timeout: 10 * time.Second}
+	telegramHTTPOverride bool
+	telegramHTTPConfig   telegramProxyConfig
 
 	defaultTelegramNotifier = newTelegramNotifier(
 		telegramQueueCapacity,
@@ -38,6 +43,12 @@ var (
 		recordTelegramNotifierAudit,
 	)
 )
+
+type telegramProxyConfig struct {
+	URL      string
+	Username string
+	Password string
+}
 
 type telegramNotification struct {
 	event string
@@ -166,14 +177,48 @@ func getTelegramHTTPClient() *http.Client {
 	return telegramHTTPClient
 }
 
+func (s *TelegramService) getTelegramHTTPClient() (*http.Client, error) {
+	cfg, err := s.telegramProxyConfig()
+	if err != nil {
+		return nil, err
+	}
+	telegramHTTPClientMu.RLock()
+	if telegramHTTPOverride {
+		client := telegramHTTPClient
+		telegramHTTPClientMu.RUnlock()
+		return client, nil
+	}
+	if telegramHTTPClient != nil && telegramHTTPConfig == cfg {
+		client := telegramHTTPClient
+		telegramHTTPClientMu.RUnlock()
+		return client, nil
+	}
+	telegramHTTPClientMu.RUnlock()
+
+	client, err := newTelegramHTTPClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	telegramHTTPClientMu.Lock()
+	telegramHTTPClient = client
+	telegramHTTPConfig = cfg
+	telegramHTTPClientMu.Unlock()
+	return client, nil
+}
+
 func setTelegramHTTPClient(client *http.Client) func() {
 	telegramHTTPClientMu.Lock()
 	oldClient := telegramHTTPClient
+	oldOverride := telegramHTTPOverride
+	oldConfig := telegramHTTPConfig
 	telegramHTTPClient = client
+	telegramHTTPOverride = true
 	telegramHTTPClientMu.Unlock()
 	return func() {
 		telegramHTTPClientMu.Lock()
 		telegramHTTPClient = oldClient
+		telegramHTTPOverride = oldOverride
+		telegramHTTPConfig = oldConfig
 		telegramHTTPClientMu.Unlock()
 	}
 }
@@ -230,7 +275,11 @@ func (s *TelegramService) send(text string) TelegramResult {
 		return TelegramResult{ErrorClass: "request"}
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := getTelegramHTTPClient().Do(req)
+	client, err := s.getTelegramHTTPClient()
+	if err != nil {
+		return TelegramResult{ErrorClass: "proxy"}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return TelegramResult{ErrorClass: "network"}
 	}
@@ -243,6 +292,90 @@ func (s *TelegramService) send(text string) TelegramResult {
 
 func (s *TelegramService) telegramEnabled() (bool, error) {
 	return s.getBool("telegramEnabled")
+}
+
+func (s *TelegramService) telegramProxyConfig() (telegramProxyConfig, error) {
+	proxyURL, err := s.getString("telegramProxyURL")
+	if err != nil {
+		return telegramProxyConfig{}, err
+	}
+	username, err := s.getString("telegramProxyUsername")
+	if err != nil {
+		return telegramProxyConfig{}, err
+	}
+	password, err := s.getString("telegramProxyPassword")
+	if err != nil {
+		return telegramProxyConfig{}, err
+	}
+	return telegramProxyConfig{
+		URL:      proxyURL,
+		Username: username,
+		Password: password,
+	}, nil
+}
+
+func newTelegramHTTPClient(cfg telegramProxyConfig) (*http.Client, error) {
+	if cfg.URL == "" {
+		return &http.Client{Timeout: 10 * time.Second}, nil
+	}
+	if err := validateTelegramProxyURL(cfg.URL); err != nil {
+		return nil, err
+	}
+	parsed, err := url.Parse(cfg.URL)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Username != "" || cfg.Password != "" {
+		parsed.User = url.UserPassword(cfg.Username, cfg.Password)
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+		return &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				Proxy: http.ProxyURL(parsed),
+			},
+		}, nil
+	case "socks5":
+		var auth *proxy.Auth
+		username := cfg.Username
+		password := cfg.Password
+		if parsed.User != nil && username == "" && password == "" {
+			username = parsed.User.Username()
+			password, _ = parsed.User.Password()
+		}
+		if username != "" || password != "" {
+			auth = &proxy.Auth{User: username, Password: password}
+		}
+		dialer, err := proxy.SOCKS5("tcp", parsed.Host, auth, proxy.Direct)
+		if err != nil {
+			return nil, err
+		}
+		return &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
+					type dialResult struct {
+						conn net.Conn
+						err  error
+					}
+					resultCh := make(chan dialResult, 1)
+					go func() {
+						conn, err := dialer.Dial(network, address)
+						resultCh <- dialResult{conn: conn, err: err}
+					}()
+					select {
+					case result := <-resultCh:
+						return result.conn, result.err
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				},
+			},
+		}, nil
+	default:
+		return nil, common.NewError("unsupported telegram proxy scheme")
+	}
 }
 
 func validateTelegramProxyURL(rawURL string) error {

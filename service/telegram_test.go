@@ -43,6 +43,64 @@ func TestTelegramDisabledMakesNoOutboundCall(t *testing.T) {
 	}
 }
 
+func TestNewTelegramHTTPClientUsesHTTPProxySettings(t *testing.T) {
+	client, err := newTelegramHTTPClient(telegramProxyConfig{
+		URL:      "http://1.1.1.1:8080",
+		Username: "proxy-user",
+		Password: "proxy-pass",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.Proxy == nil {
+		t.Fatalf("expected proxy transport, got %#v", client.Transport)
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://api.telegram.org", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxyURL, err := transport.Proxy(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if proxyURL.Host != "1.1.1.1:8080" {
+		t.Fatalf("unexpected proxy host: %s", proxyURL.Host)
+	}
+	if user := proxyURL.User.Username(); user != "proxy-user" {
+		t.Fatalf("unexpected proxy user: %s", user)
+	}
+	if password, _ := proxyURL.User.Password(); password != "proxy-pass" {
+		t.Fatalf("unexpected proxy password: %s", password)
+	}
+}
+
+func TestNewTelegramHTTPClientAcceptsSOCKS5Proxy(t *testing.T) {
+	client, err := newTelegramHTTPClient(telegramProxyConfig{
+		URL: "socks5://1.1.1.1:1080",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.Transport == nil {
+		t.Fatal("expected socks5 transport")
+	}
+}
+
+func TestTelegramInvalidProxySettingFailsBeforeOutbound(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	enableTelegramForTest(t, settingService)
+	resetTelegramHTTPClientCacheForTest(t)
+	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "telegramProxyURL").Update("value", "http://127.0.0.1:8080").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	result := (&TelegramService{}).TestTelegram()
+	if result.Success || result.ErrorClass != "proxy" {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
 func TestNotifyTelegramEventReturnsBeforeSendCompletes(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	enableTelegramForTest(t, settingService)
@@ -233,6 +291,25 @@ func replaceDefaultTelegramNotifierForTest(t *testing.T, notifier *telegramNotif
 	defaultTelegramNotifier = notifier
 	t.Cleanup(func() {
 		defaultTelegramNotifier = oldNotifier
+	})
+}
+
+func resetTelegramHTTPClientCacheForTest(t *testing.T) {
+	t.Helper()
+	telegramHTTPClientMu.Lock()
+	oldClient := telegramHTTPClient
+	oldOverride := telegramHTTPOverride
+	oldConfig := telegramHTTPConfig
+	telegramHTTPClient = &http.Client{Timeout: 10 * time.Second}
+	telegramHTTPOverride = false
+	telegramHTTPConfig = telegramProxyConfig{}
+	telegramHTTPClientMu.Unlock()
+	t.Cleanup(func() {
+		telegramHTTPClientMu.Lock()
+		telegramHTTPClient = oldClient
+		telegramHTTPOverride = oldOverride
+		telegramHTTPConfig = oldConfig
+		telegramHTTPClientMu.Unlock()
 	})
 }
 
