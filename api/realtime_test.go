@@ -228,6 +228,66 @@ func TestRealtimeWSSendsPublishedEvents(t *testing.T) {
 	}
 }
 
+func TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong(t *testing.T) {
+	setWSHeartbeatForTest(t, 10*time.Millisecond, 200*time.Millisecond)
+	router, cookies := newRealtimeWSTestRouter(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	resetRealtimeForTest()
+	setWSTokenForTest("ws-token", "admin")
+
+	var pings atomic.Int32
+	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+		pings.Add(1)
+		return false
+	})
+	t.Cleanup(func() { conn.CloseNow() })
+
+	connected := readRealtimeEventForTest(t, conn)
+	if connected.Type != realtime.Topic("connected") {
+		t.Fatalf("expected connected event, got %s", connected.Type)
+	}
+
+	eventCh := make(chan realtime.Event, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		event, err := readRealtimeEvent(ctx, conn)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		eventCh <- event
+	}()
+
+	deadline := time.After(time.Second)
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for pings.Load() == 0 {
+		select {
+		case <-tick.C:
+		case err := <-errCh:
+			t.Fatalf("websocket closed before test event publish: %v", err)
+		case <-deadline:
+			t.Fatal("heartbeat ping was not observed")
+		}
+	}
+
+	realtime.Publish(realtime.TopicNotification, map[string]any{"kind": "during-ping"})
+	select {
+	case event := <-eventCh:
+		if event.Type != realtime.TopicNotification {
+			t.Fatalf("expected published notification, got %s", event.Type)
+		}
+	case err := <-errCh:
+		t.Fatalf("websocket closed before event delivery: %v", err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("event delivery was blocked by heartbeat ping")
+	}
+}
+
 func TestRealtimeWSRejectsReplayToken(t *testing.T) {
 	router, cookies := newRealtimeWSTestRouter(t)
 	server := httptest.NewServer(router)
@@ -275,23 +335,23 @@ func TestRealtimeWSClosesWhenPongMissing(t *testing.T) {
 
 	select {
 	case err := <-errCh:
-		if websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
-			t.Fatalf("expected policy violation close, got %v", err)
+		if websocket.CloseStatus(err) != websocket.StatusInternalError {
+			t.Fatalf("expected internal error close, got %v", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("websocket did not close after missing pong")
 	}
 }
 
-func setWSHeartbeatForTest(t *testing.T, pingInterval time.Duration, idleTimeout time.Duration) {
+func setWSHeartbeatForTest(t *testing.T, pingInterval time.Duration, pingTimeout time.Duration) {
 	t.Helper()
 	oldPingInterval := wsPingInterval
-	oldIdleTimeout := wsIdleTimeout
+	oldPingTimeout := wsPingTimeout
 	wsPingInterval = pingInterval
-	wsIdleTimeout = idleTimeout
+	wsPingTimeout = pingTimeout
 	t.Cleanup(func() {
 		wsPingInterval = oldPingInterval
-		wsIdleTimeout = oldIdleTimeout
+		wsPingTimeout = oldPingTimeout
 	})
 }
 
@@ -367,19 +427,27 @@ func readRealtimeEventForTest(t *testing.T, conn *websocket.Conn) realtime.Event
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, reader, err := conn.Reader(ctx)
+	event, err := readRealtimeEvent(ctx, conn)
 	if err != nil {
-		t.Fatal(err)
-	}
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var event realtime.Event
-	if err := json.Unmarshal(body, &event); err != nil {
 		t.Fatal(err)
 	}
 	return event
+}
+
+func readRealtimeEvent(ctx context.Context, conn *websocket.Conn) (realtime.Event, error) {
+	_, reader, err := conn.Reader(ctx)
+	if err != nil {
+		return realtime.Event{}, err
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		return realtime.Event{}, err
+	}
+	var event realtime.Event
+	if err := json.Unmarshal(body, &event); err != nil {
+		return realtime.Event{}, err
+	}
+	return event, nil
 }
 
 func cookieHeader(cookies []*http.Cookie) string {

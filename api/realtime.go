@@ -30,7 +30,7 @@ const (
 
 var (
 	wsPingInterval = 25 * time.Second
-	wsIdleTimeout  = 60 * time.Second
+	wsPingTimeout  = 5 * time.Second
 )
 
 type realtimeToken struct {
@@ -112,8 +112,12 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 	}()
 
 	wsCtx := conn.CloseRead(c.Request.Context())
-	pingTicker := time.NewTicker(wsPingInterval)
-	defer pingTicker.Stop()
+	heartbeatCtx, stopHeartbeat := context.WithCancel(wsCtx)
+	heartbeatDone := startWSHeartbeat(heartbeatCtx, conn)
+	defer func() {
+		stopHeartbeat()
+		<-heartbeatDone
+	}()
 
 	select {
 	case sendCh <- realtime.Event{Type: realtime.Topic("connected"), Ts: time.Now().Unix()}:
@@ -131,18 +135,34 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 			if err != nil {
 				return
 			}
-		case <-pingTicker.C:
-			pingCtx, cancel := context.WithTimeout(wsCtx, wsIdleTimeout)
-			err := conn.Ping(pingCtx)
-			cancel()
-			if err != nil {
-				_ = conn.Close(websocket.StatusPolicyViolation, "heartbeat timeout")
-				return
-			}
 		case <-wsCtx.Done():
 			return
 		}
 	}
+}
+
+func startWSHeartbeat(ctx context.Context, conn *websocket.Conn) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(wsPingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				pingCtx, cancel := context.WithTimeout(ctx, wsPingTimeout)
+				err := conn.Ping(pingCtx)
+				cancel()
+				if err != nil {
+					_ = conn.Close(websocket.StatusInternalError, "heartbeat")
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return done
 }
 
 func (a *ApiService) enforceWSHandshakeRateLimit(c *gin.Context, endpoint string) bool {
