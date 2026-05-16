@@ -145,3 +145,54 @@ func TestJsonServiceMuxToggle(t *testing.T) {
 		}
 	}
 }
+
+func TestJsonServiceDirectRulesToggle(t *testing.T) {
+	initSubTestDB(t)
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	config := map[string]interface{}{}
+	if err := (&JsonService{}).addOthers(&config); err != nil {
+		t.Fatal(err)
+	}
+	route := config["route"].(map[string]interface{})
+	if _, ok := route["rule_set"]; ok {
+		t.Fatalf("direct rule_sets should be absent when subJsonDirectRules=false: %#v", route)
+	}
+
+	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "subJsonDirectRules").Update("value", "true").Error; err != nil {
+		t.Fatal(err)
+	}
+	config = map[string]interface{}{}
+	if err := (&JsonService{}).addOthers(&config); err != nil {
+		t.Fatal(err)
+	}
+	route = config["route"].(map[string]interface{})
+	rules := route["rules"].([]interface{})
+	if len(rules) < 2 {
+		t.Fatalf("expected direct rule after sniff rule: %#v", rules)
+	}
+	directRule := rules[1].(map[string]interface{})
+	if directRule["outbound"] != "direct" || directRule["action"] != "route" {
+		t.Fatalf("unexpected direct rule: %#v", directRule)
+	}
+	ruleSetTags, ok := directRule["rule_set"].([]string)
+	if !ok || len(ruleSetTags) != 2 || ruleSetTags[0] != "geosite-private" || ruleSetTags[1] != "geoip-private" {
+		t.Fatalf("unexpected direct rule sets: %#v", directRule["rule_set"])
+	}
+	ruleSets := route["rule_set"].([]interface{})
+	if !hasRuleSetTag(ruleSets, "geosite-private") || !hasRuleSetTag(ruleSets, "geoip-private") {
+		t.Fatalf("private rule_sets missing: %#v", ruleSets)
+	}
+}
+
+func hasRuleSetTag(ruleSets []interface{}, tag string) bool {
+	for _, ruleSet := range ruleSets {
+		if got, ok := ruleSetTag(ruleSet); ok && got == tag {
+			return true
+		}
+	}
+	return false
+}

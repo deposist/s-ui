@@ -287,6 +287,9 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 		return err
 	}
 	if len(othersStr) == 0 {
+		if err := j.addDirectRules(route); err != nil {
+			return err
+		}
 		(*jsonConfig)["route"] = route
 		return nil
 	}
@@ -317,9 +320,91 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok {
 		route["default_domain_resolver"] = defaultDomainResolver
 	}
+	if err := j.addDirectRules(route); err != nil {
+		return err
+	}
 	(*jsonConfig)["route"] = route
 
 	return nil
+}
+
+func (j *JsonService) addDirectRules(route map[string]interface{}) error {
+	enabled, err := j.SettingService.GetSubJsonDirectRules()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+	route["rule_set"] = mergeDirectRuleSets(route["rule_set"])
+	rules, _ := route["rules"].([]interface{})
+	route["rules"] = insertDirectRouteRules(rules)
+	return nil
+}
+
+func insertDirectRouteRules(rules []interface{}) []interface{} {
+	directRule := map[string]interface{}{
+		"rule_set": []string{"geosite-private", "geoip-private"},
+		"action":   "route",
+		"outbound": "direct",
+	}
+	if len(rules) == 0 {
+		return []interface{}{directRule}
+	}
+	result := make([]interface{}, 0, len(rules)+1)
+	result = append(result, rules[0], directRule)
+	result = append(result, rules[1:]...)
+	return result
+}
+
+func mergeDirectRuleSets(existing interface{}) []interface{} {
+	result := make([]interface{}, 0)
+	seen := map[string]bool{}
+	if ruleSets, ok := existing.([]interface{}); ok {
+		for _, ruleSet := range ruleSets {
+			if tag, ok := ruleSetTag(ruleSet); ok {
+				seen[tag] = true
+			}
+			result = append(result, ruleSet)
+		}
+	}
+	for _, ruleSet := range directRuleSets() {
+		tag, _ := ruleSetTag(ruleSet)
+		if seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		result = append(result, ruleSet)
+	}
+	return result
+}
+
+func ruleSetTag(ruleSet interface{}) (string, bool) {
+	ruleSetMap, ok := ruleSet.(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+	tag, ok := ruleSetMap["tag"].(string)
+	return tag, ok && tag != ""
+}
+
+func directRuleSets() []interface{} {
+	return []interface{}{
+		map[string]interface{}{
+			"tag":             "geosite-private",
+			"type":            "remote",
+			"format":          "binary",
+			"url":             "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/private.srs",
+			"download_detour": "direct",
+		},
+		map[string]interface{}{
+			"tag":             "geoip-private",
+			"type":            "remote",
+			"format":          "binary",
+			"url":             "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/private.srs",
+			"download_detour": "direct",
+		},
+	}
 }
 
 func (j *JsonService) addMux(jsonConfig *map[string]interface{}) error {
