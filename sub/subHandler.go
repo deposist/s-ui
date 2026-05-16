@@ -46,6 +46,9 @@ func (s *SubHandler) subs(c *gin.Context) {
 		}
 		return
 	}
+	if !s.subLinkEnabled(c) {
+		return
+	}
 
 	var headers []string
 	var result *string
@@ -82,6 +85,9 @@ func (s *SubHandler) clash(c *gin.Context) {
 }
 
 func (s *SubHandler) subHeaders(c *gin.Context) {
+	if !s.subLinkEnabled(c) {
+		return
+	}
 	subId := c.Param("subid")
 	client, err := s.SubService.getClientBySubId(subId)
 	if err != nil {
@@ -94,6 +100,20 @@ func (s *SubHandler) subHeaders(c *gin.Context) {
 	s.addHeaders(c, headers)
 
 	c.Status(200)
+}
+
+func (s *SubHandler) subLinkEnabled(c *gin.Context) bool {
+	enabled, err := s.SettingService.GetSubLinkEnable()
+	if err != nil {
+		logger.Error(err)
+		s.writeError(c, err)
+		return false
+	}
+	if !enabled {
+		c.String(404, "Not Found")
+		return false
+	}
+	return true
 }
 
 func (s *SubHandler) addHeaders(c *gin.Context, headers []string) {

@@ -206,3 +206,45 @@ func TestSubscriptionEnableSettingsDisableFormats(t *testing.T) {
 		t.Fatal("clash subscription should be disabled before client lookup")
 	}
 }
+
+func TestSubHandlerLinkDisableReturns404ForBaseSubscription(t *testing.T) {
+	initSubTestDB(t)
+	resetRateLimitBucketsForTest()
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "subLinkEnable").Update("value", "false").Error; err != nil {
+		t.Fatal(err)
+	}
+	client := model.Client{
+		Enable:    true,
+		Name:      "alice",
+		SubSecret: "secret-id",
+		Config:    json.RawMessage(`{}`),
+		Inbounds:  json.RawMessage(`[]`),
+		Links:     json.RawMessage(`[]`),
+	}
+	if err := database.GetDB().Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	NewSubHandler(router.Group("/sub"))
+
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		recorder := httptest.NewRecorder()
+		req := httptest.NewRequest(method, "/sub/secret-id", nil)
+		router.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("%s base subscription should be hidden, got %d", method, recorder.Code)
+		}
+	}
+
+	jsonRecorder := httptest.NewRecorder()
+	router.ServeHTTP(jsonRecorder, httptest.NewRequest(http.MethodGet, "/sub/secret-id?format=json", nil))
+	if jsonRecorder.Code != http.StatusOK {
+		t.Fatalf("json format should use subJsonEnable, got %d", jsonRecorder.Code)
+	}
+}
