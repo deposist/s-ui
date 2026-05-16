@@ -32,6 +32,7 @@ type ApiService struct {
 	service.AuditService
 	service.ObservabilityService
 	service.TelegramService
+	service.VersionService
 }
 
 func (a *ApiService) LoadData(c *gin.Context) {

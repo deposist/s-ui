@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/config"
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util/common"
@@ -253,9 +252,7 @@ func parseObservabilitySince(raw string) (int64, error) {
 }
 
 func (a *ApiService) GetVersionInfo(c *gin.Context) {
-	jsonObj(c, gin.H{
-		"version": config.GetVersion(),
-	}, nil)
+	jsonObj(c, a.VersionService.GetVersionInfo(), nil)
 }
 
 func (a *ApiService) CheckOutbounds(c *gin.Context) {
