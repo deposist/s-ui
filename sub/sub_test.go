@@ -241,6 +241,62 @@ func TestSubscriptionEnableSettingsDisableFormats(t *testing.T) {
 	}
 }
 
+func TestSubServerServesDefaultAndCustomFormatPaths(t *testing.T) {
+	initSubTestDB(t)
+	resetRateLimitBucketsForTest()
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range map[string]string{
+		"subJsonPath":  "/sing-json/",
+		"subClashPath": "/sing-clash/",
+	} {
+		if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	client := model.Client{
+		Enable:    true,
+		Name:      "alice",
+		SubSecret: "secret-id",
+		Config:    json.RawMessage(`{}`),
+		Inbounds:  json.RawMessage(`[]`),
+		Links:     json.RawMessage(`[]`),
+	}
+	if err := database.GetDB().Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	server := NewServer()
+	router, err := server.initRouter()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{"/json/secret-id", "/sing-json/secret-id"} {
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, recorder.Code)
+		}
+		if !strings.Contains(recorder.Body.String(), `"outbounds"`) {
+			t.Fatalf("%s did not return JSON subscription: %s", path, recorder.Body.String())
+		}
+	}
+
+	for _, path := range []string{"/clash/secret-id", "/sing-clash/secret-id"} {
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, recorder.Code)
+		}
+		if !strings.Contains(recorder.Body.String(), "proxy-groups:") {
+			t.Fatalf("%s did not return Clash subscription: %s", path, recorder.Body.String())
+		}
+	}
+}
+
 func TestSubHandlerLinkDisableReturns404ForBaseSubscription(t *testing.T) {
 	initSubTestDB(t)
 	resetRateLimitBucketsForTest()

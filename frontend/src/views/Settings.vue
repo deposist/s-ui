@@ -131,6 +131,9 @@
       <v-window-item value="t3">
         <v-row>
           <v-col cols="12" sm="6" md="4">
+            <v-text-field v-model="settings.subJsonPath" :label="$t('setting.jsonPath')" hide-details></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="settings.subJsonURI" :label="$t('setting.jsonSub') + ' ' + $t('setting.subUri')" hide-details></v-text-field>
           </v-col>
         </v-row>
@@ -139,6 +142,9 @@
 
       <v-window-item value="t4">
         <v-row>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field v-model="settings.subClashPath" :label="$t('setting.clashPath')" hide-details></v-text-field>
+          </v-col>
           <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="settings.subClashURI" :label="$t('setting.clashSub') + ' ' + $t('setting.subUri')" hide-details></v-text-field>
           </v-col>
@@ -184,6 +190,8 @@ const settings = ref({
   subEncode: "true",
   subShowInfo: "false",
 	subURI: "",
+  subJsonPath: "/json/",
+  subClashPath: "/clash/",
   subJsonURI: "",
   subClashURI: "",
   subJsonExt: "",
@@ -214,6 +222,7 @@ const setData = (data: any) => {
 const save = async () => {
   loading.value = true
   const payload = stripSecretPlaceholders(settings.value)
+  const restartRequired = subscriptionPathChanged()
   const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(payload) })
   if (msg.success) {
     push.success({
@@ -221,6 +230,13 @@ const save = async () => {
       duration: 5000,
       message: i18n.global.t('actions.set') + " " + i18n.global.t('pages.settings')
     })
+    if (restartRequired) {
+      push.warning({
+        title: i18n.global.t('setting.restartRequired'),
+        duration: 8000,
+        message: i18n.global.t('setting.subPathRestartNotice')
+      })
+    }
     setData(msg.obj.settings)
   }
   loading.value = false
@@ -292,6 +308,12 @@ const subUpdates = computed({
   get: () => { return settings.value.subUpdates.length>0 ? parseInt(settings.value.subUpdates) : 12 },
   set: (v:number) => { settings.value.subUpdates = v>0 ? v.toString() : "12" }
 })
+
+const subscriptionPathKeys = ['subPath', 'subJsonPath', 'subClashPath'] as const
+
+const subscriptionPathChanged = () => {
+  return subscriptionPathKeys.some((key) => settings.value[key] !== (oldSettings.value as any)[key])
+}
 
 const stateChange = computed(() => {
   return !FindDiff.deepCompare(settings.value,oldSettings.value)

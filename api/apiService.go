@@ -381,15 +381,83 @@ func (a *ApiService) Save(c *gin.Context, loginUser string) {
 	act := c.Request.FormValue("action")
 	data := c.Request.FormValue("data")
 	initUsers := c.Request.FormValue("initUsers")
+	subscriptionPathBefore := a.subscriptionPathSnapshot(obj, data)
 	objs, err := a.ConfigService.Save(obj, act, json.RawMessage(data), initUsers, loginUser, hostname)
 	if err != nil {
 		jsonMsg(c, "save", err)
 		return
 	}
+	a.auditSubscriptionPathChanges(c, loginUser, subscriptionPathBefore)
 	err = a.LoadPartialData(c, objs)
 	if err != nil {
 		jsonMsg(c, obj, err)
 	}
+}
+
+func (a *ApiService) subscriptionPathSnapshot(obj string, data string) map[string]string {
+	if obj != "settings" {
+		return nil
+	}
+	var settings map[string]string
+	if err := json.Unmarshal([]byte(data), &settings); err != nil {
+		return nil
+	}
+
+	before := make(map[string]string, 3)
+	if _, ok := settings["subPath"]; ok {
+		if path, err := a.SettingService.GetSubPath(); err == nil {
+			before["subPath"] = path
+		}
+	}
+	if _, ok := settings["subJsonPath"]; ok {
+		if path, err := a.SettingService.GetSubJsonPath(); err == nil {
+			before["subJsonPath"] = path
+		}
+	}
+	if _, ok := settings["subClashPath"]; ok {
+		if path, err := a.SettingService.GetSubClashPath(); err == nil {
+			before["subClashPath"] = path
+		}
+	}
+	if len(before) == 0 {
+		return nil
+	}
+	return before
+}
+
+func (a *ApiService) auditSubscriptionPathChanges(c *gin.Context, actor string, before map[string]string) {
+	if len(before) == 0 {
+		return
+	}
+	changed := map[string]map[string]string{}
+	for key, oldPath := range before {
+		var newPath string
+		var err error
+		switch key {
+		case "subPath":
+			newPath, err = a.SettingService.GetSubPath()
+		case "subJsonPath":
+			newPath, err = a.SettingService.GetSubJsonPath()
+		case "subClashPath":
+			newPath, err = a.SettingService.GetSubClashPath()
+		default:
+			continue
+		}
+		if err != nil || newPath == oldPath {
+			continue
+		}
+		changed[key] = map[string]string{
+			"old": oldPath,
+			"new": newPath,
+		}
+	}
+	if len(changed) == 0 {
+		return
+	}
+	a.recordAudit(c, actor, "sub_path_changed", "subscription", service.AuditSeverityWarn, map[string]any{
+		"paths":           changed,
+		"restartRequired": true,
+	})
 }
 
 func (a *ApiService) RestartApp(c *gin.Context) {

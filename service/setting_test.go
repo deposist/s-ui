@@ -146,6 +146,19 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		t.Fatalf("valid subscription settings rejected: %v", err)
 	}
 
+	validCustomPaths, err := json.Marshal(map[string]string{
+		"subJsonPath":  "/json-custom/",
+		"subClashPath": "/clash-custom/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validCustomPaths)
+	}); err != nil {
+		t.Fatalf("valid custom subscription paths rejected: %v", err)
+	}
+
 	invalidPayload, err := json.Marshal(map[string]string{
 		"subJsonEnable": "sometimes",
 	})
@@ -168,6 +181,32 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		return settingService.Save(tx, invalidURLPayload)
 	}); err == nil {
 		t.Fatal("expected invalid URL setting to be rejected")
+	}
+
+	conflictingPaths, err := json.Marshal(map[string]string{
+		"subJsonPath":  "/same/",
+		"subClashPath": "/same/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, conflictingPaths)
+	}); err == nil {
+		t.Fatal("expected duplicate subscription format paths to be rejected")
+	}
+
+	subPathConflict, err := json.Marshal(map[string]string{
+		"subPath":     "/custom-sub/",
+		"subJsonPath": "/custom-sub/json/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, subPathConflict)
+	}); err == nil {
+		t.Fatal("expected subscription format path under subPath to be rejected")
 	}
 }
 

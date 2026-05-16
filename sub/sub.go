@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/config"
@@ -14,6 +15,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/middleware"
 	"github.com/deposist/s-ui-rus-inst/network"
 	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"github.com/gin-gonic/gin"
 )
@@ -61,19 +63,102 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 	engine.Use(middleware.SubSecurityHeaders())
 
+	registeredFormats := map[string]string{}
+	if err := rememberSubscriptionPath(registeredFormats, subPath, "link"); err != nil {
+		return nil, err
+	}
+	if err := rememberSubscriptionPath(registeredFormats, joinSubscriptionPath(subPath, "json"), "json"); err != nil {
+		return nil, err
+	}
+	if err := rememberSubscriptionPath(registeredFormats, joinSubscriptionPath(subPath, "clash"), "clash"); err != nil {
+		return nil, err
+	}
+
 	g := engine.Group(subPath)
 	NewSubHandler(g)
 	if subPath != "/" {
-		rootHandler := &SubHandler{}
-		root := engine.Group("/")
-		root.Use(rateLimitMiddleware())
-		root.GET("/json/:subid", rootHandler.json)
-		root.HEAD("/json/:subid", rootHandler.subHeaders)
-		root.GET("/clash/:subid", rootHandler.clash)
-		root.HEAD("/clash/:subid", rootHandler.subHeaders)
+		if err := registerSubscriptionFormatRoute(engine, registeredFormats, "/json/", "json"); err != nil {
+			return nil, err
+		}
+		if err := registerSubscriptionFormatRoute(engine, registeredFormats, "/clash/", "clash"); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.registerCustomFormatRoutes(engine, registeredFormats); err != nil {
+		return nil, err
 	}
 
 	return engine, nil
+}
+
+func (s *Server) registerCustomFormatRoutes(engine *gin.Engine, registered map[string]string) error {
+	jsonPath, err := s.SettingService.GetSubJsonPath()
+	if err != nil {
+		return err
+	}
+	clashPath, err := s.SettingService.GetSubClashPath()
+	if err != nil {
+		return err
+	}
+	if err := registerSubscriptionFormatRoute(engine, registered, jsonPath, "json"); err != nil {
+		return err
+	}
+	return registerSubscriptionFormatRoute(engine, registered, clashPath, "clash")
+}
+
+func registerSubscriptionFormatRoute(engine *gin.Engine, registered map[string]string, path string, format string) error {
+	path = normalizeSubscriptionRoutePath(path)
+	if path == "/" {
+		return common.NewError("subscription format path cannot be root")
+	}
+	if existing, ok := registered[path]; ok {
+		if existing == format {
+			return nil
+		}
+		return common.NewError("subscription path conflict: ", path)
+	}
+	registered[path] = format
+
+	handler := &SubHandler{}
+	group := engine.Group(path)
+	group.Use(rateLimitMiddleware())
+	switch format {
+	case "json":
+		group.GET("/:subid", handler.json)
+		group.HEAD("/:subid", handler.subHeaders)
+	case "clash":
+		group.GET("/:subid", handler.clash)
+		group.HEAD("/:subid", handler.subHeaders)
+	default:
+		return common.NewError("unknown subscription format: ", format)
+	}
+	return nil
+}
+
+func rememberSubscriptionPath(registered map[string]string, path string, format string) error {
+	path = normalizeSubscriptionRoutePath(path)
+	if existing, ok := registered[path]; ok && existing != format {
+		return common.NewError("subscription path conflict: ", path)
+	}
+	registered[path] = format
+	return nil
+}
+
+func joinSubscriptionPath(base string, child string) string {
+	if base == "/" {
+		return normalizeSubscriptionRoutePath(child)
+	}
+	return normalizeSubscriptionRoutePath(strings.TrimRight(base, "/") + "/" + strings.Trim(child, "/"))
+}
+
+func normalizeSubscriptionRoutePath(path string) string {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+	return path
 }
 
 func (s *Server) Start() (err error) {

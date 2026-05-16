@@ -537,6 +537,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 	if err != nil {
 		return err
 	}
+	if err = s.validateSubscriptionPathSettings(settings); err != nil {
+		return err
+	}
 	for key, obj := range settings {
 		if strings.HasSuffix(key, "HasSecret") {
 			continue
@@ -669,6 +672,56 @@ func reservedPathPrefixesForSetting(key string) []string {
 		reserved = append(reserved, prefix)
 	}
 	return reserved
+}
+
+func (s *SettingService) validateSubscriptionPathSettings(settings map[string]string) error {
+	pathKeys := []string{"subPath", "subJsonPath", "subClashPath"}
+	touched := false
+	for _, key := range pathKeys {
+		if _, ok := settings[key]; ok {
+			touched = true
+			break
+		}
+	}
+	if !touched {
+		return nil
+	}
+
+	paths := make(map[string]string, len(pathKeys))
+	for _, key := range pathKeys {
+		value, ok := settings[key]
+		if !ok {
+			var err error
+			value, err = s.getString(key)
+			if err != nil {
+				return err
+			}
+		}
+		normalized, err := normalizeAndValidatePathSetting(key, value)
+		if err != nil {
+			return err
+		}
+		paths[key] = normalized
+	}
+
+	if paths["subJsonPath"] == paths["subClashPath"] {
+		return common.NewError("subscription format paths must be unique")
+	}
+	if paths["subJsonPath"] == "/" || paths["subClashPath"] == "/" {
+		return common.NewError("subscription format path cannot be root")
+	}
+	if paths["subPath"] != "/" {
+		if pathHasPrefix(paths["subJsonPath"], paths["subPath"]) || pathHasPrefix(paths["subClashPath"], paths["subPath"]) {
+			return common.NewError("subscription format path conflicts with subscription path")
+		}
+	}
+	return nil
+}
+
+func pathHasPrefix(path string, prefix string) bool {
+	path = normalizeURLPath(path)
+	prefix = normalizeURLPath(prefix)
+	return path == prefix || strings.HasPrefix(path, prefix)
 }
 
 func validateSubscriptionSettingInput(key string, value string) error {
