@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -222,9 +223,19 @@ func (a *ApiService) GetOnlines(c *gin.Context) {
 }
 
 func (a *ApiService) GetLogs(c *gin.Context) {
-	count := c.Query("c")
-	level := c.Query("l")
-	logs := a.ServerService.GetLogs(count, level)
+	count := c.Query("count")
+	if count == "" {
+		count = c.Query("c")
+	}
+	level := c.Query("level")
+	if level == "" {
+		level = c.Query("l")
+	}
+	logs, err := a.ServerService.GetLogsFiltered(count, level, c.Query("source"), c.Query("filter"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "logs: " + err.Error()})
+		return
+	}
 	jsonObj(c, logs, nil)
 }
 

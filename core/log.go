@@ -23,15 +23,15 @@ func (p PlatformWriter) DisableColors() bool {
 func (p PlatformWriter) WriteMessage(level log.Level, message string) {
 	switch level {
 	case log.LevelInfo:
-		suiLog.Info(message)
+		suiLog.CoreInfo(message)
 	case log.LevelWarn:
-		suiLog.Warning(message)
+		suiLog.CoreWarning(message)
 	case log.LevelPanic:
 	case log.LevelFatal:
 	case log.LevelError:
-		suiLog.Error(message)
+		suiLog.CoreError(message)
 	default:
-		suiLog.Debug(message)
+		suiLog.CoreDebug(message)
 	}
 }
 
@@ -169,15 +169,15 @@ func (l *observableLogger) Log(ctx context.Context, level log.Level, args []any)
 	msg := F.ToString(args...)
 	switch level {
 	case log.LevelInfo:
-		suiLog.Info(l.tag, msg)
+		suiLog.CoreInfo(l.tag, msg)
 	case log.LevelWarn:
-		suiLog.Warning(l.tag, msg)
+		suiLog.CoreWarning(l.tag, msg)
 	case log.LevelPanic:
 	case log.LevelFatal:
 	case log.LevelError:
-		suiLog.Error(l.tag, msg)
+		suiLog.CoreError(l.tag, msg)
 	default:
-		suiLog.Debug(l.tag, msg)
+		suiLog.CoreDebug(l.tag, msg)
 	}
 	if (l.filePath != "" || l.writer != os.Stderr) && l.writer != nil {
 		message := l.formatter.Format(ctx, level, l.tag, msg, time.Now())

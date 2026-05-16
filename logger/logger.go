@@ -3,19 +3,25 @@ package logger
 import (
 	"fmt"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/op/go-logging"
 )
 
 var (
-	logger    *logging.Logger
-	logBuffer []struct {
-		time  string
-		level logging.Level
-		log   string
-	}
+	logger      *logging.Logger
+	logBufferMu sync.Mutex
+	logBuffer   []bufferedLog
 )
+
+type bufferedLog struct {
+	time   string
+	level  logging.Level
+	source string
+	log    string
+}
 
 func InitLogger(level logging.Level) {
 	newLogger := logging.MustGetLogger("s-ui")
@@ -63,7 +69,7 @@ func Debug(args ...interface{}) {
 		return
 	}
 	logger.Debug(args...)
-	addToBuffer("DEBUG", fmt.Sprint(args...))
+	addToBuffer("panel", "DEBUG", fmt.Sprint(args...))
 }
 
 func Debugf(format string, args ...interface{}) {
@@ -72,7 +78,7 @@ func Debugf(format string, args ...interface{}) {
 		return
 	}
 	logger.Debugf(format, args...)
-	addToBuffer("DEBUG", fmt.Sprintf(format, args...))
+	addToBuffer("panel", "DEBUG", fmt.Sprintf(format, args...))
 }
 
 func Info(args ...interface{}) {
@@ -81,7 +87,7 @@ func Info(args ...interface{}) {
 		return
 	}
 	logger.Info(args...)
-	addToBuffer("INFO", fmt.Sprint(args...))
+	addToBuffer("panel", "INFO", fmt.Sprint(args...))
 }
 
 func Infof(format string, args ...interface{}) {
@@ -90,7 +96,7 @@ func Infof(format string, args ...interface{}) {
 		return
 	}
 	logger.Infof(format, args...)
-	addToBuffer("INFO", fmt.Sprintf(format, args...))
+	addToBuffer("panel", "INFO", fmt.Sprintf(format, args...))
 }
 
 func Warning(args ...interface{}) {
@@ -99,7 +105,7 @@ func Warning(args ...interface{}) {
 		return
 	}
 	logger.Warning(args...)
-	addToBuffer("WARNING", fmt.Sprint(args...))
+	addToBuffer("panel", "WARNING", fmt.Sprint(args...))
 }
 
 func Warningf(format string, args ...interface{}) {
@@ -108,7 +114,7 @@ func Warningf(format string, args ...interface{}) {
 		return
 	}
 	logger.Warningf(format, args...)
-	addToBuffer("WARNING", fmt.Sprintf(format, args...))
+	addToBuffer("panel", "WARNING", fmt.Sprintf(format, args...))
 }
 
 func Error(args ...interface{}) {
@@ -117,7 +123,7 @@ func Error(args ...interface{}) {
 		return
 	}
 	logger.Error(args...)
-	addToBuffer("ERROR", fmt.Sprint(args...))
+	addToBuffer("panel", "ERROR", fmt.Sprint(args...))
 }
 
 func Errorf(format string, args ...interface{}) {
@@ -126,34 +132,80 @@ func Errorf(format string, args ...interface{}) {
 		return
 	}
 	logger.Errorf(format, args...)
-	addToBuffer("ERROR", fmt.Sprintf(format, args...))
+	addToBuffer("panel", "ERROR", fmt.Sprintf(format, args...))
 }
 
-func addToBuffer(level string, newLog string) {
+func CoreDebug(args ...interface{}) {
+	logCore("DEBUG", fmt.Sprint(args...))
+}
+
+func CoreInfo(args ...interface{}) {
+	logCore("INFO", fmt.Sprint(args...))
+}
+
+func CoreWarning(args ...interface{}) {
+	logCore("WARNING", fmt.Sprint(args...))
+}
+
+func CoreError(args ...interface{}) {
+	logCore("ERROR", fmt.Sprint(args...))
+}
+
+func logCore(level string, message string) {
+	if logger == nil {
+		fmt.Println(level+" -", message)
+		return
+	}
+	switch level {
+	case "DEBUG":
+		logger.Debug(message)
+	case "INFO":
+		logger.Info(message)
+	case "WARNING":
+		logger.Warning(message)
+	case "ERROR":
+		logger.Error(message)
+	}
+	addToBuffer("core", level, message)
+}
+
+func addToBuffer(source string, level string, newLog string) {
 	t := time.Now()
+	logBufferMu.Lock()
+	defer logBufferMu.Unlock()
 	if len(logBuffer) >= 10240 {
 		logBuffer = logBuffer[1:]
 	}
 
 	logLevel, _ := logging.LogLevel(level)
-	logBuffer = append(logBuffer, struct {
-		time  string
-		level logging.Level
-		log   string
-	}{
-		time:  t.Format("2006/01/02 15:04:05"),
-		level: logLevel,
-		log:   newLog,
+	logBuffer = append(logBuffer, bufferedLog{
+		time:   t.Format("2006/01/02 15:04:05"),
+		level:  logLevel,
+		source: source,
+		log:    newLog,
 	})
 }
 
 func GetLogs(c int, level string) []string {
+	return GetLogsFiltered(c, level, "", "")
+}
+
+func GetLogsFiltered(c int, level string, source string, filter string) []string {
 	var output []string
 	logLevel, _ := logging.LogLevel(level)
 
-	for i := len(logBuffer) - 1; i >= 0 && len(output) <= c; i-- {
-		if logBuffer[i].level <= logLevel {
-			output = append(output, fmt.Sprintf("%s %s - %s", logBuffer[i].time, logBuffer[i].level, logBuffer[i].log))
+	logBufferMu.Lock()
+	defer logBufferMu.Unlock()
+	for i := len(logBuffer) - 1; i >= 0 && len(output) < c; i-- {
+		entry := logBuffer[i]
+		if source != "" && entry.source != source {
+			continue
+		}
+		if filter != "" && !strings.Contains(entry.log, filter) {
+			continue
+		}
+		if entry.level <= logLevel {
+			output = append(output, fmt.Sprintf("%s %s - %s", entry.time, entry.level, entry.log))
 		}
 	}
 	return output
