@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"mime/multipart"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -254,17 +255,11 @@ func ImportDB(file multipart.File) error {
 		return err
 	}
 
-	// Make sure the staged file actually opens as a SQLite database. Close
-	// the handle right away so the subsequent rename has no open fds.
-	{
-		probe, openErr := gorm.Open(sqlite.Open(tempPath), &gorm.Config{Logger: gormlogger.Discard})
-		if openErr != nil {
-			_ = os.Remove(tempPath)
-			return common.NewErrorf("Error checking db: %v", openErr)
-		}
-		if sqlDB, e := probe.DB(); e == nil {
-			_ = sqlDB.Close()
-		}
+	// Make sure the staged file opens read-only and passes SQLite integrity
+	// checks before it can replace the live database.
+	if err := validateSQLiteBackup(tempPath); err != nil {
+		_ = os.Remove(tempPath)
+		return err
 	}
 
 	// Close the running DB handle so the live database file is no longer
@@ -357,6 +352,36 @@ func stageBackupToFile(src io.Reader, dst string) error {
 		return common.NewErrorf("Error closing temporary db file: %v", err)
 	}
 	return nil
+}
+
+func validateSQLiteBackup(path string) error {
+	probe, openErr := gorm.Open(sqlite.Open(sqliteReadOnlyDSN(path)), &gorm.Config{Logger: gormlogger.Discard})
+	if openErr != nil {
+		return common.NewErrorf("Error checking db: %v", openErr)
+	}
+	sqlDB, dbErr := probe.DB()
+	if dbErr == nil {
+		defer sqlDB.Close()
+	}
+	var result string
+	if err := probe.Raw("PRAGMA integrity_check").Scan(&result).Error; err != nil {
+		return common.NewErrorf("Error checking db integrity: %v", err)
+	}
+	if result != "ok" {
+		return common.NewErrorf("Invalid db integrity: %s", result)
+	}
+	return nil
+}
+
+func sqliteReadOnlyDSN(path string) string {
+	u := url.URL{
+		Scheme: "file",
+		Path:   filepath.ToSlash(path),
+	}
+	values := url.Values{}
+	values.Set("mode", "ro")
+	u.RawQuery = values.Encode()
+	return u.String()
 }
 
 func IsSQLiteDB(file io.Reader) (bool, error) {

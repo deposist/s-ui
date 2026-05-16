@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
@@ -34,6 +36,8 @@ type ApiService struct {
 	service.TelegramService
 	service.VersionService
 }
+
+const maxDatabaseImportBytes = 64 << 20
 
 func (a *ApiService) LoadData(c *gin.Context) {
 	data, err := a.getData(c)
@@ -256,12 +260,22 @@ func (a *ApiService) GetKeypairs(c *gin.Context) {
 }
 
 func (a *ApiService) GetDb(c *gin.Context) {
+	if !a.requireTokenScopeAny(c, "database", "admin") {
+		return
+	}
 	exclude := c.Query("exclude")
 	db, err := database.GetDb(exclude)
 	if err != nil {
+		a.recordAudit(c, requestActor(c), "db_export_failed", "database", service.AuditSeverityWarn, map[string]any{
+			"channel": "download",
+		})
 		jsonMsg(c, "", err)
 		return
 	}
+	a.recordAudit(c, requestActor(c), "db_exported", "database", service.AuditSeverityWarn, map[string]any{
+		"channel": "download",
+		"exclude": exclude,
+	})
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db")
 	c.Writer.Write(db)
@@ -403,14 +417,42 @@ func (a *ApiService) SubConvert(c *gin.Context) {
 }
 
 func (a *ApiService) ImportDb(c *gin.Context) {
+	if !a.requireTokenScopeAny(c, "database", "admin") {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxDatabaseImportBytes)
 	file, _, err := c.Request.FormFile("db")
 	if err != nil {
+		a.recordAudit(c, requestActor(c), "db_import_failed", "database", service.AuditSeverityWarn, map[string]any{
+			"reason": databaseImportErrorClass(err),
+		})
 		jsonMsg(c, "", err)
 		return
 	}
 	defer file.Close()
 	err = database.ImportDB(file)
+	if err != nil {
+		a.recordAudit(c, requestActor(c), "db_import_failed", "database", service.AuditSeverityWarn, map[string]any{
+			"reason": databaseImportErrorClass(err),
+		})
+	} else {
+		a.recordAudit(c, requestActor(c), "db_imported", "database", service.AuditSeverityWarn, nil)
+	}
 	jsonMsg(c, "", err)
+}
+
+func databaseImportErrorClass(err error) string {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return "too_large"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "format"), strings.Contains(msg, "sqlite"), strings.Contains(msg, "integrity"):
+		return "invalid_db"
+	default:
+		return "failed"
+	}
 }
 
 func (a *ApiService) RotateSubSecret(c *gin.Context) {

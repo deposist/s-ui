@@ -157,5 +157,30 @@ func TestImportDBAdaptsLegacyBackup(t *testing.T) {
 	}
 }
 
+func TestImportDBRejectsCorruptSQLiteBackup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping Windows-specific TempDir cleanup race; logic is exercised on Linux CI")
+	}
+	dbDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	livePath := filepath.Join(dbDir, "s-ui.db")
+	if err := InitDB(livePath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+			_ = os.Remove(livePath + suffix)
+		}
+	})
+	corrupt := append([]byte("SQLite format 3\x00"), bytes.Repeat([]byte{0xff}, 256)...)
+	if err := ImportDB(memMultipartFile{Reader: bytes.NewReader(corrupt)}); err == nil {
+		t.Fatal("corrupt sqlite backup should be rejected")
+	}
+}
+
 // _ keeps io referenced when nothing else uses it.
 var _ = io.EOF
