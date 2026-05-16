@@ -1,11 +1,13 @@
 package service
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"gorm.io/gorm"
 )
 
 func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
@@ -46,5 +48,53 @@ func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
 	}
 	if uri != "https://example.com/sub/" {
 		t.Fatalf("unexpected URI: %s", uri)
+	}
+}
+
+func TestSaveRejectsReservedWebPath(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"webPath": "/api/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, payload)
+	}); err == nil {
+		t.Fatal("expected reserved webPath to be rejected")
+	}
+}
+
+func TestSaveAllowsDefaultSubPathButRejectsOtherReservedSubPaths(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	validPayload, err := json.Marshal(map[string]string{
+		"subPath": "/sub/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validPayload)
+	}); err != nil {
+		t.Fatalf("default subPath should remain valid: %v", err)
+	}
+
+	invalidPayload, err := json.Marshal(map[string]string{
+		"subPath": "/json/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidPayload)
+	}); err == nil {
+		t.Fatal("expected reserved subPath to be rejected")
 	}
 }

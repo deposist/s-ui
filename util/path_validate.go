@@ -1,0 +1,56 @@
+package util
+
+import (
+	"strings"
+
+	"github.com/deposist/s-ui-rus-inst/util/common"
+)
+
+var ReservedPathPrefixes = []string{
+	"/api/",
+	"/apiv2/",
+	"/ws",
+	"/assets/",
+	"/sub/",
+	"/json/",
+	"/clash/",
+}
+
+func ValidatePath(path string, reserved []string) error {
+	if path == "" {
+		return nil
+	}
+	if !strings.HasPrefix(path, "/") {
+		return common.NewError("invalid path")
+	}
+	if strings.Contains(path, "\\") ||
+		strings.Contains(path, "..") ||
+		strings.Contains(path, "//") ||
+		strings.Contains(path, ":") ||
+		strings.Contains(path, "*") {
+		return common.NewError("invalid path")
+	}
+	for _, r := range path {
+		if r == 0 || r < 0x20 || r == 0x7f {
+			return common.NewError("invalid path")
+		}
+	}
+	for _, prefix := range reserved {
+		if hasReservedPathPrefix(path, prefix) {
+			return common.NewError("reserved path prefix")
+		}
+	}
+	return nil
+}
+
+func hasReservedPathPrefix(path string, prefix string) bool {
+	if prefix == "" {
+		return false
+	}
+	path = strings.ToLower(path)
+	prefix = strings.ToLower(prefix)
+	if strings.HasSuffix(prefix, "/") && path == strings.TrimSuffix(prefix, "/") {
+		return true
+	}
+	return strings.HasPrefix(path, prefix)
+}

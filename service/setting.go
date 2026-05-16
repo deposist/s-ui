@@ -12,6 +12,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gorm.io/gorm"
@@ -241,14 +242,9 @@ func (s *SettingService) GetWebPath() (string, error) {
 }
 
 func (s *SettingService) SetWebPath(webPath string) error {
-	if err := validateURLPath(webPath); err != nil {
+	webPath, err := normalizeAndValidatePathSetting("webPath", webPath)
+	if err != nil {
 		return err
-	}
-	if !strings.HasPrefix(webPath, "/") {
-		webPath = "/" + webPath
-	}
-	if !strings.HasSuffix(webPath, "/") {
-		webPath += "/"
 	}
 	return s.setString("webPath", webPath)
 }
@@ -347,14 +343,9 @@ func (s *SettingService) GetSubPath() (string, error) {
 }
 
 func (s *SettingService) SetSubPath(subPath string) error {
-	if err := validateURLPath(subPath); err != nil {
+	subPath, err := normalizeAndValidatePathSetting("subPath", subPath)
+	if err != nil {
 		return err
-	}
-	if !strings.HasPrefix(subPath, "/") {
-		subPath = "/" + subPath
-	}
-	if !strings.HasSuffix(subPath, "/") {
-		subPath += "/"
 	}
 	return s.setString("subPath", subPath)
 }
@@ -465,14 +456,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		// Correct Pathes start and ends with `/`
 		if key == "webPath" ||
 			key == "subPath" {
-			if err = validateURLPath(obj); err != nil {
+			obj, err = normalizeAndValidatePathSetting(key, obj)
+			if err != nil {
 				return err
-			}
-			if !strings.HasPrefix(obj, "/") {
-				obj = "/" + obj
-			}
-			if !strings.HasSuffix(obj, "/") {
-				obj += "/"
 			}
 		}
 
@@ -504,17 +490,34 @@ func (s *SettingService) fileExists(path string) error {
 	return err
 }
 
-func validateURLPath(path string) error {
-	if path == "" {
-		return nil
+func normalizeAndValidatePathSetting(key string, path string) (string, error) {
+	path = normalizeURLPath(path)
+	if err := util.ValidatePath(path, reservedPathPrefixesForSetting(key)); err != nil {
+		return "", err
 	}
-	if strings.Contains(path, "\\") || strings.Contains(path, "..") {
-		return common.NewError("invalid path")
+	return path, nil
+}
+
+func normalizeURLPath(path string) string {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
 	}
-	for _, r := range path {
-		if r < 0x20 || r == 0x7f {
-			return common.NewError("invalid path")
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+	return path
+}
+
+func reservedPathPrefixesForSetting(key string) []string {
+	if key != "subPath" {
+		return util.ReservedPathPrefixes
+	}
+	reserved := make([]string, 0, len(util.ReservedPathPrefixes))
+	for _, prefix := range util.ReservedPathPrefixes {
+		if prefix == "/sub/" {
+			continue
 		}
+		reserved = append(reserved, prefix)
 	}
-	return nil
+	return reserved
 }
