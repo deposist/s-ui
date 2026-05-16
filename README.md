@@ -139,6 +139,7 @@ reliability without changing the protocol surface.
 - Panel path: /app/
 - Subscription port: 2096
 - Subscription path: /sub/
+- Subscription per-IP rate-limit changes (`subRateLimitPerIP`) take effect within 1 minute after saving.
 - Username: admin
 - Password (fresh install only): a random 24-character string is generated on first start and written to the application log. Look for the line `created initial admin user. username=admin password=...` in `journalctl -u s-ui` (Linux) or in the panel log on first run. After that, change it from the panel.
 
@@ -510,6 +511,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 - Путь панели: /app/
 - Порт подписки: 2096
 - Путь подписки: /sub/
+- Изменения лимита подписок на IP (`subRateLimitPerIP`) применяются в течение 1 минуты после сохранения.
 - Имя пользователя: admin
 - Пароль (только для свежей установки): при первом запуске генерируется случайная строка из 24 символов, которая выводится в журнал приложения. Найдите строку `created initial admin user. username=admin password=...` в `journalctl -u s-ui` (Linux) или в журнале панели после первого запуска. После входа смените пароль в настройках.
 
