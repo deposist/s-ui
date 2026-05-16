@@ -2,6 +2,88 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.5.1] - 2026-05-17 - remediation hardening and UI completion
+
+### Security
+
+- Telegram notifications now use an async bounded queue with retry/backoff and
+  audited overflow/failure events, so login and other handlers are not blocked
+  by Telegram network failures.
+- Telegram event payloads, audit details, change history payloads, and backup
+  captions are redacted so bot tokens, proxy credentials, API tokens, and
+  backup keys are not written to logs, audit, changes, or captions.
+- Realtime WebSocket handshakes now enforce Origin allow-listing, per-IP
+  handshake rate limits, one-time token replay rejection, ping/pong heartbeat,
+  idle close, and session-rotation close-all semantics.
+- `GET /api/security/audit` now has admin scope gating for API-token requests,
+  endpoint rate limiting, cursor pagination, and validated `event`/`severity`
+  filters.
+- `POST /api/telegram/test` is admin-scoped for API-token requests and writes
+  an audit event containing only success/errorClass metadata.
+- Security headers middleware was added for the panel and subscription server,
+  with no-store cache handling on subscription responses.
+
+### Privacy and subscriptions
+
+- Client IP history is stored with salted hashes by default, raw display is
+  disabled unless explicitly opted in, and retention is handled by cron GC.
+- IP limiting still starts in monitor mode; enforce mode rejects only new
+  over-limit connections and does not close active sessions.
+- Subscription settings from the design are now persisted and used by link,
+  JSON, and Clash subscription responses. Subscription paths are validated
+  against reserved prefixes, headers are sanitized centrally, and the per-IP
+  subscription rate limit is configurable.
+- `POST /api/rotateSubSecret` rotates per-client subscription secrets with an
+  audit event. When `subSecretRequired=true`, legacy name URLs return 404.
+
+### Telegram and observability
+
+- Telegram egress can use validated HTTP/HTTPS/SOCKS5 proxy settings stored as
+  secret-aware settings. Error classes are normalized to
+  `unauthorized`, `chat_not_found`, `rate_limited`, `network`, or `unknown`.
+- CPU hysteresis alerts, scheduled Telegram reports, and encrypted Telegram
+  database backup export are implemented and remain opt-in.
+- Observability history now uses bounded buckets (`2s`, `30s`, `1m`, `5m`),
+  sampled by cron, with validated metric/bucket/since API parameters.
+- `GET /api/logs` accepts bounded `count`, `level`, `source`, and substring
+  `filter` parameters; `GET /api/version` performs a fail-soft 1h-cached
+  GitHub release check.
+- Database import/export now enforces a 64 MiB cap, SQLite magic validation,
+  temporary staging, read-only `PRAGMA integrity_check`, and audit events.
+
+### Frontend
+
+- Added the realtime frontend store with websocket reconnect/degraded states
+  and polling fallback.
+- Added secret-aware settings fields that show `••• stored •••` and never
+  submit the placeholder as a secret value.
+- Added IP history modal with raw-IP masking by default and confirmation before
+  showing raw IPs to admins.
+- Added Telegram settings and Audit views. The Audit view uses cursor
+  pagination and server-side `event`/`severity` filters.
+
+### Tests
+
+- Added or extended regression coverage for secret settings migration,
+  redaction, IP monitor cache/enforce behavior, audit filtering/rate limits,
+  subscription header injection and 404 legacy URL behavior, realtime Origin,
+  replay token and heartbeat behavior, migrations, and frontend websocket/IP
+  helper behavior.
+- Verification in this workspace: `go vet ./...`, `go test ./...`,
+  `npm run test:unit`, `npm run build`, and `npm run lint` pass. Race tests
+  require CGO and a C compiler; this Windows workspace currently lacks `gcc`.
+
+### Upgrade notes
+
+- Back up the SQLite database before upgrading. If using the system service,
+  stop `s-ui`, copy `s-ui.db` plus any `-wal`/`-shm` sidecars, then start the
+  service again.
+- Legacy `/apiv2/*` `Token` header support remains temporary. Move clients to
+  `Authorization: Bearer <token>` before the Sunset date:
+  `Sat, 15 Aug 2026 00:00:00 GMT`.
+- All new features remain off by default except realtime websocket support
+  with frontend polling fallback and monitor-only IP tracking.
+
 ## [1.5.0] - 2026-05-15 - security foundation and realtime platform
 
 ### Security
