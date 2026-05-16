@@ -31,6 +31,10 @@ func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
 		c.cron.AddJob("@every 5s", NewCheckCoreJob())
 		// CPU hysteresis notifications
 		c.cron.AddJob("@every 12s", NewCPUHysteresisJob())
+		// Telegram scheduled report dynamic replanning
+		reportScheduler := NewTelegramReportScheduler(c.cron)
+		reportScheduler.Run()
+		c.cron.AddJob("@every 1m", reportScheduler)
 		// database WAL checkpoint
 		c.cron.AddJob("@every 10m", NewWALCheckpointJob())
 		// retention cleanup

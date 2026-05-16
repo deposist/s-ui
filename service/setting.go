@@ -99,6 +99,8 @@ var defaultValueMap = map[string]string{
 	"telegramProxyPassword":  "",
 	"telegramCpuThreshold":   "90",
 	"telegramNotifyCpu":      "false",
+	"telegramReport":         "false",
+	"telegramReportCron":     "",
 	"config":                 defaultConfig,
 	"version":                config.GetVersion(),
 }
@@ -607,6 +609,14 @@ func (s *SettingService) GetTelegramNotifyCpu() (bool, error) {
 	return s.getBool("telegramNotifyCpu")
 }
 
+func (s *SettingService) GetTelegramReport() (bool, error) {
+	return s.getBool("telegramReport")
+}
+
+func (s *SettingService) GetTelegramReportCron() (string, error) {
+	return s.getString("telegramReportCron")
+}
+
 func (s *SettingService) fileExists(path string) error {
 	_, err := os.Stat(path)
 	return err
@@ -692,7 +702,7 @@ func validateOptionalHTTPURL(value string) error {
 
 func validateTelegramSettingInput(key string, value string) error {
 	switch key {
-	case "telegramNotifyCpu":
+	case "telegramNotifyCpu", "telegramReport":
 		if _, err := strconv.ParseBool(value); err != nil {
 			return common.NewError("invalid boolean setting: ", key)
 		}
@@ -700,6 +710,10 @@ func validateTelegramSettingInput(key string, value string) error {
 		threshold, err := strconv.Atoi(value)
 		if err != nil || threshold <= 0 || threshold > 100 {
 			return common.NewError("invalid cpu threshold setting")
+		}
+	case "telegramReportCron":
+		if _, err := ParseTelegramReportCron(value); err != nil {
+			return err
 		}
 	}
 	return nil
