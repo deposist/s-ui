@@ -43,7 +43,7 @@ func TestLoadTokensMigratesLegacyPlaintextToken(t *testing.T) {
 	if stored.Token != "" {
 		t.Fatalf("legacy plaintext token was not cleared: %q", stored.Token)
 	}
-	if stored.TokenHash == "" || stored.TokenPrefix != "legacy-" {
+	if stored.TokenHash == "" || stored.TokenPrefix != tokenPrefix("legacy-token") {
 		t.Fatalf("legacy token hash/prefix not populated: %#v", stored)
 	}
 	if !stored.Enabled || stored.Scope != defaultAPITokenScope {
