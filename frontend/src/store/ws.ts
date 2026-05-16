@@ -27,9 +27,18 @@ export interface WsRuntimeDeps {
 }
 
 const noOpenFallbackMs = 5000
-const reconnectDelayMs = 1000
+const reconnectBaseDelayMs = 250
+const reconnectJitterMs = 250
+const reconnectMaxDelayMs = 5000
 const fallbackPollMs = 10000
 const closeFallbackThreshold = 3
+
+export const reconnectDelayForRetry = (retry: number) => {
+  const safeRetry = Math.max(0, retry)
+  const exponentialDelay = Math.pow(2, safeRetry) * reconnectBaseDelayMs
+  const jitter = Math.random() * reconnectJitterMs
+  return Math.min(exponentialDelay + jitter, reconnectMaxDelayMs)
+}
 
 export class WsRuntime {
   state: WsConnectionState = 'degraded'
@@ -81,9 +90,10 @@ export class WsRuntime {
           return
         }
         this.setState('reconnecting')
+        const retry = this.closeCount - 1
         this.reconnectTimer = this.timer().setTimeout(() => {
           void this.connect()
-        }, reconnectDelayMs)
+        }, reconnectDelayForRetry(retry))
       }
       ws.onerror = () => {
         ws.close()
