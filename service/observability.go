@@ -9,12 +9,18 @@ import (
 )
 
 type ObservabilityBucket string
+type ObservabilityMetric string
 
 const (
 	ObservabilityBucket2s  ObservabilityBucket = "2s"
 	ObservabilityBucket30s ObservabilityBucket = "30s"
 	ObservabilityBucket1m  ObservabilityBucket = "1m"
 	ObservabilityBucket5m  ObservabilityBucket = "5m"
+
+	ObservabilityMetricCPU    ObservabilityMetric = "cpu"
+	ObservabilityMetricRAM    ObservabilityMetric = "ram"
+	ObservabilityMetricNetIn  ObservabilityMetric = "net_in"
+	ObservabilityMetricNetOut ObservabilityMetric = "net_out"
 
 	observabilityDefaultMemoryCapMB   = 32
 	observabilitySampleEstimateBytes  = 2048
@@ -39,6 +45,11 @@ type ObservabilitySample struct {
 type CoreSample struct {
 	DateTime int64                  `json:"dateTime"`
 	Core     map[string]interface{} `json:"core"`
+}
+
+type ObservabilityMetricSample struct {
+	DateTime int64   `json:"dateTime"`
+	Value    float64 `json:"value"`
 }
 
 type ObservabilityService struct {
@@ -135,6 +146,14 @@ func (s *ObservabilityService) HistoryForBucket(bucket ObservabilityBucket) ([]O
 	return observabilityHistory.samples[bucket].snapshot(), nil
 }
 
+func (s *ObservabilityService) HistoryForBucketSince(bucket ObservabilityBucket, since int64) ([]ObservabilitySample, error) {
+	samples, err := s.HistoryForBucket(bucket)
+	if err != nil {
+		return nil, err
+	}
+	return filterObservabilitySamplesSince(samples, since), nil
+}
+
 func (s *ObservabilityService) CoreHistoryForBucket(bucket ObservabilityBucket) ([]CoreSample, error) {
 	if !IsValidObservabilityBucket(bucket) {
 		return nil, common.NewError("invalid observability bucket")
@@ -144,6 +163,36 @@ func (s *ObservabilityService) CoreHistoryForBucket(bucket ObservabilityBucket) 
 	defer observabilityHistory.Unlock()
 	observabilityHistory.applyCaps(caps, capMB)
 	return observabilityHistory.core[bucket].snapshot(), nil
+}
+
+func (s *ObservabilityService) CoreHistoryForBucketSince(bucket ObservabilityBucket, since int64) ([]CoreSample, error) {
+	samples, err := s.CoreHistoryForBucket(bucket)
+	if err != nil {
+		return nil, err
+	}
+	return filterCoreSamplesSince(samples, since), nil
+}
+
+func (s *ObservabilityService) MetricHistory(metric ObservabilityMetric, bucket ObservabilityBucket, since int64) ([]ObservabilityMetricSample, error) {
+	if !IsValidObservabilityMetric(metric) {
+		return nil, common.NewError("invalid observability metric")
+	}
+	samples, err := s.HistoryForBucketSince(bucket, since)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]ObservabilityMetricSample, 0, len(samples))
+	for _, sample := range samples {
+		value, ok := sample.metricValue(metric)
+		if !ok {
+			continue
+		}
+		result = append(result, ObservabilityMetricSample{
+			DateTime: sample.DateTime,
+			Value:    value,
+		})
+	}
+	return result, nil
 }
 
 func AggregateObservabilitySamples(samples []ObservabilitySample, dateTime int64) ObservabilitySample {
@@ -169,6 +218,23 @@ func AggregateCoreSamples(samples []CoreSample, dateTime int64) CoreSample {
 	latest := samples[len(samples)-1]
 	latest.DateTime = dateTime
 	return latest
+}
+
+func IsValidObservabilityMetric(metric ObservabilityMetric) bool {
+	switch metric {
+	case ObservabilityMetricCPU, ObservabilityMetricRAM, ObservabilityMetricNetIn, ObservabilityMetricNetOut:
+		return true
+	default:
+		return false
+	}
+}
+
+func ParseObservabilityMetric(raw string) (ObservabilityMetric, error) {
+	metric := ObservabilityMetric(raw)
+	if !IsValidObservabilityMetric(metric) {
+		return "", common.NewError("invalid observability metric")
+	}
+	return metric, nil
 }
 
 func IsValidObservabilityBucket(bucket ObservabilityBucket) bool {
@@ -230,6 +296,54 @@ func copyObservabilityCaps(src map[ObservabilityBucket]int) map[ObservabilityBuc
 		dst[bucket] = capacity
 	}
 	return dst
+}
+
+func filterObservabilitySamplesSince(samples []ObservabilitySample, since int64) []ObservabilitySample {
+	if since <= 0 {
+		return samples
+	}
+	filtered := make([]ObservabilitySample, 0, len(samples))
+	for _, sample := range samples {
+		if sample.DateTime > since {
+			filtered = append(filtered, sample)
+		}
+	}
+	return filtered
+}
+
+func filterCoreSamplesSince(samples []CoreSample, since int64) []CoreSample {
+	if since <= 0 {
+		return samples
+	}
+	filtered := make([]CoreSample, 0, len(samples))
+	for _, sample := range samples {
+		if sample.DateTime > since {
+			filtered = append(filtered, sample)
+		}
+	}
+	return filtered
+}
+
+func (sample ObservabilitySample) metricValue(metric ObservabilityMetric) (float64, bool) {
+	switch metric {
+	case ObservabilityMetricCPU:
+		return sample.CPU, true
+	case ObservabilityMetricRAM:
+		return mapNumericValue(sample.Memory, "current")
+	case ObservabilityMetricNetIn:
+		return mapNumericValue(sample.Network, "recv")
+	case ObservabilityMetricNetOut:
+		return mapNumericValue(sample.Network, "sent")
+	default:
+		return 0, false
+	}
+}
+
+func mapNumericValue(values map[string]interface{}, key string) (float64, bool) {
+	if values == nil {
+		return 0, false
+	}
+	return observabilityNumericValue(values[key])
 }
 
 func aggregateObservabilityMaps(samples []ObservabilitySample, selector func(ObservabilitySample) map[string]interface{}) map[string]interface{} {
