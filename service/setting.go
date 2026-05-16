@@ -97,6 +97,8 @@ var defaultValueMap = map[string]string{
 	"telegramProxyURL":       "",
 	"telegramProxyUsername":  "",
 	"telegramProxyPassword":  "",
+	"telegramCpuThreshold":   "90",
+	"telegramNotifyCpu":      "false",
 	"config":                 defaultConfig,
 	"version":                config.GetVersion(),
 }
@@ -537,6 +539,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 				return err
 			}
 		}
+		if err = validateTelegramSettingInput(key, obj); err != nil {
+			return err
+		}
 		if err = validateSubscriptionSettingInput(key, obj); err != nil {
 			return err
 		}
@@ -592,6 +597,14 @@ func (s *SettingService) GetSubJsonExt() (string, error) {
 
 func (s *SettingService) GetSubClashExt() (string, error) {
 	return s.getString("subClashExt")
+}
+
+func (s *SettingService) GetTelegramCpuThreshold() (int, error) {
+	return s.getInt("telegramCpuThreshold")
+}
+
+func (s *SettingService) GetTelegramNotifyCpu() (bool, error) {
+	return s.getBool("telegramNotifyCpu")
 }
 
 func (s *SettingService) fileExists(path string) error {
@@ -673,6 +686,21 @@ func validateOptionalHTTPURL(value string) error {
 	}
 	if parsed.User != nil {
 		return common.NewError("invalid URL setting")
+	}
+	return nil
+}
+
+func validateTelegramSettingInput(key string, value string) error {
+	switch key {
+	case "telegramNotifyCpu":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return common.NewError("invalid boolean setting: ", key)
+		}
+	case "telegramCpuThreshold":
+		threshold, err := strconv.Atoi(value)
+		if err != nil || threshold <= 0 || threshold > 100 {
+			return common.NewError("invalid cpu threshold setting")
+		}
 	}
 	return nil
 }

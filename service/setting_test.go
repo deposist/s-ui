@@ -209,3 +209,35 @@ func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
 		t.Fatalf("unexpected stored telegramProxyURL: %q", decrypted)
 	}
 }
+
+func TestSaveValidatesTelegramCPUSettings(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	validPayload, err := json.Marshal(map[string]string{
+		"telegramNotifyCpu":    "true",
+		"telegramCpuThreshold": "85",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validPayload)
+	}); err != nil {
+		t.Fatalf("valid CPU settings rejected: %v", err)
+	}
+
+	invalidPayload, err := json.Marshal(map[string]string{
+		"telegramCpuThreshold": "101",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidPayload)
+	}); err == nil {
+		t.Fatal("expected invalid CPU threshold to be rejected")
+	}
+}
