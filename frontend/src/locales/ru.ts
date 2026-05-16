@@ -222,6 +222,8 @@ export default {
     ipLimitWarn: "Enforce отклоняет только новые подключения; активные подключения не закрываются.",
     lastIpCount: "IP",
     ipHistory: "История IP",
+    showRawIp: "Показать raw IP",
+    showRawIpConfirm: "Raw IP могут идентифицировать пользователей; открывайте их только для администрирования. Продолжить?",
     firstSeen: "Первый раз",
     lastSeen: "Последний раз",
   },

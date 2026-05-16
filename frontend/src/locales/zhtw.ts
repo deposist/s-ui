@@ -221,6 +221,8 @@ export default {
     ipLimitWarn: "強制模式只拒絕新連線；現有連線不會被關閉。",
     lastIpCount: "IP",
     ipHistory: "IP 歷史",
+    showRawIp: "顯示原始 IP",
+    showRawIpConfirm: "原始 IP 可能識別使用者，僅應在主動管理時查看。繼續？",
     firstSeen: "首次出現",
     lastSeen: "最後出現",
   },

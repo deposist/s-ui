@@ -221,6 +221,8 @@ export default {
     ipLimitWarn: "Enforcement only rejects new connections; active connections stay open.",
     lastIpCount: "IPs",
     ipHistory: "IP History",
+    showRawIp: "Show raw IP",
+    showRawIpConfirm: "Raw IPs can identify users and should only be viewed for active administration. Continue?",
     firstSeen: "First Seen",
     lastSeen: "Last Seen",
   },

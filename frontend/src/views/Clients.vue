@@ -35,35 +35,12 @@
     :tag="stats.tag"
     @close="closeStats"
   />
-  <v-dialog v-model="ipModal.visible" width="600">
-    <v-card :loading="ipModal.loading" class="rounded-lg">
-      <v-card-title>{{ $t('client.ipHistory') }} - {{ ipModal.client }}</v-card-title>
-      <v-divider></v-divider>
-      <v-card-text>
-        <v-table density="compact">
-          <thead>
-            <tr>
-              <th>IP</th>
-              <th>{{ $t('client.firstSeen') }}</th>
-              <th>{{ $t('client.lastSeen') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in ipModal.rows" :key="row.ip">
-              <td>{{ row.ip }}</td>
-              <td>{{ formatTime(row.firstSeen) }}</td>
-              <td>{{ formatTime(row.lastSeen) }}</td>
-            </tr>
-          </tbody>
-        </v-table>
-      </v-card-text>
-      <v-card-actions>
-        <v-btn color="error" variant="outlined" @click="clearClientIps">{{ $t('reset') }}</v-btn>
-        <v-spacer></v-spacer>
-        <v-btn variant="outlined" @click="ipModal.visible = false">{{ $t('actions.close') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <IpHistoryModal
+    v-model:visible="ipModal.visible"
+    :client="ipModal.client"
+    :is-admin="true"
+    @cleared="onClientIpsCleared"
+  />
   <v-row justify="center" align="center">
     <v-col cols="auto">
       <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
@@ -274,12 +251,12 @@
 </style>
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
-import HttpUtils from '@/plugins/httputil'
 import ClientModal from '@/layouts/modals/Client.vue'
 import ClientAddBulk from '@/layouts/modals/ClientAddBulk.vue'
 import ClientEditBulk from '@/layouts/modals/ClientEditBulk.vue'
 import QrCode from '@/layouts/modals/QrCode.vue'
 import Stats from '@/layouts/modals/Stats.vue'
+import IpHistoryModal from '@/components/IpHistoryModal.vue'
 import { Client } from '@/types/clients'
 import { computed, ref } from 'vue'
 import { HumanReadable } from '@/plugins/utils'
@@ -390,35 +367,16 @@ const stats = ref({
 
 const ipModal = ref({
   visible: false,
-  loading: false,
   client: '',
-  rows: <any[]>[],
 })
 
-const showClientIps = async (clientName: string) => {
+const showClientIps = (clientName: string) => {
   ipModal.value.visible = true
-  ipModal.value.loading = true
   ipModal.value.client = clientName
-  const response = await HttpUtils.get('api/ip-monitor/' + encodeURIComponent(clientName))
-  if (response.success) {
-    ipModal.value.rows = response.obj ?? []
-  }
-  ipModal.value.loading = false
 }
 
-const clearClientIps = async () => {
-  ipModal.value.loading = true
-  const response = await HttpUtils.post('api/ip-monitor/' + encodeURIComponent(ipModal.value.client) + '/clear', {})
-  if (response.success) {
-    ipModal.value.rows = []
-    Data().loadData()
-  }
-  ipModal.value.loading = false
-}
-
-const formatTime = (value: number) => {
-  if (!value) return '-'
-  return new Date(value * 1000).toLocaleString(locale)
+const onClientIpsCleared = () => {
+  Data().loadData()
 }
 
 const showStats = (tag: string) => {
