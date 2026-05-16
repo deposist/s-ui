@@ -16,7 +16,7 @@ import (
 type UserService struct {
 }
 
-const defaultAPITokenScope = "full"
+const defaultAPITokenScope = "admin"
 
 func (s *UserService) GetFirstUser() (*model.User, error) {
 	db := database.GetDB()

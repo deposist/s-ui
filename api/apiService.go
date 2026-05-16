@@ -447,7 +447,7 @@ func (a *ApiService) AddToken(c *gin.Context) {
 		return
 	}
 	desc := c.Request.FormValue("desc")
-	scope := c.DefaultPostForm("scope", "full")
+	scope := c.DefaultPostForm("scope", "admin")
 	token, err := a.UserService.AddToken(loginUser, expiryInt, desc, scope)
 	if err == nil {
 		a.recordAudit(c, loginUser, "api_token_created", "api_token", service.AuditSeverityWarn, map[string]any{

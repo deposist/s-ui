@@ -96,7 +96,7 @@ type Tokens struct {
 	Token       string `json:"token,omitempty" form:"token"`
 	TokenHash   string `json:"-" gorm:"index"`
 	TokenPrefix string `json:"tokenPrefix"`
-	Scope       string `json:"scope" gorm:"default:full;not null"`
+	Scope       string `json:"scope" gorm:"default:admin;not null"`
 	Enabled     bool   `json:"enabled" gorm:"default:true;not null"`
 	Expiry      int64  `json:"expiry" form:"expiry"`
 	CreatedAt   int64  `json:"createdAt"`

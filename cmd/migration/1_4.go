@@ -9,7 +9,7 @@ func to1_4(db *gorm.DB) error {
 	if err := addColumnIfMissing(db, "tokens", "token_prefix", "TEXT"); err != nil {
 		return err
 	}
-	if err := addColumnIfMissing(db, "tokens", "scope", "TEXT NOT NULL DEFAULT 'full'"); err != nil {
+	if err := addColumnIfMissing(db, "tokens", "scope", "TEXT NOT NULL DEFAULT 'admin'"); err != nil {
 		return err
 	}
 	if err := addColumnIfMissing(db, "tokens", "enabled", "BOOLEAN NOT NULL DEFAULT 1"); err != nil {
@@ -30,7 +30,14 @@ func to1_4(db *gorm.DB) error {
 	if err := createAuditEventsTable(db); err != nil {
 		return err
 	}
+	if err := backfillTokenScopes(db); err != nil {
+		return err
+	}
 	return nil
+}
+
+func backfillTokenScopes(db *gorm.DB) error {
+	return db.Exec("UPDATE tokens SET scope = ? WHERE scope IS NULL OR scope = '' OR scope = ?", "admin", "full").Error
 }
 
 func addColumnIfMissing(db *gorm.DB, table string, column string, definition string) error {

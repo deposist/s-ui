@@ -38,6 +38,9 @@ CREATE TABLE tokens (
 )`).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Exec("INSERT INTO tokens(desc, token, expiry, user_id) VALUES('legacy', 'raw-token', 0, 1)").Error; err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < 2; i++ {
 		if err := to1_4(db); err != nil {
@@ -71,5 +74,45 @@ INSERT INTO audit_events(date_time, actor, event, resource, severity, ip, user_a
 VALUES(1, 'admin', 'migration_test', 'audit', 'info', '127.0.0.1', 'test', '{}')
 `).Error; err != nil {
 		t.Fatal(err)
+	}
+	var scope string
+	if err := db.Raw("SELECT scope FROM tokens WHERE desc = ?", "legacy").Scan(&scope).Error; err != nil {
+		t.Fatal(err)
+	}
+	if scope != "admin" {
+		t.Fatalf("legacy token scope was not backfilled to admin: %q", scope)
+	}
+}
+
+func TestTo14BackfillsExistingFullScopesToAdmin(t *testing.T) {
+	db := openMigrationTestDB(t)
+	if err := db.Exec(`
+CREATE TABLE tokens (
+	id integer PRIMARY KEY AUTOINCREMENT,
+	desc text,
+	token text,
+	scope text,
+	expiry integer,
+	user_id integer
+)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`
+INSERT INTO tokens(desc, token, scope, expiry, user_id)
+VALUES('full', 'full-token', 'full', 0, 1), ('empty', 'empty-token', '', 0, 1)
+`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := to1_4(db); err != nil {
+		t.Fatal(err)
+	}
+
+	var scopes []string
+	if err := db.Raw("SELECT scope FROM tokens ORDER BY desc").Scan(&scopes).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(scopes) != 2 || scopes[0] != "admin" || scopes[1] != "admin" {
+		t.Fatalf("existing token scopes were not backfilled: %#v", scopes)
 	}
 }
