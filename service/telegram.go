@@ -3,7 +3,12 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -12,6 +17,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/util"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 	"github.com/deposist/s-ui-rus-inst/util/redact"
 	"github.com/deposist/s-ui-rus-inst/util/ssrf"
@@ -227,6 +233,88 @@ func (s *TelegramService) TestTelegram() TelegramResult {
 	return s.send("S-UI Telegram notification test")
 }
 
+func EncryptTelegramBackup(plain []byte) ([]byte, []byte, error) {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, nil, err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, nil, err
+	}
+	encrypted := make([]byte, 0, len(nonce)+len(plain)+gcm.Overhead())
+	encrypted = append(encrypted, nonce...)
+	encrypted = gcm.Seal(encrypted, nonce, plain, nil)
+	return encrypted, key, nil
+}
+
+func (s *TelegramService) SendTelegramDocument(filename string, data []byte, caption string) TelegramResult {
+	enabled, err := s.telegramEnabled()
+	if err != nil {
+		return TelegramResult{ErrorClass: "settings"}
+	}
+	if !enabled {
+		return TelegramResult{ErrorClass: "disabled"}
+	}
+	token, err := s.getString("telegramBotToken")
+	if err != nil || token == "" {
+		return TelegramResult{ErrorClass: "missing_token"}
+	}
+	chatID, err := s.getString("telegramChatID")
+	if err != nil || chatID == "" {
+		return TelegramResult{ErrorClass: "missing_chat"}
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("chat_id", chatID); err != nil {
+		return TelegramResult{ErrorClass: "payload"}
+	}
+	if caption = telegramCaption(caption); caption != "" {
+		if err := writer.WriteField("caption", caption); err != nil {
+			return TelegramResult{ErrorClass: "payload"}
+		}
+	}
+	part, err := writer.CreateFormFile("document", filename)
+	if err != nil {
+		return TelegramResult{ErrorClass: "payload"}
+	}
+	if _, err := part.Write(data); err != nil {
+		return TelegramResult{ErrorClass: "payload"}
+	}
+	if err := writer.Close(); err != nil {
+		return TelegramResult{ErrorClass: "payload"}
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendDocument", &body)
+	if err != nil {
+		return TelegramResult{ErrorClass: "request"}
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	client, err := s.getTelegramHTTPClient()
+	if err != nil {
+		return TelegramResult{ErrorClass: "proxy"}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return TelegramResult{ErrorClass: "network"}
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return TelegramResult{ErrorClass: telegramStatusErrorClass(resp.StatusCode)}
+	}
+	return TelegramResult{Success: true}
+}
+
 func (s *TelegramService) NotifyTelegramEvent(event string, fields map[string]string) {
 	enabled, err := s.telegramEnabled()
 	if err != nil || !enabled {
@@ -301,6 +389,10 @@ func telegramStatusErrorClass(status int) string {
 	default:
 		return "unknown"
 	}
+}
+
+func telegramCaption(caption string) string {
+	return util.SafeHeader(redact.String(caption), 1024)
 }
 
 func (s *TelegramService) telegramEnabled() (bool, error) {

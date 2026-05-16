@@ -1,6 +1,12 @@
 package service
 
 import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"sync"
@@ -36,6 +42,25 @@ type statusRoundTripper struct {
 func (r statusRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
 	return &http.Response{
 		StatusCode: r.status,
+		Body:       http.NoBody,
+		Header:     http.Header{},
+	}, nil
+}
+
+type captureRoundTripper struct {
+	req  *http.Request
+	body []byte
+}
+
+func (r *captureRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.req = req
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	r.body = body
+	return &http.Response{
+		StatusCode: http.StatusOK,
 		Body:       http.NoBody,
 		Header:     http.Header{},
 	}, nil
@@ -84,6 +109,84 @@ func TestNewTelegramHTTPClientUsesHTTPProxySettings(t *testing.T) {
 	}
 	if password, _ := proxyURL.User.Password(); password != "proxy-pass" {
 		t.Fatalf("unexpected proxy password: %s", password)
+	}
+}
+
+func TestEncryptTelegramBackupRoundTrip(t *testing.T) {
+	plain := []byte("sqlite bytes")
+	encrypted, key, err := EncryptTelegramBackup(plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(key) != 32 {
+		t.Fatalf("expected AES-256 key, got %d bytes", len(key))
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encrypted) <= gcm.NonceSize() {
+		t.Fatalf("encrypted backup too short: %d", len(encrypted))
+	}
+	nonce := encrypted[:gcm.NonceSize()]
+	ciphertext := encrypted[gcm.NonceSize():]
+	decrypted, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(decrypted, plain) {
+		t.Fatalf("decrypted backup mismatch: %q", decrypted)
+	}
+}
+
+func TestSendTelegramDocumentSanitizesCaptionAndUsesMultipart(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	enableTelegramForTest(t, settingService)
+	rt := &captureRoundTripper{}
+	t.Cleanup(setTelegramHTTPClient(&http.Client{Transport: rt, Timeout: time.Second}))
+
+	result := (&TelegramService{}).SendTelegramDocument("backup.db.aes", []byte("encrypted"), "ok\r\nAuthorization: Bearer secret")
+	if !result.Success {
+		t.Fatalf("unexpected result: %#v", result)
+	}
+	if rt.req == nil || !strings.Contains(rt.req.URL.Path, "/sendDocument") {
+		t.Fatalf("unexpected request: %#v", rt.req)
+	}
+	_, params, err := mime.ParseMediaType(rt.req.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := multipart.NewReader(bytes.NewReader(rt.body), params["boundary"])
+	fields := map[string]string{}
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := io.ReadAll(part)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if part.FormName() == "document" {
+			if part.FileName() != "backup.db.aes" || string(content) != "encrypted" {
+				t.Fatalf("unexpected document part: filename=%q content=%q", part.FileName(), string(content))
+			}
+			continue
+		}
+		fields[part.FormName()] = string(content)
+	}
+	if fields["chat_id"] != "42" {
+		t.Fatalf("missing chat id: %#v", fields)
+	}
+	if strings.ContainsAny(fields["caption"], "\r\n") || strings.Contains(fields["caption"], "secret") {
+		t.Fatalf("caption was not sanitized/redacted: %q", fields["caption"])
 	}
 }
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 	"github.com/deposist/s-ui-rus-inst/util/ssrf"
@@ -139,6 +141,42 @@ func requestTokenScope(c *gin.Context) (string, bool) {
 
 func (a *ApiService) TestTelegram(c *gin.Context) {
 	jsonObj(c, a.TelegramService.TestTelegram(), nil)
+}
+
+func (a *ApiService) BackupToTelegram(c *gin.Context) {
+	if !a.requireTokenScopeAny(c, "database", "admin") {
+		return
+	}
+	db, err := database.GetDb("")
+	if err != nil {
+		jsonMsg(c, "telegramBackup", err)
+		return
+	}
+	encrypted, key, err := service.EncryptTelegramBackup(db)
+	if err != nil {
+		jsonMsg(c, "telegramBackup", err)
+		return
+	}
+	now := time.Now().UTC()
+	filename := "s-ui-backup-" + now.Format("20060102-150405") + ".db.aes"
+	caption := "S-UI encrypted database backup\ncreatedAt: " + now.Format(time.RFC3339)
+	result := a.TelegramService.SendTelegramDocument(filename, encrypted, caption)
+	if !result.Success {
+		a.recordAudit(c, requestActor(c), "db_export_failed", "database", service.AuditSeverityWarn, map[string]any{
+			"channel":    "telegram",
+			"errorClass": result.ErrorClass,
+		})
+		jsonObj(c, gin.H{"errorClass": result.ErrorClass}, common.NewError("telegram backup failed"))
+		return
+	}
+	a.recordAudit(c, requestActor(c), "db_exported", "database", service.AuditSeverityWarn, map[string]any{
+		"channel":   "telegram",
+		"encrypted": true,
+	})
+	jsonObj(c, gin.H{
+		"filename":  filename,
+		"backupKey": base64.StdEncoding.EncodeToString(key),
+	}, nil)
 }
 
 func (a *ApiService) GetObservabilityHistory(c *gin.Context) {
