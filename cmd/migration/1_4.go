@@ -33,11 +33,21 @@ func to1_4(db *gorm.DB) error {
 	if err := backfillTokenScopes(db); err != nil {
 		return err
 	}
+	if err := backfillTokenTimestamps(db); err != nil {
+		return err
+	}
 	return nil
 }
 
 func backfillTokenScopes(db *gorm.DB) error {
 	return db.Exec("UPDATE tokens SET scope = ? WHERE scope IS NULL OR scope = '' OR scope = ?", "admin", "full").Error
+}
+
+func backfillTokenTimestamps(db *gorm.DB) error {
+	if err := db.Exec("UPDATE tokens SET created_at = strftime('%s','now') WHERE created_at = 0 OR created_at IS NULL").Error; err != nil {
+		return err
+	}
+	return db.Exec("UPDATE tokens SET updated_at = strftime('%s','now') WHERE updated_at = 0 OR updated_at IS NULL").Error
 }
 
 func addColumnIfMissing(db *gorm.DB, table string, column string, definition string) error {

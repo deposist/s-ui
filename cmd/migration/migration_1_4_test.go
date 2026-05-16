@@ -75,12 +75,19 @@ VALUES(1, 'admin', 'migration_test', 'audit', 'info', '127.0.0.1', 'test', '{}')
 `).Error; err != nil {
 		t.Fatal(err)
 	}
-	var scope string
-	if err := db.Raw("SELECT scope FROM tokens WHERE desc = ?", "legacy").Scan(&scope).Error; err != nil {
+	var token struct {
+		Scope     string
+		CreatedAt int64
+		UpdatedAt int64
+	}
+	if err := db.Raw("SELECT scope, created_at, updated_at FROM tokens WHERE desc = ?", "legacy").Scan(&token).Error; err != nil {
 		t.Fatal(err)
 	}
-	if scope != "admin" {
-		t.Fatalf("legacy token scope was not backfilled to admin: %q", scope)
+	if token.Scope != "admin" {
+		t.Fatalf("legacy token scope was not backfilled to admin: %q", token.Scope)
+	}
+	if token.CreatedAt <= 0 || token.UpdatedAt <= 0 {
+		t.Fatalf("legacy token timestamps were not backfilled: %#v", token)
 	}
 }
 
