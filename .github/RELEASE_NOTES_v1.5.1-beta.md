@@ -1,4 +1,4 @@
-# S-UI v1.5.1 - remediation hardening and UI completion
+# S-UI v1.5.1-beta - remediation hardening and UI completion
 
 This release closes the remaining security, privacy, realtime, Telegram,
 observability, frontend, and test gaps from the `1.5.0` remediation cycle.

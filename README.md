@@ -1,4 +1,5 @@
 ## S-UI
+
 <p align="center">
   <img width="492" height="450" alt="s-ui-rus-inst logo" src="https://github.com/user-attachments/assets/cfc9da97-f8ea-4c68-961c-2bf164932272" />
 </p>
@@ -19,97 +20,59 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** the original `alireza0/s-ui` project was blocked and removed by GitHub. This repository is a complete backup based on the last original version, `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.0`).
+**Note:** the original `alireza0/s-ui` project was blocked and removed by GitHub. This repository is a complete backup based on the last original version, `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.1-beta`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
 > **Disclaimer:** this project is intended only for personal learning and knowledge sharing. Do not use it for illegal purposes.
 
+## Releases
 
-## What's new in 1.5.0
+The full per-release notes live in the language-specific changelog files:
 
-- Admins can invalidate all active web sessions from the Admins panel; API tokens are not revoked by that action.
-- bcrypt password storage with automatic plaintext-to-bcrypt migration on first login.
-- Random admin password on first install (printed once to the application log).
-- Login rate limiter, hardened session cookies, optional `SUI_TRUSTED_PROXIES`.
-- SSRF-resistant external subscription fetcher (DNS-rebinding safe, response cap, opt-in private targets via `SUI_ALLOW_PRIVATE_SUB_URLS`).
-- Race-free core lifecycle, online-stats and token store.
-- Frontend: `v-html` removed from log/IP/rule import surfaces, code splitting re-enabled, Axios `AbortController` instead of deprecated `CancelToken`, ESLint flat config.
-- Backup import auto-adapts old databases (1.0/1.1/1.2/1.3/1.4.x) — restoring a legacy backup runs the schema migrations and rehashes any plaintext passwords transparently. Fresh binaries on top of an existing 1.x DB upgrade automatically on start.
-- Multilingual (English / Russian / Chinese) `install.sh` and `s-ui` management menu, language switchable from menu item **21. Language**.
-- Default panel timezone changed to `Europe/Moscow`; default frontend locale changed to English.
-- See [CHANGELOG.md](CHANGELOG.md) for the full list and an upgrade guide.
+- English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
+- Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
+- 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
+
+Short summary of recent versions:
+
+| Version | One-line summary |
+| --- | --- |
+| `1.5.1-beta` | Remediation hardening: async Telegram queue, redacted payloads, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram proxy egress with normalized error classes, bucketed observability, frontend completion. |
+| `1.5.0` | Security foundation and realtime platform: secretbox for sensitive settings, `audit_events` + `/api/security/audit`, CSRF for browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` header deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only by default). |
+| `1.4.3` | sing-box runtime update from `v1.13.4` to `v1.13.11`. No DB or UI changes. |
+| `1.4.2-beta` | Security and reliability hardening: bcrypt password storage with lazy migration, login rate limiter, hardened cookies, SSRF-resistant subscription fetcher, parameterized SQL, race-free runtime, automatic legacy backup adaptation, bilingual installer. Module renamed to `github.com/deposist/s-ui-rus-inst`. |
+
+For full changes, breaking notes, upgrade guide, and rollback steps, open the changelog in your preferred language.
 
 ## Key differences vs `admin8800/s-ui`
+
+<details>
+  <summary>Show details</summary>
 
 This fork is binary-compatible with `admin8800/s-ui` — drop the new
 binary on top of an existing 1.x install, the panel migrates the DB
 automatically on first start. The intent is to harden security and
 reliability without changing the protocol surface.
 
-- **Auth and session security.** `admin8800/s-ui` stores passwords in
-  plaintext, ships an `admin/admin` default, and has no login rate
-  limiter. This fork uses bcrypt with lazy migration, generates a
-  random first-run password (logged once), and rate-limits failed
-  logins. Cookies are `HttpOnly` + `SameSite=Lax` + HTTPS-aware
-  `Secure`.
-- **`X-Forwarded-For` handling.** `admin8800/s-ui` always trusts the
-  leftmost `X-Forwarded-For` value. This fork ignores the header
-  unless `SUI_TRUSTED_PROXIES` is configured and walks the chain
-  right-to-left; spoofed headers cannot reach IP-based logic.
-- **External subscription fetcher.** `admin8800/s-ui` performed
-  fetches with `InsecureSkipVerify=true` and no validation of the
-  target host. This fork validates the URL, blocks private/loopback
-  targets by default (opt back in with
-  `SUI_ALLOW_PRIVATE_SUB_URLS=true`), caps the response at 4 MiB, and
-  re-validates the resolved IP at dial time so DNS rebinding cannot
-  bypass the filter.
-- **SQL safety.** Replaced unsafe string concatenation in
-  `service/config.go` and `service/inbounds.go` with parameterised
-  queries; the inbound user-fetch query enforces a static allow-list
-  of inbound types.
-- **Backup import / upgrade.** `admin8800/s-ui` left WAL/SHM sidecars
-  next to the imported database, which corrupted restores from
-  another host (the historical "1.4.1 backup will not restore" bug).
-  This fork rewrites `ImportDB` to close the live DB, clean
-  sidecars, stage the upload, run schema migrations and the new
-  `AdaptToCurrentVersion` adapter (rehashes legacy plaintext
-  passwords, refreshes indexes, bumps `settings.version`), and roll
-  back to the previous DB on any failure.
-- **Listen address resilience.** When the saved `webListen` /
-  `subListen` IP no longer exists on the host (typical after
-  restoring a backup from a different machine), the panel logs a
-  warning and binds on every interface instead of failing with
-  `EADDRNOTAVAIL` and looping under systemd.
-- **WARP registration.** Talks to the current Cloudflare WARP API
-  (`v0a4005`) with proper first-party headers, falls back to
-  `v0a2158`, retries transient TLS handshake failures. The original
-  fork frequently failed with `TLS handshake timeout` / `EOF`.
-- **Race-free runtime.** `core.Core`, the v2 token store, online
-  stats, and the last-update bookkeeping are protected by the
-  appropriate `sync.Mutex` / `sync.RWMutex` and pass
-  `go test -race ./...`.
-- **HTTP server hardening.** `Read/Write/Header/Idle` timeouts and
-  `tls.MinVersion = 1.2` on both the panel and the subscription
-  endpoint.
-- **Frontend hygiene.** `v-html` removed from logs, rule import
-  errors, IP lists, and the gauge tile. Axios moved onto an
-  exported instance, `AbortController` replaces deprecated
-  `CancelToken`, dedupe limited to idempotent reads. Vite code
-  splitting is re-enabled.
-- **Localization & defaults.** Multilingual `install.sh` and `s-ui`
-  management menu (English / Russian / Chinese), language switchable at
-  runtime. Default `timeLocation` switched from `Asia/Shanghai` to
-  `Europe/Moscow`. Default frontend locale switched from
-  Simplified Chinese to English.
-- **Tests.** Regression coverage for password hashing, plaintext
-  migration, login rate limiter, X-Forwarded-For trust matrix,
-  external URL validation, dialer-side block of private addresses,
-  default port omission in `subURI`, backup inclusion of `services`
-  / `tokens`, and legacy backup import. The build matrix runs with
-  `go test -race` and the build-tag set
-  `with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale`.
+- **Auth and session security.** bcrypt with lazy migration, randomly generated first-run password (logged once), login rate limiter, `HttpOnly` + `SameSite=Lax` + HTTPS-aware `Secure` cookies. Sensitive settings (Telegram bot token, proxy credentials, install salt) are encrypted at rest via secretbox; API tokens are stored as salted SHA-256 hashes. CSRF protection is enforced on browser `/api/*` mutating requests.
+- **`X-Forwarded-For` handling.** Header is ignored unless `SUI_TRUSTED_PROXIES` is configured; the chain is walked right-to-left so spoofed XFF cannot reach IP-based logic.
+- **External subscription fetcher.** URL allow-list, blocks private/loopback targets by default (opt-in via `SUI_ALLOW_PRIVATE_SUB_URLS=true`), 4 MiB response cap, DNS-rebinding-safe dial-time IP re-validation. `Authorization: Bearer <token>` is the primary API token transport on `/apiv2/*`; the legacy `Token` header still works with `Deprecation` and `Sunset` headers until `Sat, 15 Aug 2026 00:00:00 GMT`.
+- **Realtime WebSocket.** `/api/realtime/ws-token` + `/api/realtime/ws` enforce Origin allow-listing, per-IP handshake rate limits, single-use tokens, ping/pong heartbeat, idle close, and close-all on session rotation. Frontend has a polling fallback for degraded states.
+- **Per-client subscription secrets.** `/sub/<secret>`, `/sub/json/<secret>`, `/sub/clash/<secret>`, `/json/<secret>`, `/clash/<secret>` are supported; legacy `/sub/<name>` keeps working until `subSecretRequired=true`. Subscription endpoints sanitize response headers and apply a configurable per-IP rate limit.
+- **Telegram notifications (off by default).** Async bounded queue with retry/backoff and audited overflow/failure events. Egress can use validated HTTP/HTTPS/SOCKS5 proxy settings. Telegram payloads, audit details, change history, and backup captions are redacted.
+- **Audit and observability.** `audit_events` table with retention GC, scoped `GET /api/security/audit` endpoint with rate limiting and cursor pagination. Bounded observability buckets (`2s`, `30s`, `1m`, `5m`) sampled by cron. Bounded logs API and fail-soft 1h-cached `GET /api/version`.
+- **IP monitor (monitor-only by default).** Salted hashes, opt-in raw display, retention GC, per-client `limitIp` and `ipLimitMode`. Enforce mode rejects only new over-limit connections and never closes active connections.
+- **SQL safety.** Parameterized queries throughout `service/config.go` and `service/inbounds.go`; static allow-list of inbound types in the user-fetch SQL builder.
+- **Backup import / upgrade.** `ImportDB` enforces a 64 MiB cap, SQLite magic check, temporary staging, read-only `PRAGMA integrity_check`, and audit events. WAL/SHM sidecars are cleaned, schema migrations + `AdaptToCurrentVersion` run automatically (rehashes legacy plaintext passwords, refreshes indexes, bumps `settings.version`); the previous DB is restored on any failure.
+- **Listen-address resilience.** When the saved `webListen` / `subListen` IP no longer exists on the host, the panel logs a warning and binds on every interface instead of failing with `EADDRNOTAVAIL`.
+- **Race-free runtime.** Core lifecycle, online stats, last-update bookkeeping, v2 token store, realtime hub all pass `go test -race ./...` (requires CGO).
+- **HTTP server hardening.** `Read/Write/Header/Idle` timeouts and `tls.MinVersion = 1.2` on both the panel and the subscription endpoint. Security-headers middleware (CSP, HSTS when TLS, no-store on subscription responses).
+- **WARP registration.** Talks to the current Cloudflare WARP API (`v0a4005`) with proper first-party headers, falls back to `v0a2158`, retries transient TLS handshake failures.
+- **Frontend hygiene.** `v-html` removed from logs, rule import errors, IP lists, and the gauge tile. Axios on an exported instance, `AbortController` instead of deprecated `CancelToken`, dedupe limited to idempotent reads, Vite code splitting on. Realtime WS store with reconnect/degraded states. Secret-aware settings fields with `••• stored •••` placeholder. IP history modal with raw-IP masking by default. Telegram settings and Audit views.
+- **Localization & defaults.** Multilingual `install.sh` and `s-ui` management menu (English / Russian / Chinese), language switchable at runtime. Default `timeLocation` is `Europe/Moscow`. Default frontend locale is English (existing browsers keep their `localStorage` choice).
 
+</details>
 
 ## Overview
 
@@ -131,7 +94,6 @@ reliability without changing the protocol surface.
 | Linux | amd64, arm64, armv7, armv6, armv5, 386, s390x | Supported |
 | Windows | amd64, 386, arm64 | Supported |
 | macOS | amd64, arm64 | Experimental support |
-
 
 ## Default Installation Information
 
@@ -158,12 +120,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.0 (sing-box 1.13.11 + security hardening)
-
-To install or upgrade to the current beta build (`v1.5.0`):
+## Install v1.5.1-beta (current beta)
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.0
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.1-beta
 ```
 
 Or from a local clone:
@@ -171,24 +131,23 @@ Or from a local clone:
 ```sh
 git clone -b beta .git
 cd s-ui-rus-inst
-sudo bash install.sh v1.5.0
+sudo bash install.sh v1.5.1-beta
 ```
 
 The installer is fully compatible with existing installations: settings,
 inbounds, outbounds, clients, TLS, services and tokens are kept; the DB
 schema is migrated automatically on first start; plaintext admin
-passwords are upgraded to bcrypt on the next successful login. See
-[CHANGELOG.md](CHANGELOG.md#upgrade-guide--гайд-по-обновлению) for the
-full upgrade procedure and rollback notes.
+passwords are upgraded to bcrypt on the next successful login. Full
+upgrade procedure and rollback notes — in the per-language changelog
+([EN](CHANGELOG-EN.md) · [RU](CHANGELOG-RU.md) · [中文](CHANGELOG-ZH.md)).
 
 ## Install an Older Version
 
-**Step 1:** to install a specific older version, append the version tag with `v` to the installation command. For example, version `v1.0.0`:
+Append the version tag with `v` to the installation command. For example, version `v1.0.0`:
 
 ```sh
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.0.0
 ```
-
 
 ## Manual Installation
 
@@ -367,6 +326,7 @@ Run the backend from the repository root:
 | SINGBOX_API | `string` | - |
 | SUI_TRUSTED_PROXIES | comma-separated CIDRs / IPs | - (XFF ignored) |
 | SUI_ALLOW_PRIVATE_SUB_URLS | `boolean` | `false` |
+| SUI_SECRETBOX_KEY | `string` | - (falls back to `settings.secret`) |
 
 </details>
 
@@ -395,93 +355,59 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** оригинальный проект `alireza0/s-ui` был заблокирован и удалён GitHub. Этот репозиторий — полная резервная копия последней оригинальной версии `v1.4.1` с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.0`).
+**Примечание:** оригинальный проект `alireza0/s-ui` был заблокирован и удалён GitHub. Этот репозиторий — полная резервная копия последней оригинальной версии `v1.4.1` с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.1-beta`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
 > **Отказ от ответственности:** этот проект предназначен только для личного обучения и обмена опытом. Не используйте его в незаконных целях.
 
+## Релизы
 
-## Что нового в 1.5.0
+Полные release notes лежат в отдельных файлах changelog по языкам:
 
-- Администратор может деаутентифицировать все активные web-сессии из раздела Admins; API-токены этим действием не отзываются.
-- Хранение паролей через bcrypt с автоматической миграцией plaintext-паролей при первом успешном логине.
-- При первой установке генерируется случайный пароль администратора (выводится в журнал приложения один раз).
-- Лимит входа, защищённые cookie сессии, опциональный `SUI_TRUSTED_PROXIES`.
-- SSRF-устойчивый загрузчик внешних подписок (защита от DNS rebinding, лимит размера, опциональные приватные адреса через `SUI_ALLOW_PRIVATE_SUB_URLS`).
-- Race-free жизненный цикл core, онлайн-статистика и хранилище токенов.
-- Фронтенд: убран `v-html` из логов/IP-листов/импорта правил, включён code splitting, заменён устаревший `axios.CancelToken` на `AbortController`, ESLint flat config.
-- Импорт бэкапа автоматически адаптирует базы старых версий (1.0/1.1/1.2/1.3/1.4.x) — миграция схемы и перешивка plaintext-паролей выполняются прозрачно. Свежий бинарник поверх существующей базы 1.x обновляется автоматически при старте.
-- Многоязычные `install.sh` и меню `s-ui` (английский / русский / китайский), переключение языка из меню (пункт **21. Language**).
-- Часовой пояс панели по умолчанию: `Europe/Moscow`. Локаль фронтенда по умолчанию: `en`.
-- Полный список изменений и руководство по обновлению — в [CHANGELOG.md](CHANGELOG.md).
+- English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
+- Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
+- 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
+
+Краткая сводка по последним версиям:
+
+| Версия | Однострочное описание |
+| --- | --- |
+| `1.5.1-beta` | Закрытие техдолга и UI: асинхронная очередь Telegram, redaction payload'ов, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram через прокси с нормализованными errorClass, бакетированная observability, готовый фронт. |
+| `1.5.0` | Фундамент безопасности и realtime: secretbox для секретов, `audit_events` + `/api/security/audit`, CSRF для browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only по умолчанию). |
+| `1.4.3` | Обновление sing-box runtime с `v1.13.4` до `v1.13.11`. БД и UI без изменений. |
+| `1.4.2-beta` | Хардеринг безопасности и надёжности: bcrypt с ленивой миграцией, login rate limiter, защищённые cookie, SSRF-защищённый загрузчик подписок, параметризованный SQL, race-free runtime, авто-адаптация легаси-бэкапов, двуязычный установщик. Модуль переименован в `github.com/deposist/s-ui-rus-inst`. |
+
+Полный список изменений, breaking-заметки, гайд по обновлению и инструкции по откату — в выбранном вами changelog.
 
 ## Ключевые отличия от `admin8800/s-ui`
+
+<details>
+  <summary>Показать подробности</summary>
 
 Этот форк бинарно совместим с `admin8800/s-ui` — новый бинарник можно
 ставить поверх работающей установки 1.x, схема БД автоматически
 обновится при первом старте. Цель форка — усилить безопасность и
 надёжность, не меняя протокол.
 
-- **Авторизация и сессия.** `admin8800/s-ui` хранит пароли в открытом
-  виде, ставит `admin/admin` по умолчанию и не имеет лимита логинов.
-  В этом форке используется bcrypt с ленивой миграцией, при первой
-  установке генерируется случайный пароль (выводится в журнал один
-  раз), есть лимит на неуспешные логины, cookie сессии — `HttpOnly` +
-  `SameSite=Lax` + `Secure` при HTTPS.
-- **`X-Forwarded-For`.** `admin8800/s-ui` всегда доверяет крайнему
-  левому значению. В форке заголовок игнорируется без переменной
-  `SUI_TRUSTED_PROXIES`, а цепочка обходится справа налево —
-  поддельный заголовок не может обойти IP-логику.
-- **Загрузчик внешних подписок.** В оригинале запросы шли с
-  `InsecureSkipVerify=true` и без валидации целевого хоста. В форке
-  есть валидация URL, блок приватных/loopback адресов по умолчанию
-  (опционально через `SUI_ALLOW_PRIVATE_SUB_URLS=true`), ограничение
-  ответа 4 МиБ и повторная валидация IP при dial — DNS rebinding
-  больше не работает.
-- **Безопасность SQL.** Заменили склейку строк в `service/config.go`
-  и `service/inbounds.go` на параметризованные запросы; в выборке
-  пользователей по inbound — статический whitelist допустимых типов.
-- **Импорт бэкапа / обновление.** `admin8800/s-ui` оставлял WAL/SHM
-  сайдкары рядом с загруженной БД, и восстановление с другого
-  сервера ломало базу (известная проблема «1.4.1-бэкап не
-  восстанавливается»). Здесь `ImportDB` переписан: закрытие живой БД,
-  очистка сайдкаров, staging upload, миграции и новый
-  `AdaptToCurrentVersion` (перешивка plaintext-паролей в bcrypt,
-  обновление индексов, поднятие `settings.version`), откат к
-  предыдущей БД при любой ошибке.
-- **Листен-адрес, устойчивый к переезду.** Если в `webListen` /
-  `subListen` сохранён IP, которого нет на текущем хосте (типично
-  после восстановления бэкапа с другой машины), панель пишет
-  warning и слушает на всех интерфейсах вместо краша
-  `EADDRNOTAVAIL` под systemd.
-- **WARP-регистрация.** Поддержка актуального API Cloudflare
-  (`v0a4005`) с заголовками первого клиента, фоллбэк на `v0a2158`,
-  ретраи переходящих TLS-ошибок. В оригинальном форке регулярно
-  падало с `TLS handshake timeout` / `EOF`.
-- **Race-free runtime.** `core.Core`, хранилище токенов v2,
-  online-статистика и last-update защищены `sync.Mutex` /
-  `sync.RWMutex` и проходят `go test -race ./...`.
-- **HTTP server hardening.** Таймауты `Read/Write/Header/Idle` и
-  `tls.MinVersion = 1.2` для панели и для эндпоинта подписки.
-- **Чистота фронтенда.** `v-html` удалён из логов, ошибок импорта
-  правил, IP-листов и gauge-плитки. Axios через экспортируемый
-  instance, `AbortController` вместо устаревшего `CancelToken`,
-  дедупликация только для идемпотентных запросов, code splitting
-  Vite восстановлен.
-- **Локализация и значения по умолчанию.** Многоязычные `install.sh`
-  и меню `s-ui` (английский / русский / китайский), язык переключается на лету.
-  Часовой пояс по умолчанию переключён с `Asia/Shanghai` на
-  `Europe/Moscow`. Локаль фронтенда по умолчанию — английский
-  (раньше был упрощённый китайский).
-- **Тесты.** Регрессионное покрытие для bcrypt-хеширования и
-  миграции plaintext-паролей, лимита логинов, поведения
-  `X-Forwarded-For`, валидации внешних URL, блокировки приватных
-  адресов на стороне dialer, опускания дефолтного порта в `subURI`,
-  включения `services` / `tokens` в бэкап и импорта легаси-бэкапа.
-  CI-матрица гоняет `go test -race` и build tags
-  `with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale`.
+- **Авторизация и сессия.** bcrypt с ленивой миграцией, случайный пароль администратора при первой установке (выводится в журнал один раз), лимит на неуспешные логины, cookie сессии — `HttpOnly` + `SameSite=Lax` + `Secure` при HTTPS. Чувствительные настройки (Telegram bot token, креденшелы прокси, install salt) шифруются at-rest через secretbox; API-токены хранятся как salted SHA-256. CSRF-защита на browser `/api/*`-mutating-запросах.
+- **`X-Forwarded-For`.** Заголовок игнорируется без `SUI_TRUSTED_PROXIES`; цепочка обходится справа налево, поддельный XFF не может обойти IP-логику.
+- **Загрузчик внешних подписок.** Allow-list URL, блок приватных/loopback по умолчанию (opt-in `SUI_ALLOW_PRIVATE_SUB_URLS=true`), лимит ответа 4 МиБ, защита от DNS rebinding на dial. `Authorization: Bearer <token>` — основной способ передачи API-токена в `/apiv2/*`; legacy `Token`-header работает с `Deprecation` и `Sunset` до `Sat, 15 Aug 2026 00:00:00 GMT`.
+- **Realtime WebSocket.** `/api/realtime/ws-token` + `/api/realtime/ws` с Origin allow-list, per-IP rate-limit handshake, одноразовыми токенами, ping/pong heartbeat, idle close и close-all при ротации сессии. На фронте есть polling-фолбэк для degraded-состояний.
+- **Per-client subscription secrets.** Поддерживаются `/sub/<secret>`, `/sub/json/<secret>`, `/sub/clash/<secret>`, `/json/<secret>`, `/clash/<secret>`; legacy `/sub/<name>` работает пока `subSecretRequired=false`. Subscription-эндпоинты санитизируют response-заголовки и применяют конфигурируемый per-IP rate-limit.
+- **Telegram-уведомления (off by default).** Асинхронная bounded-очередь с retry/backoff и audit-событиями overflow/failure. Egress может идти через валидированные HTTP/HTTPS/SOCKS5-прокси. Payload, audit-детали, changes и captions проходят redaction.
+- **Audit и observability.** Таблица `audit_events` с retention GC, scoped эндпоинт `GET /api/security/audit` с rate-limit и cursor pagination. Bounded observability buckets (`2s`, `30s`, `1m`, `5m`), сэмплятся cron'ом. Bounded logs API и fail-soft 1h-cached `GET /api/version`.
+- **IP monitor (monitor-only по умолчанию).** Соль+SHA-256 hashing, opt-in raw-display, retention GC, per-client `limitIp` и `ipLimitMode`. Enforce отбрасывает только новые сверхлимитные подключения и не разрывает активные.
+- **Безопасность SQL.** Параметризованные запросы в `service/config.go` и `service/inbounds.go`; в выборке пользователей по inbound — статический whitelist допустимых типов.
+- **Импорт бэкапа / обновление.** `ImportDB` имеет cap 64 МиБ, проверку SQLite magic, временную staging-копию, read-only `PRAGMA integrity_check` и audit-события. WAL/SHM сайдкары очищаются, schema-миграции и `AdaptToCurrentVersion` запускаются автоматически (перешивка plaintext-паролей в bcrypt, обновление индексов, поднятие `settings.version`); при ошибке БД восстанавливается из staging.
+- **Листен-адрес, устойчивый к переезду.** Если в `webListen` / `subListen` сохранён IP, которого нет на текущем хосте, панель пишет warning и слушает на всех интерфейсах вместо краша `EADDRNOTAVAIL`.
+- **Race-free runtime.** core lifecycle, online-stats, last-update, v2 token store и realtime hub проходят `go test -race ./...` (требует CGO).
+- **HTTP server hardening.** Таймауты `Read/Write/Header/Idle` и `tls.MinVersion = 1.2` для панели и для эндпоинта подписки. Middleware security-headers (CSP, HSTS при TLS, no-store на subscription-ответах).
+- **WARP-регистрация.** Поддержка актуального API Cloudflare (`v0a4005`) с заголовками первого клиента, фоллбэк на `v0a2158`, ретраи переходящих TLS-ошибок.
+- **Чистота фронтенда.** `v-html` удалён из логов, ошибок импорта правил, IP-листов и gauge-плитки. Axios через экспортируемый instance, `AbortController` вместо устаревшего `CancelToken`, дедупликация только для идемпотентных запросов, code splitting Vite. Realtime WS-store с reconnect/degraded состояниями. Secret-aware-поля настроек с placeholder'ом `••• stored •••`. IP-history modal с маской raw-IP по умолчанию. Views Telegram-настроек и Audit.
+- **Локализация и значения по умолчанию.** Многоязычные `install.sh` и меню `s-ui` (английский / русский / китайский), язык переключается на лету. Часовой пояс по умолчанию — `Europe/Moscow`. Локаль фронтенда по умолчанию — английский (существующие браузеры сохраняют выбор из `localStorage`).
 
+</details>
 
 ## Краткий обзор
 
@@ -503,7 +429,6 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 | Linux | amd64, arm64, armv7, armv6, armv5, 386, s390x | Поддерживается |
 | Windows | amd64, 386, arm64 | Поддерживается |
 | macOS | amd64, arm64 | Экспериментальная поддержка |
-
 
 ## Информация об установке по умолчанию
 
@@ -530,12 +455,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.0 (sing-box 1.13.11 + исправления безопасности)
-
-Установка или обновление до текущей беты (`v1.5.0`):
+## Установка v1.5.1-beta (текущая бета)
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.0
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.1-beta
 ```
 
 Либо из локального клона:
@@ -543,24 +466,23 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 ```sh
 git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
 cd s-ui-rus-inst
-sudo bash install.sh v1.5.0
+sudo bash install.sh v1.5.1-beta
 ```
 
 Установщик полностью совместим с уже работающими установками: настройки,
 inbounds, outbounds, клиенты, TLS, services и токены сохраняются; схема
 БД мигрируется автоматически при первом запуске; пароль администратора
 в открытом виде заменяется на bcrypt-хеш при следующем успешном входе.
-Полный гайд по обновлению и откату — в
-[CHANGELOG.md](CHANGELOG.md#upgrade-guide--гайд-по-обновлению).
+Полный гайд по обновлению и откату — в changelog'е на нужном языке
+([EN](CHANGELOG-EN.md) · [RU](CHANGELOG-RU.md) · [中文](CHANGELOG-ZH.md)).
 
 ## Установка старой версии
 
-**Шаг 1:** чтобы установить определенную старую версию, добавьте тег версии с `v` в конец команды установки. Например, версия `v1.0.0`:
+Чтобы установить определённую старую версию, добавьте тег версии с `v` в конец команды установки. Например, версия `v1.0.0`:
 
 ```sh
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.0.0
 ```
-
 
 ## Ручная установка
 
@@ -739,6 +661,7 @@ go build -o sui main.go
 | SINGBOX_API | `string` | - |
 | SUI_TRUSTED_PROXIES | список CIDR/IP через запятую | - (XFF игнорируется) |
 | SUI_ALLOW_PRIVATE_SUB_URLS | `boolean` | `false` |
+| SUI_SECRETBOX_KEY | `string` | - (fallback на `settings.secret`) |
 
 </details>
 
