@@ -1,8 +1,18 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-gonic/gin"
 )
 
 func resetRealtimeHubForTest() {
@@ -42,5 +52,125 @@ func TestReserveWSClientEnforcesLimits(t *testing.T) {
 	releaseWSClient("admin", "192.0.2.1")
 	if !reserveWSClient("admin", "192.0.2.1") {
 		t.Fatal("reservation after release should succeed")
+	}
+}
+
+func TestWSOriginAllowedAcceptsRequestHostAndWebDomain(t *testing.T) {
+	tests := []struct {
+		name        string
+		origin      string
+		requestHost string
+		webDomain   string
+		wantAllowed bool
+	}{
+		{
+			name:        "request host",
+			origin:      "https://panel.example:2095",
+			requestHost: "panel.example:2095",
+			wantAllowed: true,
+		},
+		{
+			name:        "configured web domain",
+			origin:      "https://admin.example",
+			requestHost: "127.0.0.1:2095",
+			webDomain:   "admin.example",
+			wantAllowed: true,
+		},
+		{
+			name:        "foreign host",
+			origin:      "https://evil.example",
+			requestHost: "panel.example",
+			webDomain:   "admin.example",
+			wantAllowed: false,
+		},
+		{
+			name:        "invalid scheme",
+			origin:      "file://panel.example",
+			requestHost: "panel.example",
+			wantAllowed: false,
+		},
+		{
+			name:        "origin with query",
+			origin:      "https://panel.example?token=secret",
+			requestHost: "panel.example",
+			wantAllowed: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			allowed, _ := wsOriginAllowed(tt.origin, tt.requestHost, tt.webDomain)
+			if allowed != tt.wantAllowed {
+				t.Fatalf("allowed=%v, want %v", allowed, tt.wantAllowed)
+			}
+		})
+	}
+}
+
+func TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	resetRealtimeHubForTest()
+	realtimeHub.Lock()
+	realtimeHub.tokens["ws-token"] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
+	realtimeHub.Unlock()
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.GET("/login", func(c *gin.Context) {
+		generation, err := settingService.GetSessionGeneration()
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if err := SetLoginUser(c, "admin", 0, generation); err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWS)
+
+	loginRecorder := httptest.NewRecorder()
+	loginReq := httptest.NewRequest(http.MethodGet, "/login", nil)
+	router.ServeHTTP(loginRecorder, loginReq)
+	if loginRecorder.Code != http.StatusNoContent {
+		t.Fatalf("login returned %d", loginRecorder.Code)
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://panel.example/api/realtime/ws?token=ws-token", nil)
+	req.Host = "panel.example"
+	req.Header.Set("Origin", "https://evil.example")
+	for _, c := range loginRecorder.Result().Cookies() {
+		req.AddCookie(c)
+	}
+	router.ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("unexpected status %d", recorder.Code)
+	}
+
+	realtimeHub.Lock()
+	_, tokenStillPresent := realtimeHub.tokens["ws-token"]
+	realtimeHub.Unlock()
+	if !tokenStillPresent {
+		t.Fatal("foreign Origin consumed the websocket token")
+	}
+
+	var event model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "ws_origin_rejected").First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	var details map[string]any
+	if err := json.Unmarshal(event.Details, &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["originHost"] != "evil.example" || details["requestHost"] != "panel.example" {
+		t.Fatalf("unexpected audit details: %#v", details)
+	}
+	if _, ok := details["token"]; ok {
+		t.Fatalf("websocket token leaked to audit details: %#v", details)
 	}
 }
