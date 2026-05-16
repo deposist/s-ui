@@ -11,7 +11,9 @@ func TestValidateOutboundCheckTargetRejectsNonHTTPSAndPrivateIP(t *testing.T) {
 		"http://example.com",
 		"https://127.0.0.1/test",
 		"https://10.0.0.1/test",
+		"https://100.64.0.1/test",
 		"https://[::1]/test",
+		"https://user:pass@1.1.1.1/test",
 	}
 	for _, target := range tests {
 		t.Run(target, func(t *testing.T) {

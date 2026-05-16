@@ -433,6 +433,11 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		if strings.HasSuffix(key, "HasSecret") {
 			continue
 		}
+		if key == "telegramProxyURL" && obj != "" {
+			if err = validateTelegramProxyURL(obj); err != nil {
+				return err
+			}
+		}
 		if isEncryptedSettingKey(key) {
 			if obj == "" {
 				continue

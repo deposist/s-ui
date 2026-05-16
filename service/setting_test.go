@@ -98,3 +98,42 @@ func TestSaveAllowsDefaultSubPathButRejectsOtherReservedSubPaths(t *testing.T) {
 		t.Fatal("expected reserved subPath to be rejected")
 	}
 }
+
+func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
+	t.Setenv("SUI_SECRETBOX_KEY", "test-secretbox-key")
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidPayload, err := json.Marshal(map[string]string{
+		"telegramProxyURL": "http://127.0.0.1:8080",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidPayload)
+	}); err == nil {
+		t.Fatal("expected private telegramProxyURL to be rejected")
+	}
+
+	validPayload, err := json.Marshal(map[string]string{
+		"telegramProxyURL": "socks5://8.8.8.8:1080",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validPayload)
+	}); err != nil {
+		t.Fatalf("expected public telegramProxyURL to be accepted: %v", err)
+	}
+	decrypted, err := settingService.getString("telegramProxyURL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decrypted != "socks5://8.8.8.8:1080" {
+		t.Fatalf("unexpected stored telegramProxyURL: %q", decrypted)
+	}
+}

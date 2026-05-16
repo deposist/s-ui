@@ -2,16 +2,14 @@ package api
 
 import (
 	"context"
-	"net"
-	"net/netip"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/config"
 	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-rus-inst/util/ssrf"
 
 	"github.com/gin-gonic/gin"
 )
@@ -115,27 +113,8 @@ func validateOutboundCheckTarget(ctx context.Context, rawURL string) error {
 	if parsed.Scheme != "https" || parsed.Hostname() == "" {
 		return common.NewError("check target must be an HTTPS URL")
 	}
-	host := parsed.Hostname()
-	if strings.EqualFold(host, "localhost") {
-		return common.NewError("check target host is not allowed")
+	if parsed.User != nil {
+		return common.NewError("check target must not include userinfo")
 	}
-	if ip, err := netip.ParseAddr(host); err == nil {
-		if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
-			return common.NewError("check target IP is not allowed")
-		}
-		return nil
-	}
-	resolveCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	addrs, err := net.DefaultResolver.LookupIPAddr(resolveCtx, host)
-	if err != nil {
-		return err
-	}
-	for _, addr := range addrs {
-		ip, ok := netip.AddrFromSlice(addr.IP)
-		if !ok || !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
-			return common.NewError("check target resolves to a disallowed IP")
-		}
-	}
-	return nil
+	return ssrf.ValidateOutboundURL(ctx, rawURL, "https")
 }

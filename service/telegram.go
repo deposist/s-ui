@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"sync"
@@ -10,6 +11,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-rus-inst/util/ssrf"
 )
 
 type TelegramService struct {
@@ -235,6 +237,13 @@ func (s *TelegramService) send(text string) TelegramResult {
 
 func (s *TelegramService) telegramEnabled() (bool, error) {
 	return s.getBool("telegramEnabled")
+}
+
+func validateTelegramProxyURL(rawURL string) error {
+	if rawURL == "" {
+		return nil
+	}
+	return ssrf.ValidateOutboundURL(context.Background(), rawURL, "http", "https", "socks5")
 }
 
 func recordTelegramNotifierAudit(event string, details map[string]any) {
