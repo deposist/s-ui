@@ -11,6 +11,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 	"gorm.io/gorm/logger"
 )
 
@@ -29,6 +30,7 @@ func initIPMonitorTestDB(t *testing.T) {
 	ipPrivacySettings.showRaw = false
 	ipPrivacySettings.expiresAt = time.Time{}
 	ipPrivacySettings.Unlock()
+	realtime.CloseAll("test_reset")
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -111,6 +113,52 @@ func TestAllowEnforceRejectsNewIPOverLimit(t *testing.T) {
 	}
 	if Allow("alice", "198.51.100.11") {
 		t.Fatal("new IP over limit should still be rejected after pending flush")
+	}
+}
+
+func TestAllowEnforceRejectPublishesSecurityEventWithoutRawIP(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		LimitIP:     1,
+		IPLimitMode: ModeEnforce,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ch := make(chan realtime.Event, 1)
+	unregister := realtime.Register(&realtime.ClientHandle{
+		User:   "admin",
+		Scope:  realtime.ScopeAdmin,
+		SendCh: ch,
+	})
+	defer unregister()
+
+	Record("alice", "198.51.100.10")
+	const rejectedIP = "198.51.100.11"
+	if Allow("alice", rejectedIP) {
+		t.Fatal("new IP over limit should be rejected")
+	}
+
+	select {
+	case event := <-ch:
+		if event.Type != realtime.TopicSecurityEvent {
+			t.Fatalf("unexpected event type: %s", event.Type)
+		}
+		payload, ok := event.Payload.(map[string]any)
+		if !ok {
+			t.Fatalf("unexpected payload: %#v", event.Payload)
+		}
+		if payload["kind"] != "ip_enforced_reject" || payload["client"] != "alice" {
+			t.Fatalf("unexpected payload values: %#v", payload)
+		}
+		if payload["ipHash"] == "" || payload["ipHash"] == rejectedIP {
+			t.Fatalf("raw IP leaked or hash missing: %#v", payload)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("security_event was not published")
 	}
 }
 

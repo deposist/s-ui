@@ -10,6 +10,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 	"gorm.io/gorm"
 )
@@ -108,7 +109,17 @@ func Allow(clientName string, ip string) bool {
 		seen[seenHash] = struct{}{}
 	}
 	pending.Unlock()
-	return len(seen) <= entry.limit
+	if len(seen) <= entry.limit {
+		return true
+	}
+	realtime.Publish(realtime.TopicSecurityEvent, map[string]any{
+		"kind":   "ip_enforced_reject",
+		"client": clientName,
+		"ipHash": ipHash,
+		"limit":  entry.limit,
+		"count":  len(seen),
+	})
+	return false
 }
 
 func Flush() error {
