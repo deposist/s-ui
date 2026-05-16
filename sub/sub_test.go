@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/gin-gonic/gin"
 )
+
+var subUUIDV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func initSubTestDB(t *testing.T) {
 	t.Helper()
@@ -92,6 +95,37 @@ func TestGetClientBySubIdCanDisableLegacyName(t *testing.T) {
 	}
 	if _, err := subService.getClientBySubId("secret-id"); err != nil {
 		t.Fatalf("secret lookup should still work: %v", err)
+	}
+}
+
+func TestEnsureClientSubSecretGeneratesUUIDV4(t *testing.T) {
+	initSubTestDB(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	client := model.Client{
+		Enable:   true,
+		Name:     "legacy-name",
+		Inbounds: []byte("[]"),
+		Links:    []byte("[]"),
+	}
+	if err := database.GetDB().Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (&SubService{}).ensureClientSubSecret(database.GetDB(), &client); err != nil {
+		t.Fatal(err)
+	}
+	if !subUUIDV4Pattern.MatchString(client.SubSecret) {
+		t.Fatalf("sub secret is not uuid-v4: %q", client.SubSecret)
+	}
+
+	var stored model.Client
+	if err := database.GetDB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.SubSecret != client.SubSecret {
+		t.Fatalf("sub secret was not persisted: %#v", stored)
 	}
 }
 

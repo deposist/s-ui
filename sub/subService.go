@@ -10,8 +10,8 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
-	"github.com/deposist/s-ui-rus-inst/util/common"
 
+	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"
 )
 
@@ -122,6 +122,10 @@ func (s *SubService) ensureClientSubSecret(db *gorm.DB, client *model.Client) er
 	if client.SubSecret != "" {
 		return nil
 	}
-	client.SubSecret = common.Random(32)
+	secret, err := uuid.NewV4()
+	if err != nil {
+		return err
+	}
+	client.SubSecret = secret.String()
 	return db.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_secret", client.SubSecret).Error
 }

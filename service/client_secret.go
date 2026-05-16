@@ -7,6 +7,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 
+	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"
 )
 
@@ -27,7 +28,11 @@ func (s *ClientService) prepareClientSubSecret(tx *gorm.DB, client *model.Client
 			return nil
 		}
 	}
-	client.SubSecret = common.Random(32)
+	secret, err := uuid.NewV4()
+	if err != nil {
+		return err
+	}
+	client.SubSecret = secret.String()
 	return nil
 }
 
@@ -41,8 +46,11 @@ func (s *ClientService) RotateSubSecret(id string) (string, error) {
 	if err := db.Model(model.Client{}).Select("id, name").Where("id = ?", clientID).First(&client).Error; err != nil {
 		return "", err
 	}
-	newSecret := common.Random(32)
-	if err := db.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_secret", newSecret).Error; err != nil {
+	newSecret, err := uuid.NewV4()
+	if err != nil {
+		return "", err
+	}
+	if err := db.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_secret", newSecret.String()).Error; err != nil {
 		return "", err
 	}
 	return client.Name, nil
