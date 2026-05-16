@@ -12,6 +12,8 @@ import (
 const (
 	ModeMonitor = "monitor"
 	ModeEnforce = "enforce"
+
+	allowCacheTTL = 30 * time.Second
 )
 
 var pending = struct {
@@ -19,6 +21,20 @@ var pending = struct {
 	byClient map[string]map[string]int64
 }{
 	byClient: map[string]map[string]int64{},
+}
+
+type allowCacheEntry struct {
+	limit     int
+	mode      string
+	ips       map[string]struct{}
+	expiresAt time.Time
+}
+
+var allowCache = struct {
+	sync.Mutex
+	byClient map[string]allowCacheEntry
+}{
+	byClient: map[string]allowCacheEntry{},
 }
 
 func Record(clientName string, ip string) {
@@ -32,6 +48,7 @@ func Record(clientName string, ip string) {
 	}
 	pending.byClient[clientName][ip] = now
 	pending.Unlock()
+	cacheAddIP(clientName, ip)
 }
 
 func Allow(clientName string, ip string) bool {
@@ -42,17 +59,15 @@ func Allow(clientName string, ip string) bool {
 	if db == nil {
 		return true
 	}
-	var client model.Client
-	if err := db.Model(model.Client{}).Select("limit_ip, ip_limit_mode").Where("name = ?", clientName).First(&client).Error; err != nil {
+	entry, ok := cachedClient(clientName, time.Now())
+	if !ok {
 		return true
 	}
-	if client.IPLimitMode != ModeEnforce || client.LimitIP <= 0 {
+	if entry.mode != ModeEnforce || entry.limit <= 0 {
 		return true
 	}
 	seen := map[string]struct{}{ip: {}}
-	var ips []string
-	_ = db.Model(model.ClientIP{}).Where("client_name = ?", clientName).Pluck("ip", &ips).Error
-	for _, seenIP := range ips {
+	for seenIP := range entry.ips {
 		seen[seenIP] = struct{}{}
 	}
 	pending.Lock()
@@ -60,7 +75,7 @@ func Allow(clientName string, ip string) bool {
 		seen[seenIP] = struct{}{}
 	}
 	pending.Unlock()
-	return len(seen) <= client.LimitIP
+	return len(seen) <= entry.limit
 }
 
 func Flush() error {
@@ -122,6 +137,7 @@ func flushSnapshot(tx *gorm.DB, snapshot map[string]map[string]int64) error {
 			if err != nil {
 				return err
 			}
+			cacheAddIP(clientName, ip)
 		}
 		var count int64
 		if err := tx.Model(model.ClientIP{}).Where("client_name = ?", clientName).Count(&count).Error; err != nil {
@@ -155,7 +171,79 @@ func Clear(clientName string) error {
 	if err := db.Where("client_name = ?", clientName).Delete(&model.ClientIP{}).Error; err != nil {
 		return err
 	}
+	invalidateCache(clientName)
 	return db.Model(model.Client{}).Where("name = ?", clientName).Updates(map[string]interface{}{
 		"last_ip_count": 0,
 	}).Error
+}
+
+func cachedClient(clientName string, now time.Time) (allowCacheEntry, bool) {
+	allowCache.Lock()
+	defer allowCache.Unlock()
+	if entry, ok := allowCache.byClient[clientName]; ok && now.Before(entry.expiresAt) {
+		return cloneCacheEntry(entry), true
+	}
+	entry, ok := loadCacheEntry(clientName, now)
+	if !ok {
+		delete(allowCache.byClient, clientName)
+		return allowCacheEntry{}, false
+	}
+	allowCache.byClient[clientName] = entry
+	return cloneCacheEntry(entry), true
+}
+
+func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
+	db := database.GetDB()
+	if db == nil {
+		return allowCacheEntry{}, false
+	}
+	var client model.Client
+	if err := db.Model(model.Client{}).Select("limit_ip, ip_limit_mode").Where("name = ?", clientName).First(&client).Error; err != nil {
+		return allowCacheEntry{}, false
+	}
+	entry := allowCacheEntry{
+		limit:     client.LimitIP,
+		mode:      client.IPLimitMode,
+		ips:       map[string]struct{}{},
+		expiresAt: now.Add(allowCacheTTL),
+	}
+	var ips []string
+	_ = db.Model(model.ClientIP{}).Where("client_name = ?", clientName).Pluck("ip", &ips).Error
+	for _, ip := range ips {
+		entry.ips[ip] = struct{}{}
+	}
+	return entry, true
+}
+
+func cloneCacheEntry(entry allowCacheEntry) allowCacheEntry {
+	clone := allowCacheEntry{
+		limit:     entry.limit,
+		mode:      entry.mode,
+		ips:       make(map[string]struct{}, len(entry.ips)),
+		expiresAt: entry.expiresAt,
+	}
+	for ip := range entry.ips {
+		clone.ips[ip] = struct{}{}
+	}
+	return clone
+}
+
+func cacheAddIP(clientName string, ip string) {
+	allowCache.Lock()
+	defer allowCache.Unlock()
+	entry, ok := allowCache.byClient[clientName]
+	if !ok || time.Now().After(entry.expiresAt) {
+		return
+	}
+	if entry.ips == nil {
+		entry.ips = map[string]struct{}{}
+	}
+	entry.ips[ip] = struct{}{}
+	allowCache.byClient[clientName] = entry
+}
+
+func invalidateCache(clientName string) {
+	allowCache.Lock()
+	defer allowCache.Unlock()
+	delete(allowCache.byClient, clientName)
 }

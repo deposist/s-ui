@@ -1,12 +1,17 @@
 package ipmonitor
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"gorm.io/gorm/logger"
 )
 
 func initIPMonitorTestDB(t *testing.T) {
@@ -14,6 +19,9 @@ func initIPMonitorTestDB(t *testing.T) {
 	pending.Lock()
 	pending.byClient = map[string]map[string]int64{}
 	pending.Unlock()
+	allowCache.Lock()
+	allowCache.byClient = map[string]allowCacheEntry{}
+	allowCache.Unlock()
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -91,4 +99,121 @@ func TestAllowEnforceRejectsNewIPOverLimit(t *testing.T) {
 	if Allow("alice", "198.51.100.11") {
 		t.Fatal("new IP over limit should be rejected")
 	}
+	if err := Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if Allow("alice", "198.51.100.11") {
+		t.Fatal("new IP over limit should still be rejected after pending flush")
+	}
+}
+
+func TestAllowUsesCacheUntilExpiry(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		LimitIP:     1,
+		IPLimitMode: ModeEnforce,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Create(&model.ClientIP{
+		ClientName: "alice",
+		IP:         "198.51.100.10",
+		FirstSeen:  1,
+		LastSeen:   1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	queryCounter := &countingGormLogger{}
+	database.GetDB().Config.Logger = queryCounter
+
+	if !Allow("alice", "198.51.100.10") {
+		t.Fatal("known IP should be allowed")
+	}
+	afterMiss := queryCounter.Count()
+	if afterMiss == 0 {
+		t.Fatal("expected cache miss to query database")
+	}
+	for i := 0; i < 100; i++ {
+		if !Allow("alice", "198.51.100.10") {
+			t.Fatal("known IP should stay allowed")
+		}
+		if Allow("alice", "198.51.100.11") {
+			t.Fatal("new IP over limit should be rejected")
+		}
+	}
+	if got := queryCounter.Count(); got != afterMiss {
+		t.Fatalf("expected cache hits to avoid database queries, got %d after initial %d", got, afterMiss)
+	}
+}
+
+func TestAllowCacheConcurrent10K(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		LimitIP:     2,
+		IPLimitMode: ModeEnforce,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	Record("alice", "198.51.100.10")
+	if !Allow("alice", "198.51.100.10") {
+		t.Fatal("known pending IP should be allowed")
+	}
+	queryCounter := &countingGormLogger{}
+	database.GetDB().Config.Logger = queryCounter
+
+	const total = 10000
+	const workers = 32
+	var failed atomic.Int64
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func(offset int) {
+			defer wg.Done()
+			for i := offset; i < total; i += workers {
+				if !Allow("alice", "198.51.100.10") {
+					failed.Add(1)
+				}
+			}
+		}(worker)
+	}
+	wg.Wait()
+	if failed.Load() != 0 {
+		t.Fatalf("%d concurrent Allow calls rejected a known IP", failed.Load())
+	}
+	if got := queryCounter.Count(); got != 0 {
+		t.Fatalf("expected warmed cache to avoid database queries, got %d", got)
+	}
+}
+
+type countingGormLogger struct {
+	count atomic.Int64
+}
+
+func (l *countingGormLogger) LogMode(logger.LogLevel) logger.Interface {
+	return l
+}
+
+func (l *countingGormLogger) Info(context.Context, string, ...interface{}) {
+}
+
+func (l *countingGormLogger) Warn(context.Context, string, ...interface{}) {
+}
+
+func (l *countingGormLogger) Error(context.Context, string, ...interface{}) {
+}
+
+func (l *countingGormLogger) Trace(context.Context, time.Time, func() (string, int64), error) {
+	l.count.Add(1)
+}
+
+func (l *countingGormLogger) Count() int64 {
+	return l.count.Load()
 }
