@@ -24,6 +24,8 @@ type client struct {
 type hub struct {
 	mu      sync.RWMutex
 	clients map[*client]struct{}
+	byUser  map[string]int
+	byIP    map[string]int
 }
 
 var defaultHub = newHub()
@@ -31,6 +33,8 @@ var defaultHub = newHub()
 func newHub() *hub {
 	return &hub{
 		clients: map[*client]struct{}{},
+		byUser:  map[string]int{},
+		byIP:    map[string]int{},
 	}
 }
 
@@ -44,6 +48,30 @@ func Publish(topic Topic, payload interface{}) {
 
 func CloseAll(reason string) {
 	defaultHub.CloseAll(reason)
+}
+
+func Reserve(user string, ip string, maxPerUser int, maxPerIP int) (release func(), ok bool) {
+	return defaultHub.Reserve(user, ip, maxPerUser, maxPerIP)
+}
+
+func (h *hub) Reserve(user string, ip string, maxPerUser int, maxPerIP int) (release func(), ok bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if maxPerUser > 0 && h.byUser[user] >= maxPerUser {
+		return func() {}, false
+	}
+	if maxPerIP > 0 && h.byIP[ip] >= maxPerIP {
+		return func() {}, false
+	}
+	h.byUser[user]++
+	h.byIP[ip]++
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			h.release(user, ip)
+		})
+	}, true
 }
 
 func (h *hub) Register(c *ClientHandle) (unregister func()) {
@@ -98,6 +126,17 @@ func (h *hub) CloseAll(reason string) {
 
 	for _, c := range clients {
 		c.callDrop(reason)
+	}
+}
+
+func (h *hub) release(user string, ip string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.byUser[user] > 0 {
+		h.byUser[user]--
+	}
+	if h.byIP[ip] > 0 {
+		h.byIP[ip]--
 	}
 }
 

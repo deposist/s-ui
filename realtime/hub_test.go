@@ -89,6 +89,37 @@ func TestHubUnregisterIsIdempotent(t *testing.T) {
 	expectNoEvent(t, sendCh)
 }
 
+func TestHubReserveEnforcesUserAndIPLimits(t *testing.T) {
+	h := newHub()
+	releases := make([]func(), 0, 2)
+	for i := 0; i < 2; i++ {
+		release, ok := h.Reserve("admin", "192.0.2.1", 2, 10)
+		if !ok {
+			t.Fatalf("reservation %d should have succeeded", i)
+		}
+		releases = append(releases, release)
+	}
+	if _, ok := h.Reserve("admin", "192.0.2.2", 2, 10); ok {
+		t.Fatal("reservation over user limit should fail")
+	}
+	releases[0]()
+	releases[0]()
+	if release, ok := h.Reserve("admin", "192.0.2.2", 2, 10); ok {
+		release()
+	} else {
+		t.Fatal("reservation after release should succeed")
+	}
+
+	if release, ok := h.Reserve("reader", "198.51.100.1", 10, 1); ok {
+		defer release()
+	} else {
+		t.Fatal("first IP reservation should succeed")
+	}
+	if _, ok := h.Reserve("writer", "198.51.100.1", 10, 1); ok {
+		t.Fatal("reservation over IP limit should fail")
+	}
+}
+
 func TestHubConcurrentRegisterPublishCloseWithUnbufferedChannels(t *testing.T) {
 	h := newHub()
 	var wg sync.WaitGroup

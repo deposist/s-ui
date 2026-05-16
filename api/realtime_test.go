@@ -13,6 +13,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
@@ -20,20 +21,29 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func resetRealtimeHubForTest() {
-	realtimeHub.Lock()
-	defer realtimeHub.Unlock()
-	realtimeHub.tokens = map[string]realtimeToken{}
-	realtimeHub.clients = map[*realtimeClient]struct{}{}
-	realtimeHub.byUser = map[string]int{}
-	realtimeHub.byIP = map[string]int{}
+func resetRealtimeForTest() {
+	wsTokens.Lock()
+	wsTokens.tokens = map[string]realtimeToken{}
+	wsTokens.Unlock()
+	realtime.CloseAll("test_reset")
+}
+
+func setWSTokenForTest(token string, user string) {
+	wsTokens.Lock()
+	wsTokens.tokens[token] = realtimeToken{user: user, expiresAt: time.Now().Add(time.Minute)}
+	wsTokens.Unlock()
+}
+
+func hasWSTokenForTest(token string) bool {
+	wsTokens.Lock()
+	defer wsTokens.Unlock()
+	_, ok := wsTokens.tokens[token]
+	return ok
 }
 
 func TestConsumeWSTokenIsOneTime(t *testing.T) {
-	resetRealtimeHubForTest()
-	realtimeHub.Lock()
-	realtimeHub.tokens["token"] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
-	realtimeHub.Unlock()
+	resetRealtimeForTest()
+	setWSTokenForTest("token", "admin")
 
 	user, ok := consumeWSToken("token")
 	if !ok || user != "admin" {
@@ -41,22 +51,6 @@ func TestConsumeWSTokenIsOneTime(t *testing.T) {
 	}
 	if _, ok := consumeWSToken("token"); ok {
 		t.Fatal("expected second consume to fail")
-	}
-}
-
-func TestReserveWSClientEnforcesLimits(t *testing.T) {
-	resetRealtimeHubForTest()
-	for i := 0; i < maxWSPerUser; i++ {
-		if !reserveWSClient("admin", "192.0.2.1") {
-			t.Fatalf("reservation %d should have succeeded", i)
-		}
-	}
-	if reserveWSClient("admin", "192.0.2.1") {
-		t.Fatal("reservation over user limit should fail")
-	}
-	releaseWSClient("admin", "192.0.2.1")
-	if !reserveWSClient("admin", "192.0.2.1") {
-		t.Fatal("reservation after release should succeed")
 	}
 }
 
@@ -116,10 +110,8 @@ func TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	resetRealtimeHubForTest()
-	realtimeHub.Lock()
-	realtimeHub.tokens["ws-token"] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
-	realtimeHub.Unlock()
+	resetRealtimeForTest()
+	setWSTokenForTest("ws-token", "admin")
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -157,10 +149,7 @@ func TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken(t *testing.T) {
 		t.Fatalf("unexpected status %d", recorder.Code)
 	}
 
-	realtimeHub.Lock()
-	_, tokenStillPresent := realtimeHub.tokens["ws-token"]
-	realtimeHub.Unlock()
-	if !tokenStillPresent {
+	if !hasWSTokenForTest("ws-token") {
 		t.Fatal("foreign Origin consumed the websocket token")
 	}
 
@@ -186,10 +175,8 @@ func TestRealtimeWSSendsHeartbeatPing(t *testing.T) {
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	resetRealtimeHubForTest()
-	realtimeHub.Lock()
-	realtimeHub.tokens["ws-token"] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
-	realtimeHub.Unlock()
+	resetRealtimeForTest()
+	setWSTokenForTest("ws-token", "admin")
 
 	var pings atomic.Int32
 	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
@@ -216,16 +203,39 @@ func TestRealtimeWSSendsHeartbeatPing(t *testing.T) {
 	}
 }
 
+func TestRealtimeWSSendsPublishedEvents(t *testing.T) {
+	router, cookies := newRealtimeWSTestRouter(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	resetRealtimeForTest()
+	setWSTokenForTest("ws-token", "admin")
+
+	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+		return true
+	})
+	t.Cleanup(func() { conn.CloseNow() })
+
+	connected := readRealtimeEventForTest(t, conn)
+	if connected.Type != realtime.Topic("connected") {
+		t.Fatalf("expected connected event, got %s", connected.Type)
+	}
+
+	realtime.Publish(realtime.TopicNotification, map[string]any{"kind": "test"})
+	event := readRealtimeEventForTest(t, conn)
+	if event.Type != realtime.TopicNotification {
+		t.Fatalf("expected published notification, got %s", event.Type)
+	}
+}
+
 func TestRealtimeWSClosesWhenPongMissing(t *testing.T) {
 	setWSHeartbeatForTest(t, 10*time.Millisecond, 30*time.Millisecond)
 	router, cookies := newRealtimeWSTestRouter(t)
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	resetRealtimeHubForTest()
-	realtimeHub.Lock()
-	realtimeHub.tokens["ws-token"] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
-	realtimeHub.Unlock()
+	resetRealtimeForTest()
+	setWSTokenForTest("ws-token", "admin")
 
 	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
 		return false
@@ -321,6 +331,25 @@ func startRealtimeReadLoop(conn *websocket.Conn) <-chan error {
 		}
 	}()
 	return errCh
+}
+
+func readRealtimeEventForTest(t *testing.T, conn *websocket.Conn) realtime.Event {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, reader, err := conn.Reader(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event realtime.Event
+	if err := json.Unmarshal(body, &event); err != nil {
+		t.Fatal(err)
+	}
+	return event
 }
 
 func cookieHeader(cookies []*http.Cookie) string {

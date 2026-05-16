@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 
@@ -37,29 +38,11 @@ type realtimeToken struct {
 	expiresAt time.Time
 }
 
-type realtimeClient struct {
-	user string
-	ip   string
-	conn *websocket.Conn
-	send chan realtimeEvent
-}
-
-type realtimeEvent struct {
-	Type string         `json:"type"`
-	Data map[string]any `json:"data,omitempty"`
-}
-
-var realtimeHub = struct {
+var wsTokens = struct {
 	sync.Mutex
-	tokens  map[string]realtimeToken
-	clients map[*realtimeClient]struct{}
-	byUser  map[string]int
-	byIP    map[string]int
+	tokens map[string]realtimeToken
 }{
-	tokens:  map[string]realtimeToken{},
-	clients: map[*realtimeClient]struct{}{},
-	byUser:  map[string]int{},
-	byIP:    map[string]int{},
+	tokens: map[string]realtimeToken{},
 }
 
 func (a *ApiService) IssueWSToken(c *gin.Context) {
@@ -72,9 +55,9 @@ func (a *ApiService) IssueWSToken(c *gin.Context) {
 		return
 	}
 	token := common.Random(32)
-	realtimeHub.Lock()
-	realtimeHub.tokens[token] = realtimeToken{user: user, expiresAt: time.Now().Add(wsTokenTTL)}
-	realtimeHub.Unlock()
+	wsTokens.Lock()
+	wsTokens.tokens[token] = realtimeToken{user: user, expiresAt: time.Now().Add(wsTokenTTL)}
+	wsTokens.Unlock()
 	jsonObj(c, gin.H{
 		"token":     token,
 		"expiresAt": time.Now().Add(wsTokenTTL).Unix(),
@@ -95,7 +78,8 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 		return
 	}
 	ip := getRemoteIp(c)
-	if !reserveWSClient(user, ip) {
+	releaseReservation, ok := realtime.Reserve(user, ip, maxWSPerUser, maxWSPerIP)
+	if !ok {
 		c.Status(http.StatusTooManyRequests)
 		return
 	}
@@ -104,18 +88,26 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 		Subprotocols: []string{wsSubprotocol},
 	})
 	if err != nil {
-		releaseWSClient(user, ip)
+		releaseReservation()
 		return
 	}
-	client := &realtimeClient{
-		user: user,
-		ip:   ip,
-		conn: conn,
-		send: make(chan realtimeEvent, wsQueueSize),
-	}
-	registerWSClient(client)
+	sendCh := make(chan realtime.Event, wsQueueSize)
+	unregister := realtime.Register(&realtime.ClientHandle{
+		User:   user,
+		IP:     ip,
+		Scope:  realtime.ScopeAdmin,
+		SendCh: sendCh,
+		OnDrop: func(reason string) {
+			code := wsCloseAuth
+			if reason == "slow" {
+				code = websocket.StatusPolicyViolation
+			}
+			_ = conn.Close(code, reason)
+		},
+	})
 	defer func() {
-		unregisterWSClient(client)
+		unregister()
+		releaseReservation()
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
 
@@ -123,10 +115,15 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 	pingTicker := time.NewTicker(wsPingInterval)
 	defer pingTicker.Stop()
 
-	client.enqueue(realtimeEvent{Type: "connected"})
+	select {
+	case sendCh <- realtime.Event{Type: realtime.Topic("connected"), Ts: time.Now().Unix()}:
+	default:
+		_ = conn.Close(websocket.StatusPolicyViolation, "slow client")
+		return
+	}
 	for {
 		select {
-		case event := <-client.send:
+		case event := <-sendCh:
 			payload, _ := json.Marshal(event)
 			writeCtx, cancel := context.WithTimeout(wsCtx, 5*time.Second)
 			err := conn.Write(writeCtx, websocket.MessageText, payload)
@@ -163,18 +160,6 @@ func (a *ApiService) enforceWSHandshakeRateLimit(c *gin.Context, endpoint string
 		c.Status(http.StatusTooManyRequests)
 	}
 	return false
-}
-
-func CloseRealtimeSessions(code websocket.StatusCode, reason string) {
-	realtimeHub.Lock()
-	clients := make([]*realtimeClient, 0, len(realtimeHub.clients))
-	for client := range realtimeHub.clients {
-		clients = append(clients, client)
-	}
-	realtimeHub.Unlock()
-	for _, client := range clients {
-		_ = client.conn.Close(code, reason)
-	}
 }
 
 func wsTokenFromRequest(c *gin.Context) string {
@@ -280,55 +265,12 @@ func canonicalHostname(value string) string {
 }
 
 func consumeWSToken(token string) (string, bool) {
-	realtimeHub.Lock()
-	defer realtimeHub.Unlock()
-	data, ok := realtimeHub.tokens[token]
-	delete(realtimeHub.tokens, token)
+	wsTokens.Lock()
+	defer wsTokens.Unlock()
+	data, ok := wsTokens.tokens[token]
+	delete(wsTokens.tokens, token)
 	if !ok || time.Now().After(data.expiresAt) {
 		return "", false
 	}
 	return data.user, true
-}
-
-func reserveWSClient(user string, ip string) bool {
-	realtimeHub.Lock()
-	defer realtimeHub.Unlock()
-	if realtimeHub.byUser[user] >= maxWSPerUser || realtimeHub.byIP[ip] >= maxWSPerIP {
-		return false
-	}
-	realtimeHub.byUser[user]++
-	realtimeHub.byIP[ip]++
-	return true
-}
-
-func releaseWSClient(user string, ip string) {
-	realtimeHub.Lock()
-	defer realtimeHub.Unlock()
-	if realtimeHub.byUser[user] > 0 {
-		realtimeHub.byUser[user]--
-	}
-	if realtimeHub.byIP[ip] > 0 {
-		realtimeHub.byIP[ip]--
-	}
-}
-
-func registerWSClient(client *realtimeClient) {
-	realtimeHub.Lock()
-	realtimeHub.clients[client] = struct{}{}
-	realtimeHub.Unlock()
-}
-
-func unregisterWSClient(client *realtimeClient) {
-	realtimeHub.Lock()
-	delete(realtimeHub.clients, client)
-	realtimeHub.Unlock()
-	releaseWSClient(client.user, client.ip)
-}
-
-func (c *realtimeClient) enqueue(event realtimeEvent) {
-	select {
-	case c.send <- event:
-	default:
-		_ = c.conn.Close(websocket.StatusPolicyViolation, "slow client")
-	}
 }
