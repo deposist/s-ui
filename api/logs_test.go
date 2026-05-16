@@ -9,12 +9,11 @@ import (
 )
 
 func TestGetLogsRejectsInvalidSource(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/logs?source=kernel", nil)
-
-	(&ApiService{}).GetLogs(c)
+	settingService := initSessionTestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/logs", (&ApiService{}).GetLogs)
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/logs?source=kernel", nil), cookies...)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}

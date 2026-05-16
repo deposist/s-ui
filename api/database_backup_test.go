@@ -15,25 +15,20 @@ import (
 )
 
 func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
-	initSessionTestDB(t)
-	gin.SetMode(gin.TestMode)
+	settingService := initSessionTestDB(t)
 
-	readRecorder := httptest.NewRecorder()
-	readCtx, _ := gin.CreateTestContext(readRecorder)
-	readCtx.Request = newDatabaseImportRequest(t, []byte("not sqlite"))
-	readCtx.Set(apiUsernameKey, "reader")
-	readCtx.Set(apiTokenScopeKey, "read")
-	(&ApiService{}).ImportDb(readCtx)
+	readRouter, readCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.POST("/api/importdb", withTestTokenScope("reader", "read", (&ApiService{}).ImportDb))
+	})
+	readRecorder := performAuthenticatedTestRequest(readRouter, newDatabaseImportRequest(t, []byte("not sqlite")), readCookies...)
 	if readRecorder.Code != http.StatusForbidden {
 		t.Fatalf("read scope should be forbidden, got %d", readRecorder.Code)
 	}
 
-	adminRecorder := httptest.NewRecorder()
-	adminCtx, _ := gin.CreateTestContext(adminRecorder)
-	adminCtx.Request = newDatabaseImportRequest(t, []byte("not sqlite"))
-	adminCtx.Set(apiUsernameKey, "admin")
-	adminCtx.Set(apiTokenScopeKey, "admin")
-	(&ApiService{}).ImportDb(adminCtx)
+	adminRouter, adminCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).ImportDb))
+	})
+	adminRecorder := performAuthenticatedTestRequest(adminRouter, newDatabaseImportRequest(t, []byte("not sqlite")), adminCookies...)
 	if adminRecorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", adminRecorder.Code)
 	}
@@ -55,15 +50,11 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 }
 
 func TestGetDbAuditsExport(t *testing.T) {
-	initSessionTestDB(t)
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/getdb", nil)
-	c.Set(apiUsernameKey, "admin")
-	c.Set(apiTokenScopeKey, "admin")
-
-	(&ApiService{}).GetDb(c)
+	settingService := initSessionTestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).GetDb))
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}

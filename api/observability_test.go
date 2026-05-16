@@ -15,7 +15,7 @@ import (
 )
 
 func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
-	initSessionTestDB(t)
+	settingService := initSessionTestDB(t)
 	base := time.Now().Unix() + 100000
 	observabilityService := &service.ObservabilityService{}
 	if err := observabilityService.RecordObservabilitySample(service.ObservabilityBucket30s, service.ObservabilitySample{
@@ -35,13 +35,10 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/observability/history?metric=net_in&bucket=30s&since="+formatUnix(base), nil)
-	c.Set(apiUsernameKey, "observer")
-	c.Set(apiTokenScopeKey, "observability")
-
-	(&ApiService{}).GetObservabilityHistory(c)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).GetObservabilityHistory))
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/observability/history?metric=net_in&bucket=30s&since="+formatUnix(base), nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
@@ -67,20 +64,16 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 }
 
 func TestGetObservabilityHistoryRejectsInvalidInputs(t *testing.T) {
-	initSessionTestDB(t)
-	gin.SetMode(gin.TestMode)
+	settingService := initSessionTestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).GetObservabilityHistory))
+	})
 	for _, target := range []string{
 		"/api/observability/history?metric=net_in&bucket=10s",
 		"/api/observability/history?metric=load&bucket=2s",
 		"/api/observability/history?metric=cpu&bucket=2s&since=-1",
 	} {
-		recorder := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(recorder)
-		c.Request = httptest.NewRequest(http.MethodGet, target, nil)
-		c.Set(apiUsernameKey, "observer")
-		c.Set(apiTokenScopeKey, "observability")
-
-		(&ApiService{}).GetObservabilityHistory(c)
+		recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, target, nil), cookies...)
 		if recorder.Code != http.StatusBadRequest {
 			t.Fatalf("%s returned status %d", target, recorder.Code)
 		}
@@ -88,15 +81,11 @@ func TestGetObservabilityHistoryRejectsInvalidInputs(t *testing.T) {
 }
 
 func TestGetObservabilityHistoryRequiresObservabilityScope(t *testing.T) {
-	initSessionTestDB(t)
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/observability/history", nil)
-	c.Set(apiUsernameKey, "api-user")
-	c.Set(apiTokenScopeKey, "read")
-
-	(&ApiService{}).GetObservabilityHistory(c)
+	settingService := initSessionTestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/observability/history", withTestTokenScope("api-user", "read", (&ApiService{}).GetObservabilityHistory))
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/observability/history", nil), cookies...)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}

@@ -16,7 +16,7 @@ import (
 
 func TestGetSecurityAuditDoesNotPruneOnRead(t *testing.T) {
 	resetRateLimitState()
-	initSessionTestDB(t)
+	settingService := initSessionTestDB(t)
 	oldEvent := model.AuditEvent{
 		DateTime: time.Now().Add(-31 * 24 * time.Hour).Unix(),
 		Actor:    "admin",
@@ -26,12 +26,10 @@ func TestGetSecurityAuditDoesNotPruneOnRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=10", nil)
-
-	(&ApiService{}).GetSecurityAudit(c)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=10", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
@@ -46,7 +44,7 @@ func TestGetSecurityAuditDoesNotPruneOnRead(t *testing.T) {
 
 func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 	resetRateLimitState()
-	initSessionTestDB(t)
+	settingService := initSessionTestDB(t)
 	now := time.Now().Unix()
 	for i := 0; i < 3; i++ {
 		if err := database.GetDB().Create(&model.AuditEvent{
@@ -58,12 +56,10 @@ func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 		}
 	}
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=2", nil)
-
-	(&ApiService{}).GetSecurityAudit(c)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=2", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
@@ -84,11 +80,7 @@ func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 		t.Fatalf("expected next cursor, got %#v", payload["nextCursor"])
 	}
 
-	recorder = httptest.NewRecorder()
-	c, _ = gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=500&cursor="+strconv.FormatUint(uint64(nextCursor), 10), nil)
-
-	(&ApiService{}).GetSecurityAudit(c)
+	recorder = performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=500&cursor="+strconv.FormatUint(uint64(nextCursor), 10), nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
@@ -110,7 +102,7 @@ func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 
 func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 	resetRateLimitState()
-	initSessionTestDB(t)
+	settingService := initSessionTestDB(t)
 	now := time.Now().Unix()
 	events := []model.AuditEvent{
 		{DateTime: now, Actor: "admin", Event: "telegram_test", Severity: "warn"},
@@ -121,12 +113,10 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram_test&severity=warn", nil)
-
-	(&ApiService{}).GetSecurityAudit(c)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram_test&severity=warn", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
@@ -147,10 +137,7 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 		t.Fatalf("unexpected filtered event: %#v", got)
 	}
 
-	recorder = httptest.NewRecorder()
-	c, _ = gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram test", nil)
-	(&ApiService{}).GetSecurityAudit(c)
+	recorder = performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram test", nil), cookies...)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid event filter should fail, got %d", recorder.Code)
 	}
@@ -158,15 +145,11 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 
 func TestGetSecurityAuditRejectsNonAdminTokenScope(t *testing.T) {
 	resetRateLimitState()
-	initSessionTestDB(t)
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
-	c.Set(apiUsernameKey, "api-user")
-	c.Set(apiTokenScopeKey, "read")
-
-	(&ApiService{}).GetSecurityAudit(c)
+	settingService := initSessionTestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", withTestTokenScope("api-user", "read", (&ApiService{}).GetSecurityAudit))
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit", nil), cookies...)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
@@ -181,20 +164,16 @@ func TestGetSecurityAuditRejectsNonAdminTokenScope(t *testing.T) {
 
 func TestGetSecurityAuditRateLimitReturns429AndAudits(t *testing.T) {
 	resetRateLimitState()
-	initSessionTestDB(t)
+	settingService := initSessionTestDB(t)
 	for i := 0; i < auditEndpointRateLimitMax; i++ {
 		if err := checkAuditEndpointRateLimit("admin"); err != nil {
 			t.Fatalf("unexpected prefill error: %v", err)
 		}
 	}
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
-	c.Set(apiUsernameKey, "admin")
-	c.Set(apiTokenScopeKey, "admin")
-
-	(&ApiService{}).GetSecurityAudit(c)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).GetSecurityAudit))
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit", nil), cookies...)
 	if recorder.Code != http.StatusTooManyRequests {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
