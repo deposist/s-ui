@@ -80,8 +80,6 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 		a.ApiService.SubConvert(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
-	case "rotateSubSecret":
-		a.ApiService.RotateSubSecret(c)
 	case "addToken":
 		a.ApiService.AddToken(c)
 		a.apiv2.ReloadTokens()
