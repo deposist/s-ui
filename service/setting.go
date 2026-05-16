@@ -72,8 +72,8 @@ var defaultValueMap = map[string]string{
 	"subLinkEnable":            "true",
 	"subJsonEnable":            "true",
 	"subClashEnable":           "true",
-	"subJsonPath":              "/json/",  // TODO(plan-h): wired in remediation-plan-h.md
-	"subClashPath":             "/clash/", // TODO(plan-h): wired in remediation-plan-h.md
+	"subJsonPath":              "/json/",
+	"subClashPath":             "/clash/",
 	"subJsonURI":               "",
 	"subClashURI":              "",
 	"subTitle":                 "",
@@ -81,10 +81,10 @@ var defaultValueMap = map[string]string{
 	"subProfileUrl":            "",
 	"subAnnounce":              "",
 	"subNameInRemark":          "false",
-	"subJsonFragment":          "",      // TODO(plan-h): wired in remediation-plan-h.md
-	"subJsonNoises":            "",      // TODO(plan-h): wired in remediation-plan-h.md
-	"subJsonMux":               "false", // TODO(plan-h): wired in remediation-plan-h.md
-	"subJsonDirectRules":       "false", // TODO(plan-h): wired in remediation-plan-h.md
+	"subJsonFragment":          "",
+	"subJsonNoises":            "",
+	"subJsonMux":               "false",
+	"subJsonDirectRules":       "false",
 	"subURI":                   "",
 	"subJsonExt":               "",
 	"subClashExt":              "",
