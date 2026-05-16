@@ -255,6 +255,9 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if err := j.addNoises(jsonConfig); err != nil {
 		return err
 	}
+	if err := j.addMux(jsonConfig); err != nil {
+		return err
+	}
 
 	rules_start := []interface{}{
 		map[string]interface{}{
@@ -319,6 +322,30 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	return nil
 }
 
+func (j *JsonService) addMux(jsonConfig *map[string]interface{}) error {
+	enabled, err := j.SettingService.GetSubJsonMux()
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+	outbounds, ok := jsonConfigOutbounds(jsonConfig)
+	if !ok {
+		return nil
+	}
+	for _, outbound := range *outbounds {
+		protocol, _ := outbound["type"].(string)
+		if supportsJSONMux(protocol) {
+			outbound["multiplex"] = map[string]interface{}{
+				"enabled":  true,
+				"protocol": "smux",
+			}
+		}
+	}
+	return nil
+}
+
 func (j *JsonService) addNoises(jsonConfig *map[string]interface{}) error {
 	noisesStr, err := j.SettingService.GetSubJsonNoises()
 	if err != nil {
@@ -377,6 +404,15 @@ func jsonConfigOutbounds(jsonConfig *map[string]interface{}) (*[]map[string]inte
 		return &outbounds, true
 	default:
 		return nil, false
+	}
+}
+
+func supportsJSONMux(protocol string) bool {
+	switch protocol {
+	case "vless", "vmess", "trojan", "shadowsocks":
+		return true
+	default:
+		return false
 	}
 }
 

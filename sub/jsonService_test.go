@@ -85,3 +85,63 @@ func TestJsonServiceAddNoisesToSupportedOutbounds(t *testing.T) {
 		}
 	}
 }
+
+func TestJsonServiceMuxToggle(t *testing.T) {
+	initSubTestDB(t)
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	outbounds := []map[string]interface{}{
+		{"type": "vless", "tag": "vless-out"},
+		{"type": "shadowsocks", "tag": "ss-out"},
+	}
+	config := map[string]interface{}{
+		"outbounds": &outbounds,
+	}
+	if err := (&JsonService{}).addOthers(&config); err != nil {
+		t.Fatal(err)
+	}
+	for _, outbound := range outbounds {
+		if _, ok := outbound["multiplex"]; ok {
+			t.Fatalf("mux should be absent when subJsonMux=false: %#v", outbound)
+		}
+	}
+
+	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "subJsonMux").Update("value", "true").Error; err != nil {
+		t.Fatal(err)
+	}
+	outbounds = []map[string]interface{}{
+		{"type": "selector", "tag": "proxy"},
+		{"type": "vless", "tag": "vless-out"},
+		{"type": "vmess", "tag": "vmess-out"},
+		{"type": "trojan", "tag": "trojan-out"},
+		{"type": "shadowsocks", "tag": "ss-out"},
+		{"type": "hysteria2", "tag": "hy2-out"},
+	}
+	config = map[string]interface{}{
+		"outbounds": &outbounds,
+	}
+	if err := (&JsonService{}).addOthers(&config); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, outbound := range outbounds {
+		mux, hasMux := outbound["multiplex"]
+		switch outbound["type"] {
+		case "vless", "vmess", "trojan", "shadowsocks":
+			if !hasMux {
+				t.Fatalf("%s outbound is missing mux: %#v", outbound["type"], outbound)
+			}
+			muxMap, ok := mux.(map[string]interface{})
+			if !ok || muxMap["enabled"] != true || muxMap["protocol"] != "smux" {
+				t.Fatalf("unexpected mux settings for %s: %#v", outbound["type"], mux)
+			}
+		default:
+			if hasMux {
+				t.Fatalf("%s outbound should not receive mux: %#v", outbound["type"], outbound)
+			}
+		}
+	}
+}
