@@ -36,13 +36,13 @@
             <v-row>
               <v-col style="text-align: center;">
                 <v-chip>{{ $t('setting.jsonSub') }}</v-chip><br />
-                <QrcodeVue :value="clientSub + '?format=json'" :size="size" @click="copyToClipboard(clientSub + '?format=json')" :margin="1" style="border-radius: 1rem; cursor: copy;" />
+                <QrcodeVue :value="clientJsonSub" :size="size" @click="copyToClipboard(clientJsonSub)" :margin="1" style="border-radius: 1rem; cursor: copy;" />
               </v-col>
             </v-row>
             <v-row>
               <v-col style="text-align: center;">
                 <v-chip>{{ $t('setting.clashSub') }}</v-chip><br />
-                <QrcodeVue :value="clientSub + '?format=clash'" :size="size" @click="copyToClipboard(clientSub + '?format=clash')" :margin="1" style="border-radius: 1rem; cursor: copy;" />
+                <QrcodeVue :value="clientClashSub" :size="size" @click="copyToClipboard(clientClashSub)" :margin="1" style="border-radius: 1rem; cursor: copy;" />
               </v-col>
             </v-row>
             <v-row>
@@ -118,6 +118,11 @@ export default {
       // Perform click on hidden button to trigger copy
       hiddenButton.click()
       document.body.removeChild(hiddenButton)
+    },
+    subscriptionUrl(base:string) {
+      const trimmed = (base || "").trim()
+      if (!trimmed) return this.subscriptionId
+      return (trimmed.endsWith("/") ? trimmed : trimmed + "/") + this.subscriptionId
     }
   },
   computed: {
@@ -125,11 +130,20 @@ export default {
       return this.client.subSecret || this.client.name
     },
     clientSub() {
-      return Data().subURI + this.subscriptionId
+      return this.subscriptionUrl(Data().subURI)
+    },
+    clientJsonSub() {
+      const data = Data()
+      if (data.subJsonURI) return this.subscriptionUrl(data.subJsonURI)
+      return this.clientSub + '?format=json'
+    },
+    clientClashSub() {
+      const data = Data()
+      if (data.subClashURI) return this.subscriptionUrl(data.subClashURI)
+      return this.clientSub + '?format=clash'
     },
     singbox() {
-      const url = Data().subURI + "json/" + this.subscriptionId
-      return "sing-box://import-remote-profile?url=" +  encodeURIComponent(url) + "#" + this.client.name
+      return "sing-box://import-remote-profile?url=" +  encodeURIComponent(this.clientJsonSub) + "#" + this.client.name
     },
     clientLinks() {
       return this.client.links?? []

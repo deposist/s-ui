@@ -10,6 +10,8 @@ const Data = defineStore('Data', {
     lastLoad: 0,
     reloadItems: localStorage.getItem("reloadItems")?.split(',')?? <string[]>[],
     subURI: "",
+    subJsonURI: "",
+    subClashURI: "",
     enableTraffic: false,
     onlines: {inbound: <string[]>[], outbound: <string[]>[], user: <string[]>[]},
     config: <any>{},
@@ -41,6 +43,10 @@ const Data = defineStore('Data', {
     setNewData(data: any) {
       this.lastLoad = Math.floor((new Date()).getTime()/1000)
       if (data.subURI) this.subURI = data.subURI
+      if (Object.hasOwn(data, 'subJsonURI')) this.subJsonURI = data.subJsonURI
+      else if (Object.hasOwn(data, 'config')) this.subJsonURI = ""
+      if (Object.hasOwn(data, 'subClashURI')) this.subClashURI = data.subClashURI
+      else if (Object.hasOwn(data, 'config')) this.subClashURI = ""
       if (Object.hasOwn(data, 'enableTraffic')) this.enableTraffic = data.enableTraffic
       if (data.config) this.config = data.config
       if (Object.hasOwn(data, 'clients')) this.clients = data.clients ?? []

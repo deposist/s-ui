@@ -129,10 +129,20 @@
       </v-window-item>
 
       <v-window-item value="t3">
+        <v-row>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field v-model="settings.subJsonURI" :label="$t('setting.jsonSub') + ' ' + $t('setting.subUri')" hide-details></v-text-field>
+          </v-col>
+        </v-row>
         <SubJsonExtVue :settings="settings" />
       </v-window-item>
 
       <v-window-item value="t4">
+        <v-row>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field v-model="settings.subClashURI" :label="$t('setting.clashSub') + ' ' + $t('setting.subUri')" hide-details></v-text-field>
+          </v-col>
+        </v-row>
         <SubClashExtVue :settings="settings" />
       </v-window-item>
     </v-window>
@@ -171,9 +181,11 @@ const settings = ref({
 	subCertFile: "",
 	subKeyFile: "",
 	subUpdates: "12",
-	subEncode: "true",
-	subShowInfo: "false",
+  subEncode: "true",
+  subShowInfo: "false",
 	subURI: "",
+  subJsonURI: "",
+  subClashURI: "",
   subJsonExt: "",
   subClashExt: "",
 })

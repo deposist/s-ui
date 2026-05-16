@@ -102,6 +102,14 @@ func (a *ApiService) getData(c *gin.Context) (interface{}, error) {
 		if err != nil {
 			return "", err
 		}
+		subJsonURI, err := a.SettingService.GetSubJsonURI()
+		if err != nil {
+			return "", err
+		}
+		subClashURI, err := a.SettingService.GetSubClashURI()
+		if err != nil {
+			return "", err
+		}
 		trafficAge, err := a.SettingService.GetTrafficAge()
 		if err != nil {
 			return "", err
@@ -114,6 +122,12 @@ func (a *ApiService) getData(c *gin.Context) (interface{}, error) {
 		data["endpoints"] = endpoints
 		data["services"] = services
 		data["subURI"] = subURI
+		if subJsonURI != "" {
+			data["subJsonURI"] = subJsonURI
+		}
+		if subClashURI != "" {
+			data["subClashURI"] = subClashURI
+		}
 		data["enableTraffic"] = trafficAge > 0
 		data["onlines"] = onlines
 	} else {
