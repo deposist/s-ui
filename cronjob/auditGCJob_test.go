@@ -9,24 +9,58 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/ipmonitor"
+	"gorm.io/gorm"
 )
 
 func initCronJobTestDB(t *testing.T) {
 	t.Helper()
-	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	tempDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", tempDir)
+	closeCronJobDB(database.GetDB())
+	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
+	testDB := database.GetDB()
 	t.Cleanup(func() {
-		if d := database.GetDB(); d != nil {
-			if sqlDB, err := d.DB(); err == nil {
-				_ = sqlDB.Close()
-			}
-		}
+		closeCronJobDB(testDB)
+		ipmonitor.InvalidateAllCache()
 	})
+}
+
+func closeCronJobDB(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+}
+
+func TestCronJobTestDBIsIsolatedBetweenInitializations(t *testing.T) {
+	initCronJobTestDB(t)
+	if err := database.GetDB().Create(&model.ClientIP{
+		ClientName: "alice",
+		IP:         "198.51.100.10",
+		IPHash:     "hash",
+		FirstSeen:  1,
+		LastSeen:   1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	initCronJobTestDB(t)
+	if err := database.GetDB().Create(&model.ClientIP{
+		ClientName: "alice",
+		IP:         "198.51.100.10",
+		IPHash:     "hash",
+		FirstSeen:  1,
+		LastSeen:   1,
+	}).Error; err != nil {
+		t.Fatalf("second isolated test DB rejected duplicate unique row: %v", err)
+	}
 }
 
 func TestAuditGCJobPrunesAuditEventsAndClientIPs(t *testing.T) {
