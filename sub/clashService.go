@@ -6,6 +6,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 
 	"gopkg.in/yaml.v3"
 )
@@ -62,6 +63,10 @@ const ProxyGroups = `- name: Proxy
 `
 
 func (s *ClashService) GetClash(subId string) (*string, []string, error) {
+	enabled, err := s.SettingService.GetSubClashEnable()
+	if err == nil && !enabled {
+		return nil, nil, common.NewError("clash subscription disabled")
+	}
 
 	client, inDatas, err := s.getData(subId)
 	if err != nil {
@@ -96,8 +101,7 @@ func (s *ClashService) GetClash(subId string) (*string, []string, error) {
 		return nil, nil, err
 	}
 
-	updateInterval, _ := s.SettingService.GetSubUpdates()
-	headers := safeSubscriptionHeaders(util.GetHeaders(client, updateInterval))
+	headers := safeSubscriptionHeaders((&SubService{}).getClientHeaders(client))
 
 	return &resultStr, headers, nil
 }

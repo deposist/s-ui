@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"net/url"
 	"os"
 	"runtime"
 	"strconv"
@@ -67,6 +68,23 @@ var defaultValueMap = map[string]string{
 	"subEncode":              "true",
 	"subShowInfo":            "false",
 	"subSecretRequired":      "false",
+	"subRateLimitPerIP":      "60",
+	"subLinkEnable":          "true",
+	"subJsonEnable":          "true",
+	"subClashEnable":         "true",
+	"subJsonPath":            "/json/",
+	"subClashPath":           "/clash/",
+	"subJsonURI":             "",
+	"subClashURI":            "",
+	"subTitle":               "",
+	"subSupportUrl":          "",
+	"subProfileUrl":          "",
+	"subAnnounce":            "",
+	"subNameInRemark":        "false",
+	"subJsonFragment":        "",
+	"subJsonNoises":          "",
+	"subJsonMux":             "false",
+	"subJsonDirectRules":     "false",
 	"subURI":                 "",
 	"subJsonExt":             "",
 	"subClashExt":            "",
@@ -383,6 +401,82 @@ func (s *SettingService) GetSubSecretRequired() (bool, error) {
 	return s.getBool("subSecretRequired")
 }
 
+func (s *SettingService) GetSubRateLimitPerIP() (int, error) {
+	return s.getInt("subRateLimitPerIP")
+}
+
+func (s *SettingService) GetSubLinkEnable() (bool, error) {
+	return s.getBool("subLinkEnable")
+}
+
+func (s *SettingService) GetSubJsonEnable() (bool, error) {
+	return s.getBool("subJsonEnable")
+}
+
+func (s *SettingService) GetSubClashEnable() (bool, error) {
+	return s.getBool("subClashEnable")
+}
+
+func (s *SettingService) GetSubJsonPath() (string, error) {
+	subJsonPath, err := s.getString("subJsonPath")
+	if err != nil {
+		return "", err
+	}
+	return normalizeURLPath(subJsonPath), nil
+}
+
+func (s *SettingService) GetSubClashPath() (string, error) {
+	subClashPath, err := s.getString("subClashPath")
+	if err != nil {
+		return "", err
+	}
+	return normalizeURLPath(subClashPath), nil
+}
+
+func (s *SettingService) GetSubJsonURI() (string, error) {
+	return s.getString("subJsonURI")
+}
+
+func (s *SettingService) GetSubClashURI() (string, error) {
+	return s.getString("subClashURI")
+}
+
+func (s *SettingService) GetSubTitle() (string, error) {
+	return s.getString("subTitle")
+}
+
+func (s *SettingService) GetSubSupportUrl() (string, error) {
+	return s.getString("subSupportUrl")
+}
+
+func (s *SettingService) GetSubProfileUrl() (string, error) {
+	return s.getString("subProfileUrl")
+}
+
+func (s *SettingService) GetSubAnnounce() (string, error) {
+	return s.getString("subAnnounce")
+}
+
+func (s *SettingService) GetSubNameInRemark() (bool, error) {
+	return s.getBool("subNameInRemark")
+}
+
+func (s *SettingService) GetSubJsonFragment() (string, error) {
+	return s.getString("subJsonFragment")
+}
+
+func (s *SettingService) GetSubJsonNoises() (string, error) {
+	return s.getString("subJsonNoises")
+}
+
+func (s *SettingService) GetSubJsonMux() (bool, error) {
+	return s.getBool("subJsonMux")
+}
+
+func (s *SettingService) GetSubJsonDirectRules() (bool, error) {
+	return s.getBool("subJsonDirectRules")
+}
+
 func (s *SettingService) GetSubURI() (string, error) {
 	return s.getString("subURI")
 }
@@ -443,6 +537,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 				return err
 			}
 		}
+		if err = validateSubscriptionSettingInput(key, obj); err != nil {
+			return err
+		}
 		if isEncryptedSettingKey(key) {
 			if obj == "" {
 				continue
@@ -465,7 +562,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 
 		// Correct Pathes start and ends with `/`
 		if key == "webPath" ||
-			key == "subPath" {
+			key == "subPath" ||
+			key == "subJsonPath" ||
+			key == "subClashPath" {
 			obj, err = normalizeAndValidatePathSetting(key, obj)
 			if err != nil {
 				return err
@@ -519,15 +618,61 @@ func normalizeURLPath(path string) string {
 }
 
 func reservedPathPrefixesForSetting(key string) []string {
-	if key != "subPath" {
+	ownPrefix := ""
+	switch key {
+	case "subPath":
+		ownPrefix = "/sub/"
+	case "subJsonPath":
+		ownPrefix = "/json/"
+	case "subClashPath":
+		ownPrefix = "/clash/"
+	}
+	if ownPrefix == "" {
 		return util.ReservedPathPrefixes
 	}
 	reserved := make([]string, 0, len(util.ReservedPathPrefixes))
 	for _, prefix := range util.ReservedPathPrefixes {
-		if prefix == "/sub/" {
+		if prefix == ownPrefix {
 			continue
 		}
 		reserved = append(reserved, prefix)
 	}
 	return reserved
+}
+
+func validateSubscriptionSettingInput(key string, value string) error {
+	switch key {
+	case "subLinkEnable", "subJsonEnable", "subClashEnable", "subNameInRemark", "subJsonMux", "subJsonDirectRules":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return common.NewError("invalid boolean setting: ", key)
+		}
+	case "subRateLimitPerIP":
+		limit, err := strconv.Atoi(value)
+		if err != nil || limit <= 0 || limit > 10000 {
+			return common.NewError("invalid rate-limit setting: ", key)
+		}
+	case "subJsonURI", "subClashURI", "subSupportUrl", "subProfileUrl":
+		if err := validateOptionalHTTPURL(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateOptionalHTTPURL(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" {
+		return common.NewError("invalid URL setting")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return common.NewError("invalid URL setting")
+	}
+	if parsed.User != nil {
+		return common.NewError("invalid URL setting")
+	}
+	return nil
 }

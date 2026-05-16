@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
 )
 
@@ -18,9 +19,13 @@ type LinkService struct {
 }
 
 func (s *LinkService) GetLinks(linkJson *json.RawMessage, types string, clientInfo string) []string {
+	enabled, err := (&service.SettingService{}).GetSubLinkEnable()
+	if err == nil && !enabled {
+		return nil
+	}
 	links := []Link{}
 	var result []string
-	err := json.Unmarshal(*linkJson, &links)
+	err = json.Unmarshal(*linkJson, &links)
 	if err != nil {
 		return nil
 	}

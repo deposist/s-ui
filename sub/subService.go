@@ -33,6 +33,10 @@ func (s *SubService) GetSubs(subId string) (*string, []string, error) {
 	if subShowInfo {
 		clientInfo = s.getClientInfo(client)
 	}
+	subNameInRemark, _ := s.SettingService.GetSubNameInRemark()
+	if subNameInRemark {
+		clientInfo = " " + client.Name + clientInfo
+	}
 
 	linksArray := s.LinkService.GetLinks(&client.Links, "all", clientInfo)
 	result := strings.Join(linksArray, "\n")
@@ -70,7 +74,15 @@ func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 
 func (s *SubService) getClientHeaders(client *model.Client) []string {
 	updateInterval, _ := s.SettingService.GetSubUpdates()
-	return util.GetHeaders(client, updateInterval)
+	headers := util.GetHeaders(client, updateInterval)
+	if title, err := s.SettingService.GetSubTitle(); err == nil && title != "" {
+		headers[2] = title
+	}
+	supportURL, _ := s.SettingService.GetSubSupportUrl()
+	profileURL, _ := s.SettingService.GetSubProfileUrl()
+	announce, _ := s.SettingService.GetSubAnnounce()
+	headers = append(headers, supportURL, profileURL, announce)
+	return headers
 }
 
 func (s *SubService) getClientInfo(c *model.Client) string {

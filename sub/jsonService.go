@@ -9,6 +9,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 )
 
 const defaultJson = `
@@ -51,6 +52,11 @@ type JsonService struct {
 func (j *JsonService) GetJson(subId string, format string) (*string, []string, error) {
 	var jsonConfig map[string]interface{}
 
+	enabled, err := j.SettingService.GetSubJsonEnable()
+	if err == nil && !enabled {
+		return nil, nil, common.NewError("json subscription disabled")
+	}
+
 	client, inDatas, err := j.getData(subId)
 	if err != nil {
 		return nil, nil, err
@@ -89,8 +95,7 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)
 
-	updateInterval, _ := j.SettingService.GetSubUpdates()
-	headers := safeSubscriptionHeaders(util.GetHeaders(client, updateInterval))
+	headers := safeSubscriptionHeaders((&SubService{}).getClientHeaders(client))
 
 	return &resultStr, headers, nil
 }

@@ -1,6 +1,9 @@
 package sub
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,6 +11,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/gin-gonic/gin"
 )
 
 func initSubTestDB(t *testing.T) {
@@ -95,5 +99,72 @@ func TestSafeSubscriptionHeadersRemovesControlCharacters(t *testing.T) {
 	got := safeSubscriptionHeaders([]string{"ok\r\nInjected: bad"})[0]
 	if strings.ContainsAny(got, "\r\n") {
 		t.Fatalf("header was not sanitized: %q", got)
+	}
+}
+
+func TestSubscriptionHeadersUseConfiguredTitleAndURLs(t *testing.T) {
+	initSubTestDB(t)
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	settings := map[string]string{
+		"subTitle":      "Panel\r\nInjected: bad",
+		"subSupportUrl": "https://example.com/support",
+		"subProfileUrl": "https://example.com/profile",
+		"subAnnounce":   "Maintenance\r\nInjected: bad",
+	}
+	for key, value := range settings {
+		if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	headers := (&SubService{}).getClientHeaders(&model.Client{Name: "alice"})
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/sub/alice", nil)
+	(&SubHandler{}).addHeaders(c, headers)
+
+	if title := recorder.Header().Get("Profile-Title"); strings.ContainsAny(title, "\r\n") || !strings.Contains(title, "Panel") {
+		t.Fatalf("unexpected sanitized title: %q", title)
+	}
+	if recorder.Header().Get("Support-Url") != "https://example.com/support" {
+		t.Fatalf("support URL header missing: %#v", recorder.Header())
+	}
+	if recorder.Header().Get("Profile-Web-Page-Url") != "https://example.com/profile" {
+		t.Fatalf("profile URL header missing: %#v", recorder.Header())
+	}
+	if announce := recorder.Header().Get("Profile-Announcement"); strings.ContainsAny(announce, "\r\n") || !strings.Contains(announce, "Maintenance") {
+		t.Fatalf("unexpected sanitized announce: %q", announce)
+	}
+}
+
+func TestSubscriptionEnableSettingsDisableFormats(t *testing.T) {
+	initSubTestDB(t)
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range map[string]string{
+		"subLinkEnable":  "false",
+		"subJsonEnable":  "false",
+		"subClashEnable": "false",
+	} {
+		if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	links := json.RawMessage(`[{"type":"external","uri":"https://example.com/sub"}]`)
+	if got := (&LinkService{}).GetLinks(&links, "all", ""); len(got) != 0 {
+		t.Fatalf("link subscriptions should be disabled, got %#v", got)
+	}
+	if _, _, err := (&JsonService{}).GetJson("missing", "json"); err == nil {
+		t.Fatal("json subscription should be disabled before client lookup")
+	}
+	if _, _, err := (&ClashService{}).GetClash("missing"); err == nil {
+		t.Fatal("clash subscription should be disabled before client lookup")
 	}
 }

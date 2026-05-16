@@ -99,6 +99,78 @@ func TestSaveAllowsDefaultSubPathButRejectsOtherReservedSubPaths(t *testing.T) {
 	}
 }
 
+func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	settings, err := settingService.GetAllSetting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{
+		"subLinkEnable",
+		"subJsonEnable",
+		"subClashEnable",
+		"subJsonPath",
+		"subClashPath",
+		"subJsonURI",
+		"subClashURI",
+		"subTitle",
+		"subSupportUrl",
+		"subProfileUrl",
+		"subAnnounce",
+		"subNameInRemark",
+		"subJsonFragment",
+		"subJsonNoises",
+		"subJsonMux",
+		"subJsonDirectRules",
+		"subRateLimitPerIP",
+	} {
+		if _, ok := (*settings)[key]; !ok {
+			t.Fatalf("missing default setting %s", key)
+		}
+	}
+
+	validPayload, err := json.Marshal(map[string]string{
+		"subJsonPath":       "/json/",
+		"subClashPath":      "/clash/",
+		"subSupportUrl":     "https://example.com/support",
+		"subProfileUrl":     "https://example.com/profile",
+		"subJsonEnable":     "false",
+		"subRateLimitPerIP": "120",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validPayload)
+	}); err != nil {
+		t.Fatalf("valid subscription settings rejected: %v", err)
+	}
+
+	invalidPayload, err := json.Marshal(map[string]string{
+		"subJsonEnable": "sometimes",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidPayload)
+	}); err == nil {
+		t.Fatal("expected invalid boolean setting to be rejected")
+	}
+
+	invalidURLPayload, err := json.Marshal(map[string]string{
+		"subSupportUrl": "ftp://example.com/support",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidURLPayload)
+	}); err == nil {
+		t.Fatal("expected invalid URL setting to be rejected")
+	}
+}
+
 func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", "test-secretbox-key")
 	settingService := initSettingTestDB(t)

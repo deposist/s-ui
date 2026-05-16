@@ -103,6 +103,15 @@ func (s *SubHandler) addHeaders(c *gin.Context, headers []string) {
 	c.Writer.Header().Set("Subscription-Userinfo", headers[0])
 	c.Writer.Header().Set("Profile-Update-Interval", headers[1])
 	c.Writer.Header().Set("Profile-Title", headers[2])
+	if len(headers) > 3 && headers[3] != "" {
+		c.Writer.Header().Set("Support-Url", headers[3])
+	}
+	if len(headers) > 4 && headers[4] != "" {
+		c.Writer.Header().Set("Profile-Web-Page-Url", headers[4])
+	}
+	if len(headers) > 5 && headers[5] != "" {
+		c.Writer.Header().Set("Profile-Announcement", headers[5])
+	}
 }
 
 func (s *SubHandler) writeResult(c *gin.Context, result *string, headers []string) {
