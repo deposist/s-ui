@@ -24,6 +24,10 @@ func resetRateLimitState() {
 	defer wsHandshakeRateLimitMu.Unlock()
 	wsHandshakeRateLimits = map[string]wsHandshakeAttempt{}
 	wsHandshakeRateLimitGC = time.Time{}
+	auditEndpointRateLimitMu.Lock()
+	defer auditEndpointRateLimitMu.Unlock()
+	auditEndpointRateLimits = map[string]auditEndpointAttempt{}
+	auditEndpointRateLimitGC = time.Time{}
 }
 
 func TestLoginRateLimitBlocksAfterMaxFailures(t *testing.T) {

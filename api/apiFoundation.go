@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 	"github.com/deposist/s-ui-rus-inst/util/ssrf"
 
@@ -19,12 +21,102 @@ func (a *ApiService) GetCSRF(c *gin.Context) {
 }
 
 func (a *ApiService) GetSecurityAudit(c *gin.Context) {
-	limit, err := strconv.Atoi(c.DefaultQuery("limit", "200"))
-	if err != nil {
-		limit = 200
+	if !a.requireAuditAdminScope(c) {
+		return
 	}
-	events, err := a.AuditService.List(limit)
-	jsonObj(c, events, err)
+	if !a.enforceAuditEndpointRateLimit(c) {
+		return
+	}
+	limit, err := parseAuditLimit(c.Query("limit"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
+		return
+	}
+	cursor, err := parseAuditCursor(c.Query("cursor"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
+		return
+	}
+	events, nextCursor, err := a.AuditService.ListPage(cursor, limit)
+	jsonObj(c, gin.H{
+		"events":     events,
+		"nextCursor": nextCursor,
+		"limit":      limit,
+	}, err)
+}
+
+func parseAuditLimit(raw string) (int, error) {
+	if raw == "" {
+		return 200, nil
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, common.NewError("invalid limit")
+	}
+	if limit <= 0 {
+		return 0, common.NewError("invalid limit")
+	}
+	if limit > 200 {
+		return 200, nil
+	}
+	return limit, nil
+}
+
+func parseAuditCursor(raw string) (uint64, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	cursor, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil {
+		return 0, common.NewError("invalid cursor")
+	}
+	return cursor, nil
+}
+
+func (a *ApiService) requireAuditAdminScope(c *gin.Context) bool {
+	scope, hasScope := requestTokenScope(c)
+	if !hasScope || scope == "admin" {
+		return true
+	}
+	a.recordAudit(c, requestActor(c), "audit_scope_denied", "audit", service.AuditSeverityWarn, map[string]any{
+		"scope": scope,
+	})
+	c.JSON(http.StatusForbidden, Msg{Success: false, Msg: "audit: insufficient scope"})
+	return false
+}
+
+func (a *ApiService) enforceAuditEndpointRateLimit(c *gin.Context) bool {
+	actor := requestActor(c)
+	if actor == "" {
+		actor = getRemoteIp(c)
+	}
+	if actor == "" {
+		actor = "unknown"
+	}
+	err := checkAuditEndpointRateLimit(actor)
+	if err == nil {
+		return true
+	}
+	a.recordAudit(c, actor, "audit_rate_limited", "audit", service.AuditSeverityWarn, nil)
+	c.Header("Retry-After", strconv.Itoa(int(auditEndpointRateLimitWindow/time.Second)))
+	c.JSON(http.StatusTooManyRequests, Msg{Success: false, Msg: "audit: " + err.Error()})
+	return false
+}
+
+func requestActor(c *gin.Context) string {
+	if username := c.GetString(apiUsernameKey); username != "" {
+		return username
+	}
+	return GetLoginUser(c)
+}
+
+func requestTokenScope(c *gin.Context) (string, bool) {
+	scope, ok := c.Get(apiTokenScopeKey)
+	if !ok {
+		return "", false
+	}
+	scopeString, ok := scope.(string)
+	return scopeString, ok
 }
 
 func (a *ApiService) TestTelegram(c *gin.Context) {

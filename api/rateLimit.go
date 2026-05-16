@@ -18,6 +18,11 @@ const (
 	wsHandshakeRateLimitMax     = 30
 	wsHandshakeRateLimitMaxKeys = 4096
 	wsHandshakeRateLimitGCEvery = 1 * time.Minute
+
+	auditEndpointRateLimitWindow  = 1 * time.Minute
+	auditEndpointRateLimitMax     = 60
+	auditEndpointRateLimitMaxKeys = 4096
+	auditEndpointRateLimitGCEvery = 1 * time.Minute
 )
 
 type loginAttempt struct {
@@ -32,6 +37,12 @@ type wsHandshakeAttempt struct {
 	updatedAt time.Time
 }
 
+type auditEndpointAttempt struct {
+	count     int
+	windowAt  time.Time
+	updatedAt time.Time
+}
+
 var (
 	loginRateLimitMu sync.Mutex
 	loginRateLimits  = map[string]loginAttempt{}
@@ -40,6 +51,10 @@ var (
 	wsHandshakeRateLimitMu sync.Mutex
 	wsHandshakeRateLimits  = map[string]wsHandshakeAttempt{}
 	wsHandshakeRateLimitGC time.Time
+
+	auditEndpointRateLimitMu sync.Mutex
+	auditEndpointRateLimits  = map[string]auditEndpointAttempt{}
+	auditEndpointRateLimitGC time.Time
 )
 
 // gcLoginRateLimitsLocked drops stale entries. Caller must hold loginRateLimitMu.
@@ -150,4 +165,44 @@ func checkWSHandshakeRateLimit(key string) error {
 
 func wsHandshakeRateLimitKey(endpoint string, ip string) string {
 	return endpoint + "|" + ip
+}
+
+func gcAuditEndpointRateLimitsLocked(now time.Time) {
+	if now.Sub(auditEndpointRateLimitGC) < auditEndpointRateLimitGCEvery && len(auditEndpointRateLimits) < auditEndpointRateLimitMaxKeys {
+		return
+	}
+	auditEndpointRateLimitGC = now
+	for key, attempt := range auditEndpointRateLimits {
+		if now.Sub(attempt.updatedAt) > auditEndpointRateLimitWindow {
+			delete(auditEndpointRateLimits, key)
+		}
+	}
+	if len(auditEndpointRateLimits) > auditEndpointRateLimitMaxKeys {
+		for key := range auditEndpointRateLimits {
+			delete(auditEndpointRateLimits, key)
+			if len(auditEndpointRateLimits) <= auditEndpointRateLimitMaxKeys {
+				break
+			}
+		}
+	}
+}
+
+func checkAuditEndpointRateLimit(key string) error {
+	auditEndpointRateLimitMu.Lock()
+	defer auditEndpointRateLimitMu.Unlock()
+	now := time.Now()
+	gcAuditEndpointRateLimitsLocked(now)
+	attempt := auditEndpointRateLimits[key]
+	if attempt.windowAt.IsZero() || now.Sub(attempt.windowAt) >= auditEndpointRateLimitWindow {
+		attempt = auditEndpointAttempt{windowAt: now}
+	}
+	if attempt.count >= auditEndpointRateLimitMax {
+		attempt.updatedAt = now
+		auditEndpointRateLimits[key] = attempt
+		return common.NewError("too many audit requests")
+	}
+	attempt.count++
+	attempt.updatedAt = now
+	auditEndpointRateLimits[key] = attempt
+	return nil
 }

@@ -48,15 +48,35 @@ func (s *AuditService) Record(event AuditEvent) error {
 }
 
 func (s *AuditService) List(limit int) ([]model.AuditEvent, error) {
-	if limit <= 0 || limit > 1000 {
+	events, _, err := s.ListPage(0, limit)
+	return events, err
+}
+
+func (s *AuditService) ListPage(cursor uint64, limit int) ([]model.AuditEvent, uint64, error) {
+	if limit <= 0 {
 		limit = 200
 	}
-	events := make([]model.AuditEvent, 0)
-	err := database.GetDB().Model(model.AuditEvent{}).
-		Order("date_time desc, id desc").
-		Limit(limit).
+	if limit > 200 {
+		limit = 200
+	}
+	events := make([]model.AuditEvent, 0, limit+1)
+	query := database.GetDB().Model(model.AuditEvent{})
+	if cursor > 0 {
+		query = query.Where("id < ?", cursor)
+	}
+	err := query.
+		Order("id desc").
+		Limit(limit + 1).
 		Find(&events).Error
-	return events, err
+	if err != nil {
+		return nil, 0, err
+	}
+	var nextCursor uint64
+	if len(events) > limit {
+		events = events[:limit]
+		nextCursor = events[len(events)-1].Id
+	}
+	return events, nextCursor, nil
 }
 
 func (s *AuditService) Prune(retentionDays int) error {

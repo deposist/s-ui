@@ -31,6 +31,7 @@ type APIv2Handler struct {
 
 const (
 	apiUsernameKey          = "apiUsername"
+	apiTokenScopeKey        = "apiTokenScope"
 	legacyTokenHeaderSunset = "Sat, 15 Aug 2026 00:00:00 GMT"
 )
 
@@ -47,6 +48,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.Use(func(c *gin.Context) {
 		a.checkToken(c)
 	})
+	g.GET("/security/audit", a.ApiService.GetSecurityAudit)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }
@@ -142,6 +144,7 @@ func (a *APIv2Handler) findUsername(c *gin.Context) string {
 		})
 	}
 	_ = a.UserService.RecordTokenUse(t.ID, getRemoteIp(c))
+	c.Set(apiTokenScopeKey, t.Scope)
 	return t.Username
 }
 
