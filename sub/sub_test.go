@@ -95,6 +95,44 @@ func TestGetClientBySubIdCanDisableLegacyName(t *testing.T) {
 	}
 }
 
+func TestSubSecretRequiredReturns404ForLegacyNameURL(t *testing.T) {
+	initSubTestDB(t)
+	resetRateLimitBucketsForTest()
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "subSecretRequired").Update("value", "true").Error; err != nil {
+		t.Fatal(err)
+	}
+	client := model.Client{
+		Enable:    true,
+		Name:      "legacy-name",
+		SubSecret: "secret-id",
+		Inbounds:  []byte("[]"),
+		Links:     []byte("[]"),
+	}
+	if err := database.GetDB().Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	NewSubHandler(router.Group(""))
+
+	legacyRecorder := httptest.NewRecorder()
+	router.ServeHTTP(legacyRecorder, httptest.NewRequest(http.MethodGet, "/legacy-name", nil))
+	if legacyRecorder.Code != http.StatusNotFound {
+		t.Fatalf("legacy name URL should be hidden, got %d", legacyRecorder.Code)
+	}
+
+	secretRecorder := httptest.NewRecorder()
+	router.ServeHTTP(secretRecorder, httptest.NewRequest(http.MethodGet, "/secret-id", nil))
+	if secretRecorder.Code != http.StatusOK {
+		t.Fatalf("secret URL should still work, got %d", secretRecorder.Code)
+	}
+}
+
 func TestSafeSubscriptionHeadersRemovesControlCharacters(t *testing.T) {
 	got := safeSubscriptionHeaders([]string{"ok\r\nInjected: bad"})[0]
 	if strings.ContainsAny(got, "\r\n") {

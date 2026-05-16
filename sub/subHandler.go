@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
@@ -53,7 +54,7 @@ func (s *SubHandler) subs(c *gin.Context) {
 	result, headers, err = s.SubService.GetSubs(subId)
 	if err != nil || result == nil {
 		logger.Error(err)
-		c.String(400, "Error!")
+		s.writeError(c, err)
 		return
 	}
 
@@ -64,7 +65,7 @@ func (s *SubHandler) json(c *gin.Context) {
 	result, headers, err := s.JsonService.GetJson(c.Param("subid"), "json")
 	if err != nil || result == nil {
 		logger.Error(err)
-		c.String(400, "Error!")
+		s.writeError(c, err)
 		return
 	}
 	s.writeResult(c, result, headers)
@@ -74,7 +75,7 @@ func (s *SubHandler) clash(c *gin.Context) {
 	result, headers, err := s.ClashService.GetClash(c.Param("subid"))
 	if err != nil || result == nil {
 		logger.Error(err)
-		c.String(400, "Error!")
+		s.writeError(c, err)
 		return
 	}
 	s.writeResult(c, result, headers)
@@ -85,7 +86,7 @@ func (s *SubHandler) subHeaders(c *gin.Context) {
 	client, err := s.SubService.getClientBySubId(subId)
 	if err != nil {
 		logger.Error(err)
-		c.String(400, "Error!")
+		s.writeError(c, err)
 		return
 	}
 
@@ -117,6 +118,14 @@ func (s *SubHandler) addHeaders(c *gin.Context, headers []string) {
 func (s *SubHandler) writeResult(c *gin.Context, result *string, headers []string) {
 	s.addHeaders(c, headers)
 	c.String(200, *result)
+}
+
+func (s *SubHandler) writeError(c *gin.Context, err error) {
+	if database.IsNotFound(err) {
+		c.String(404, "Not Found")
+		return
+	}
+	c.String(400, "Error!")
 }
 
 func safeSubscriptionHeaders(headers []string) []string {

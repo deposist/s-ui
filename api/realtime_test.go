@@ -228,6 +228,36 @@ func TestRealtimeWSSendsPublishedEvents(t *testing.T) {
 	}
 }
 
+func TestRealtimeWSRejectsReplayToken(t *testing.T) {
+	router, cookies := newRealtimeWSTestRouter(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	resetRealtimeForTest()
+	setWSTokenForTest("ws-token", "admin")
+
+	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+		return true
+	})
+	t.Cleanup(func() { conn.CloseNow() })
+
+	header := http.Header{}
+	header.Set("Origin", server.URL)
+	header.Set("Cookie", cookieHeader(cookies))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	replayedConn, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/api/realtime/ws?token=ws-token", &websocket.DialOptions{
+		HTTPHeader: header,
+	})
+	if err == nil {
+		replayedConn.CloseNow()
+		t.Fatal("replayed websocket token was accepted")
+	}
+	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unexpected replay response: resp=%v err=%v", resp, err)
+	}
+}
+
 func TestRealtimeWSClosesWhenPongMissing(t *testing.T) {
 	setWSHeartbeatForTest(t, 10*time.Millisecond, 30*time.Millisecond)
 	router, cookies := newRealtimeWSTestRouter(t)
