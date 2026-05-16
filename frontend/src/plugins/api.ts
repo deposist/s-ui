@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearCSRFToken, getCSRFToken } from '@/store/csrf'
 
 const api = axios.create({
     baseURL: './',
@@ -13,8 +14,6 @@ const api = axios.create({
 })
 
 const pendingRequests = new Map<string, AbortController>()
-let csrfToken: string | null = null
-let csrfTokenPromise: Promise<string> | null = null
 
 const isDedupeMethod = (method?: string) => {
     const m = (method ?? 'get').toLowerCase()
@@ -39,30 +38,6 @@ const needsCSRFToken = (method?: string, url?: string) => {
     return normalized.startsWith('api/') && normalized !== 'api/login'
 }
 
-const fetchCSRFToken = async () => {
-    if (csrfToken) {
-        return csrfToken
-    }
-    if (!csrfTokenPromise) {
-        csrfTokenPromise = axios.get('api/csrf', {
-            baseURL: './',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-        }).then((response) => {
-            const token = response.data?.obj?.token
-            if (typeof token !== 'string' || token.length === 0) {
-                throw new Error('CSRF token was not returned')
-            }
-            csrfToken = token
-            return token
-        }).finally(() => {
-            csrfTokenPromise = null
-        })
-    }
-    return csrfTokenPromise
-}
-
 api.interceptors.request.use(
     async (config) => {
         if (isDedupeMethod(config.method)) {
@@ -79,7 +54,7 @@ api.interceptors.request.use(
             delete config.headers['Content-Type']
         }
         if (needsCSRFToken(config.method, config.url)) {
-            config.headers['X-CSRF-Token'] = await fetchCSRFToken()
+            config.headers['X-CSRF-Token'] = await getCSRFToken()
         }
         return config
     },
@@ -100,7 +75,7 @@ api.interceptors.response.use(
             pendingRequests.delete(requestKey(error.config))
         }
         if (error.response?.status === 403 && error.response?.data?.msg === 'Invalid CSRF token') {
-            csrfToken = null
+            clearCSRFToken()
         }
         return Promise.reject(error)
     }
