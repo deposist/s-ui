@@ -45,64 +45,65 @@ var defaultConfig = `{
 }`
 
 var defaultValueMap = map[string]string{
-	"webListen":              "",
-	"webDomain":              "",
-	"webPort":                "2095",
-	"secret":                 common.Random(32),
-	"installSalt":            common.Random(32),
-	"webCertFile":            "",
-	"webKeyFile":             "",
-	"webPath":                "/app/",
-	"webURI":                 "",
-	"sessionMaxAge":          "0",
-	"sessionGeneration":      "",
-	"trafficAge":             "30",
-	"timeLocation":           "Europe/Moscow",
-	"subListen":              "",
-	"subPort":                "2096",
-	"subPath":                "/sub/",
-	"subDomain":              "",
-	"subCertFile":            "",
-	"subKeyFile":             "",
-	"subUpdates":             "12",
-	"subEncode":              "true",
-	"subShowInfo":            "false",
-	"subSecretRequired":      "false",
-	"subRateLimitPerIP":      "60",
-	"subLinkEnable":          "true",
-	"subJsonEnable":          "true",
-	"subClashEnable":         "true",
-	"subJsonPath":            "/json/",
-	"subClashPath":           "/clash/",
-	"subJsonURI":             "",
-	"subClashURI":            "",
-	"subTitle":               "",
-	"subSupportUrl":          "",
-	"subProfileUrl":          "",
-	"subAnnounce":            "",
-	"subNameInRemark":        "false",
-	"subJsonFragment":        "",
-	"subJsonNoises":          "",
-	"subJsonMux":             "false",
-	"subJsonDirectRules":     "false",
-	"subURI":                 "",
-	"subJsonExt":             "",
-	"subClashExt":            "",
-	"auditRetentionDays":     "30",
-	"ipShowRaw":              "false",
-	"ipHistoryRetentionDays": "30",
-	"telegramEnabled":        "false",
-	"telegramBotToken":       "",
-	"telegramChatID":         "",
-	"telegramProxyURL":       "",
-	"telegramProxyUsername":  "",
-	"telegramProxyPassword":  "",
-	"telegramCpuThreshold":   "90",
-	"telegramNotifyCpu":      "false",
-	"telegramReport":         "false",
-	"telegramReportCron":     "",
-	"config":                 defaultConfig,
-	"version":                config.GetVersion(),
+	"webListen":                "",
+	"webDomain":                "",
+	"webPort":                  "2095",
+	"secret":                   common.Random(32),
+	"installSalt":              common.Random(32),
+	"webCertFile":              "",
+	"webKeyFile":               "",
+	"webPath":                  "/app/",
+	"webURI":                   "",
+	"sessionMaxAge":            "0",
+	"sessionGeneration":        "",
+	"trafficAge":               "30",
+	"timeLocation":             "Europe/Moscow",
+	"subListen":                "",
+	"subPort":                  "2096",
+	"subPath":                  "/sub/",
+	"subDomain":                "",
+	"subCertFile":              "",
+	"subKeyFile":               "",
+	"subUpdates":               "12",
+	"subEncode":                "true",
+	"subShowInfo":              "false",
+	"subSecretRequired":        "false",
+	"subRateLimitPerIP":        "60",
+	"subLinkEnable":            "true",
+	"subJsonEnable":            "true",
+	"subClashEnable":           "true",
+	"subJsonPath":              "/json/",
+	"subClashPath":             "/clash/",
+	"subJsonURI":               "",
+	"subClashURI":              "",
+	"subTitle":                 "",
+	"subSupportUrl":            "",
+	"subProfileUrl":            "",
+	"subAnnounce":              "",
+	"subNameInRemark":          "false",
+	"subJsonFragment":          "",
+	"subJsonNoises":            "",
+	"subJsonMux":               "false",
+	"subJsonDirectRules":       "false",
+	"subURI":                   "",
+	"subJsonExt":               "",
+	"subClashExt":              "",
+	"auditRetentionDays":       "30",
+	"ipShowRaw":                "false",
+	"ipHistoryRetentionDays":   "30",
+	"observabilityMemoryCapMB": "32",
+	"telegramEnabled":          "false",
+	"telegramBotToken":         "",
+	"telegramChatID":           "",
+	"telegramProxyURL":         "",
+	"telegramProxyUsername":    "",
+	"telegramProxyPassword":    "",
+	"telegramCpuThreshold":     "90",
+	"telegramNotifyCpu":        "false",
+	"telegramReport":           "false",
+	"telegramReportCron":       "",
+	"config":                   defaultConfig,
+	"version":                  config.GetVersion(),
 }
 
 type SettingService struct {
@@ -326,6 +327,10 @@ func (s *SettingService) GetIPShowRaw() (bool, error) {
 	return s.getBool("ipShowRaw")
 }
 
+func (s *SettingService) GetObservabilityMemoryCapMB() (int, error) {
+	return s.getInt("observabilityMemoryCapMB")
+}
+
 func (s *SettingService) GetTimeLocation() (*time.Location, error) {
 	l, err := s.getString("timeLocation")
 	if err != nil {
@@ -544,6 +549,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		if err = validateTelegramSettingInput(key, obj); err != nil {
 			return err
 		}
+		if err = validateObservabilitySettingInput(key, obj); err != nil {
+			return err
+		}
 		if err = validateSubscriptionSettingInput(key, obj); err != nil {
 			return err
 		}
@@ -714,6 +722,17 @@ func validateTelegramSettingInput(key string, value string) error {
 	case "telegramReportCron":
 		if _, err := ParseTelegramReportCron(value); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateObservabilitySettingInput(key string, value string) error {
+	switch key {
+	case "observabilityMemoryCapMB":
+		capMB, err := strconv.Atoi(value)
+		if err != nil || capMB <= 0 || capMB > 1024 {
+			return common.NewError("invalid observability memory cap setting")
 		}
 	}
 	return nil
