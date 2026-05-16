@@ -94,6 +94,9 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 // starts is bypassed, which is required for user-initiated restarts so the API
 // reflects the real start status instead of silently succeeding.
 func (s *ConfigService) startCore(force bool) error {
+	if corePtr == nil {
+		return common.NewError("core not initialized")
+	}
 	if corePtr.IsRunning() {
 		return nil
 	}
@@ -144,6 +147,9 @@ func (s *ConfigService) StartCore() error {
 // RestartCore is invoked from user actions; it bypasses the cooldown so the
 // caller observes the true start status.
 func (s *ConfigService) RestartCore() error {
+	if corePtr == nil {
+		return common.NewError("core not initialized")
+	}
 	if err := s.StopCore(); err != nil {
 		return err
 	}
@@ -151,6 +157,9 @@ func (s *ConfigService) RestartCore() error {
 }
 
 func (s *ConfigService) StopCore() error {
+	if corePtr == nil {
+		return common.NewError("core not initialized")
+	}
 	err := corePtr.Stop()
 	if err != nil {
 		return err
@@ -196,6 +205,9 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 				return
 			}
 			realtime.Publish(realtime.TopicConfigInvalidated, nil)
+			if corePtr == nil {
+				return
+			}
 			if needsCoreRestart {
 				if corePtr.IsRunning() {
 					if restartErr := s.RestartCore(); restartErr != nil {
