@@ -204,13 +204,12 @@ func flushSnapshot(tx *gorm.DB, snapshot map[string]map[string]pendingIP) error 
 				err = tx.Model(model.ClientIP{}).Where("client_name = ? AND ip = ?", clientName, ipHash).First(&row).Error
 			}
 			if database.IsNotFound(err) {
-				err = tx.Create(&model.ClientIP{
-					ClientName: clientName,
-					IP:         ipHash,
-					IPHash:     ipHash,
-					IPDisplay:  pendingIP.display,
-					FirstSeen:  pendingIP.lastSeen,
-					LastSeen:   pendingIP.lastSeen,
+				err = tx.Model(model.ClientIP{}).Create(map[string]interface{}{
+					"client_name": clientName,
+					"ip_hash":     ipHash,
+					"ip_display":  ipDisplayValue(pendingIP.display),
+					"first_seen":  pendingIP.lastSeen,
+					"last_seen":   pendingIP.lastSeen,
 				}).Error
 			} else if err == nil {
 				err = tx.Model(model.ClientIP{}).Where("id = ?", row.Id).Updates(map[string]interface{}{

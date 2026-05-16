@@ -233,8 +233,8 @@ func TestRecordFlushStoresHashedIPAndMasksHistoryByDefault(t *testing.T) {
 	if row.IP == rawIP {
 		t.Fatal("raw IP was stored in legacy ip column")
 	}
-	if row.IPHash == "" || row.IP != row.IPHash {
-		t.Fatalf("expected legacy ip column to hold hash for new rows: %#v", row)
+	if row.IP != "" || row.IPHash == "" {
+		t.Fatalf("expected legacy ip column empty and ip_hash populated for new rows: %#v", row)
 	}
 	if row.IPDisplay != nil {
 		t.Fatalf("ip_display must stay NULL while ipShowRaw=false: %#v", row.IPDisplay)
@@ -286,8 +286,8 @@ func TestRecordFlushStoresRawDisplayOnlyWhenEnabled(t *testing.T) {
 	if row.IPDisplay == nil || *row.IPDisplay != rawIP {
 		t.Fatalf("raw display was not stored when ipShowRaw=true: %#v", row)
 	}
-	if row.IP == rawIP || row.IPHash == "" {
-		t.Fatalf("raw IP leaked into hash columns: %#v", row)
+	if row.IP != "" || row.IPHash == "" {
+		t.Fatalf("legacy ip column should be empty and ip_hash populated: %#v", row)
 	}
 
 	history, err := History("alice", 10)
