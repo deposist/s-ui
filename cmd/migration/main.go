@@ -78,6 +78,14 @@ func MigrateDb() error {
 		dbVersion = "1.4"
 	}
 
+	// Before 1.5
+	if strings.HasPrefix(dbVersion, "1.4") {
+		if err = to1_5(tx); err != nil {
+			return fmt.Errorf("migration to 1.5: %w", err)
+		}
+		dbVersion = "1.5"
+	}
+
 	// Persist the new version. The settings row is created lazily in older
 	// schemas, so use UPSERT semantics.
 	var count int64
