@@ -12,6 +12,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/util"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 
@@ -280,7 +281,11 @@ func (s *SettingService) GetSessionGeneration() (string, error) {
 
 func (s *SettingService) RotateSessionGeneration() (string, error) {
 	generation := common.Random(32)
-	return generation, s.setString("sessionGeneration", generation)
+	if err := s.setString("sessionGeneration", generation); err != nil {
+		return generation, err
+	}
+	realtime.CloseAll("session_rotated")
+	return generation, nil
 }
 
 func (s *SettingService) GetTrafficAge() (int, error) {

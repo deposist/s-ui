@@ -9,7 +9,6 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
-	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
 
@@ -423,7 +422,6 @@ func (a *ApiService) LogoutAllAdmins(c *gin.Context) {
 		a.TelegramService.NotifyTelegramEvent("logout_all_admins", map[string]string{
 			"user": loginUser,
 		})
-		realtime.CloseAll("admin sessions invalidated")
 		ClearSession(c)
 	}
 	jsonMsg(c, "logoutAllAdmins", err)
