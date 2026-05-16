@@ -1,15 +1,20 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 
+	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -173,4 +178,155 @@ func TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken(t *testing.T) {
 	if _, ok := details["token"]; ok {
 		t.Fatalf("websocket token leaked to audit details: %#v", details)
 	}
+}
+
+func TestRealtimeWSSendsHeartbeatPing(t *testing.T) {
+	setWSHeartbeatForTest(t, 10*time.Millisecond, 100*time.Millisecond)
+	router, cookies := newRealtimeWSTestRouter(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	resetRealtimeHubForTest()
+	realtimeHub.Lock()
+	realtimeHub.tokens["ws-token"] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
+	realtimeHub.Unlock()
+
+	var pings atomic.Int32
+	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+		pings.Add(1)
+		return true
+	})
+	t.Cleanup(func() { conn.CloseNow() })
+	errCh := startRealtimeReadLoop(conn)
+
+	deadline := time.After(time.Second)
+	tick := time.NewTicker(5 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case err := <-errCh:
+			t.Fatalf("websocket closed before heartbeat ping: %v", err)
+		case <-tick.C:
+			if pings.Load() > 0 {
+				return
+			}
+		case <-deadline:
+			t.Fatal("heartbeat ping was not observed")
+		}
+	}
+}
+
+func TestRealtimeWSClosesWhenPongMissing(t *testing.T) {
+	setWSHeartbeatForTest(t, 10*time.Millisecond, 30*time.Millisecond)
+	router, cookies := newRealtimeWSTestRouter(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	resetRealtimeHubForTest()
+	realtimeHub.Lock()
+	realtimeHub.tokens["ws-token"] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
+	realtimeHub.Unlock()
+
+	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+		return false
+	})
+	t.Cleanup(func() { conn.CloseNow() })
+	errCh := startRealtimeReadLoop(conn)
+
+	select {
+	case err := <-errCh:
+		if websocket.CloseStatus(err) != websocket.StatusPolicyViolation {
+			t.Fatalf("expected policy violation close, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("websocket did not close after missing pong")
+	}
+}
+
+func setWSHeartbeatForTest(t *testing.T, pingInterval time.Duration, idleTimeout time.Duration) {
+	t.Helper()
+	oldPingInterval := wsPingInterval
+	oldIdleTimeout := wsIdleTimeout
+	wsPingInterval = pingInterval
+	wsIdleTimeout = idleTimeout
+	t.Cleanup(func() {
+		wsPingInterval = oldPingInterval
+		wsIdleTimeout = oldIdleTimeout
+	})
+}
+
+func newRealtimeWSTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
+	t.Helper()
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.GET("/login", func(c *gin.Context) {
+		generation, err := settingService.GetSessionGeneration()
+		if err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		if err := SetLoginUser(c, "admin", 0, generation); err != nil {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWS)
+
+	loginRecorder := httptest.NewRecorder()
+	loginReq := httptest.NewRequest(http.MethodGet, "/login", nil)
+	router.ServeHTTP(loginRecorder, loginReq)
+	if loginRecorder.Code != http.StatusNoContent {
+		t.Fatalf("login returned %d", loginRecorder.Code)
+	}
+	return router, loginRecorder.Result().Cookies()
+}
+
+func dialRealtimeWSForTest(t *testing.T, server *httptest.Server, cookies []*http.Cookie, token string, onPing func(context.Context, []byte) bool) *websocket.Conn {
+	t.Helper()
+	header := http.Header{}
+	header.Set("Origin", server.URL)
+	header.Set("Cookie", cookieHeader(cookies))
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/realtime/ws?token=" + token
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+		HTTPHeader:     header,
+		OnPingReceived: onPing,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return conn
+}
+
+func startRealtimeReadLoop(conn *websocket.Conn) <-chan error {
+	errCh := make(chan error, 1)
+	go func() {
+		for {
+			_, reader, err := conn.Reader(context.Background())
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if _, err := io.Copy(io.Discard, reader); err != nil {
+				errCh <- err
+				return
+			}
+		}
+	}()
+	return errCh
+}
+
+func cookieHeader(cookies []*http.Cookie) string {
+	parts := make([]string, 0, len(cookies))
+	for _, c := range cookies {
+		parts = append(parts, c.String())
+	}
+	return strings.Join(parts, "; ")
 }

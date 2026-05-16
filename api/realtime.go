@@ -26,6 +26,11 @@ const (
 	wsSubprotocol = "sui.realtime"
 )
 
+var (
+	wsPingInterval = 25 * time.Second
+	wsIdleTimeout  = 60 * time.Second
+)
+
 type realtimeToken struct {
 	user      string
 	expiresAt time.Time
@@ -107,18 +112,30 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 		_ = conn.Close(websocket.StatusNormalClosure, "")
 	}()
 
+	wsCtx := conn.CloseRead(c.Request.Context())
+	pingTicker := time.NewTicker(wsPingInterval)
+	defer pingTicker.Stop()
+
 	client.enqueue(realtimeEvent{Type: "connected"})
 	for {
 		select {
 		case event := <-client.send:
 			payload, _ := json.Marshal(event)
-			writeCtx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+			writeCtx, cancel := context.WithTimeout(wsCtx, 5*time.Second)
 			err := conn.Write(writeCtx, websocket.MessageText, payload)
 			cancel()
 			if err != nil {
 				return
 			}
-		case <-c.Request.Context().Done():
+		case <-pingTicker.C:
+			pingCtx, cancel := context.WithTimeout(wsCtx, wsIdleTimeout)
+			err := conn.Ping(pingCtx)
+			cancel()
+			if err != nil {
+				_ = conn.Close(websocket.StatusPolicyViolation, "heartbeat timeout")
+				return
+			}
+		case <-wsCtx.Done():
 			return
 		}
 	}
