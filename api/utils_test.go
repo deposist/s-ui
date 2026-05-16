@@ -3,8 +3,10 @@ package api
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -78,6 +80,32 @@ func TestTelegramRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 	for _, forbidden := range []string{"user", "username", "reason", "error"} {
 		if _, ok := fields[forbidden]; ok {
 			t.Fatalf("forbidden field %q leaked into Telegram payload: %#v", forbidden, fields)
+		}
+	}
+}
+
+func TestCoreRestartFailedTelegramFieldsDoNotExposeRawError(t *testing.T) {
+	c := makeContext(t, "203.0.113.5:1234", "")
+	rawErr := "config parse failed: Authorization: Bearer core-secret-token"
+
+	fields := coreRestartFailedTelegramFields(c, errors.New(rawErr))
+	if fields["errorClass"] != "config" {
+		t.Fatalf("unexpected errorClass: %q", fields["errorClass"])
+	}
+	for _, forbiddenKey := range []string{"reason", "error"} {
+		if _, ok := fields[forbiddenKey]; ok {
+			t.Fatalf("forbidden field %q leaked into Telegram payload: %#v", forbiddenKey, fields)
+		}
+	}
+
+	var values []string
+	for _, value := range fields {
+		values = append(values, value)
+	}
+	joined := strings.Join(values, "\n")
+	for _, forbidden := range []string{rawErr, "core-secret-token", "Authorization: Bearer"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("raw restart error leaked into Telegram payload: %#v", fields)
 		}
 	}
 }

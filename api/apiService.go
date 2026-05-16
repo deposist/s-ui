@@ -14,6 +14,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/redact"
 
 	"github.com/gin-gonic/gin"
 )
@@ -384,7 +385,7 @@ func (a *ApiService) RestartApp(c *gin.Context) {
 func (a *ApiService) RestartSb(c *gin.Context) {
 	err := a.ConfigService.RestartCore()
 	if err != nil {
-		a.TelegramService.NotifyTelegramEvent("core_restart_failed", telegramRequestFields(c))
+		a.TelegramService.NotifyTelegramEvent("core_restart_failed", coreRestartFailedTelegramFields(c, err))
 	} else {
 		a.TelegramService.NotifyTelegramEvent("core_restarted", nil)
 	}
@@ -402,6 +403,29 @@ func telegramRequestFields(c *gin.Context) map[string]string {
 func hashUserAgent(userAgent string) string {
 	sum := sha256.Sum256([]byte(userAgent))
 	return hex.EncodeToString(sum[:])
+}
+
+func coreRestartFailedTelegramFields(c *gin.Context, err error) map[string]string {
+	fields := telegramRequestFields(c)
+	fields["errorClass"] = coreRestartErrorClass(err)
+	return fields
+}
+
+func coreRestartErrorClass(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.ToLower(redact.String(err.Error()))
+	switch {
+	case strings.Contains(message, "timeout"), strings.Contains(message, "deadline exceeded"):
+		return "timeout"
+	case strings.Contains(message, "permission"), strings.Contains(message, "access is denied"):
+		return "permission"
+	case strings.Contains(message, "config"), strings.Contains(message, "parse"), strings.Contains(message, "json"):
+		return "config"
+	default:
+		return "failed"
+	}
 }
 
 func (a *ApiService) LinkConvert(c *gin.Context) {
