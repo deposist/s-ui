@@ -91,8 +91,8 @@ func TestGetClientBySubIdCanDisableLegacyName(t *testing.T) {
 	}
 }
 
-func TestSanitizeHeaderValueRemovesControlCharacters(t *testing.T) {
-	got := sanitizeHeaderValue("ok\r\nInjected: bad")
+func TestSafeSubscriptionHeadersRemovesControlCharacters(t *testing.T) {
+	got := safeSubscriptionHeaders([]string{"ok\r\nInjected: bad"})[0]
 	if strings.ContainsAny(got, "\r\n") {
 		t.Fatalf("header was not sanitized: %q", got)
 	}

@@ -97,7 +97,7 @@ func (s *ClashService) GetClash(subId string) (*string, []string, error) {
 	}
 
 	updateInterval, _ := s.SettingService.GetSubUpdates()
-	headers := util.GetHeaders(client, updateInterval)
+	headers := safeSubscriptionHeaders(util.GetHeaders(client, updateInterval))
 
 	return &resultStr, headers, nil
 }

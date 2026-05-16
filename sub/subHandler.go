@@ -1,10 +1,9 @@
 package sub
 
 import (
-	"strings"
-
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/deposist/s-ui-rus-inst/util"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +14,8 @@ type SubHandler struct {
 	JsonService
 	ClashService
 }
+
+const maxSubscriptionHeaderBytes = 512
 
 func NewSubHandler(g *gin.RouterGroup) {
 	a := &SubHandler{}
@@ -98,9 +99,10 @@ func (s *SubHandler) addHeaders(c *gin.Context, headers []string) {
 	if len(headers) < 3 {
 		return
 	}
-	c.Writer.Header().Set("Subscription-Userinfo", sanitizeHeaderValue(headers[0]))
-	c.Writer.Header().Set("Profile-Update-Interval", sanitizeHeaderValue(headers[1]))
-	c.Writer.Header().Set("Profile-Title", sanitizeHeaderValue(headers[2]))
+	headers = safeSubscriptionHeaders(headers)
+	c.Writer.Header().Set("Subscription-Userinfo", headers[0])
+	c.Writer.Header().Set("Profile-Update-Interval", headers[1])
+	c.Writer.Header().Set("Profile-Title", headers[2])
 }
 
 func (s *SubHandler) writeResult(c *gin.Context, result *string, headers []string) {
@@ -108,11 +110,10 @@ func (s *SubHandler) writeResult(c *gin.Context, result *string, headers []strin
 	c.String(200, *result)
 }
 
-func sanitizeHeaderValue(value string) string {
-	return strings.Map(func(r rune) rune {
-		if r == '\r' || r == '\n' || r == 0x7f || r < 0x20 {
-			return -1
-		}
-		return r
-	}, value)
+func safeSubscriptionHeaders(headers []string) []string {
+	safe := make([]string, len(headers))
+	for i, header := range headers {
+		safe[i] = util.SafeHeader(header, maxSubscriptionHeaderBytes)
+	}
+	return safe
 }

@@ -90,7 +90,7 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	resultStr := string(result)
 
 	updateInterval, _ := j.SettingService.GetSubUpdates()
-	headers := util.GetHeaders(client, updateInterval)
+	headers := safeSubscriptionHeaders(util.GetHeaders(client, updateInterval))
 
 	return &resultStr, headers, nil
 }
