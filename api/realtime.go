@@ -96,9 +96,10 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 	}
 	sendCh := make(chan realtime.Event, wsQueueSize)
 	unregister := realtime.Register(&realtime.ClientHandle{
-		User:   user,
-		IP:     ip,
-		Scope:  realtime.ScopeAdmin,
+		User:  user,
+		IP:    ip,
+		Scope: realtime.ScopeAdmin,
+		// TODO(plan-h): resolve scope from session/token when multi-scope WS sessions land. Single-admin model gates this with login.
 		SendCh: sendCh,
 		OnDrop: func(reason string) {
 			code := wsCloseAuth
