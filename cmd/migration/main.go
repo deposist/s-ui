@@ -67,6 +67,15 @@ func MigrateDb() error {
 		if err = to1_3(tx); err != nil {
 			return fmt.Errorf("migration to 1.3: %w", err)
 		}
+		dbVersion = "1.3"
+	}
+
+	// Before 1.4
+	if strings.HasPrefix(dbVersion, "1.3") {
+		if err = to1_4(tx); err != nil {
+			return fmt.Errorf("migration to 1.4: %w", err)
+		}
+		dbVersion = "1.4"
 	}
 
 	// Persist the new version. The settings row is created lazily in older
