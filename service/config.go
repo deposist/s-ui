@@ -11,6 +11,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 )
 
@@ -157,6 +158,10 @@ func (s *ConfigService) StopCore() error {
 	return nil
 }
 
+func (s *ConfigService) IsCoreRunning() bool {
+	return corePtr != nil && corePtr.IsRunning()
+}
+
 func (s *ConfigService) CheckOutbound(tag string, link string) core.CheckOutboundResult {
 	if tag == "" {
 		return core.CheckOutboundResult{Error: "missing query parameter: tag"}
@@ -189,6 +194,7 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 				err = commitErr
 				return
 			}
+			realtime.Publish(realtime.TopicConfigInvalidated, nil)
 			if needsCoreRestart {
 				if corePtr.IsRunning() {
 					if restartErr := s.RestartCore(); restartErr != nil {

@@ -1,0 +1,68 @@
+package service
+
+import (
+	"testing"
+	"time"
+
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/realtime"
+)
+
+func TestTrafficDeltasAggregatesByResourceAndTag(t *testing.T) {
+	deltas := trafficDeltas([]model.Stats{
+		{Resource: "user", Tag: "alice", Direction: true, Traffic: 10},
+		{Resource: "user", Tag: "alice", Direction: false, Traffic: 3},
+		{Resource: "user", Tag: "alice", Direction: true, Traffic: 7},
+		{Resource: "inbound", Tag: "mixed-in", Direction: false, Traffic: 4},
+	})
+
+	if len(deltas) != 2 {
+		t.Fatalf("expected two deltas, got %#v", deltas)
+	}
+	if deltas[0] != (trafficDelta{Resource: "user", Tag: "alice", Up: 17, Down: 3}) {
+		t.Fatalf("unexpected user delta: %#v", deltas[0])
+	}
+	if deltas[1] != (trafficDelta{Resource: "inbound", Tag: "mixed-in", Down: 4}) {
+		t.Fatalf("unexpected inbound delta: %#v", deltas[1])
+	}
+}
+
+func TestPublishStatsRealtimePublishesOnlinesAndTrafficDelta(t *testing.T) {
+	realtime.CloseAll("test_reset")
+	t.Cleanup(func() { realtime.CloseAll("test_done") })
+	ch := make(chan realtime.Event, 2)
+	unregister := realtime.Register(&realtime.ClientHandle{
+		User:   "admin",
+		Scope:  realtime.ScopeAdmin,
+		SendCh: ch,
+	})
+	defer unregister()
+
+	publishStatsRealtime(onlines{User: []string{"alice"}}, []model.Stats{
+		{Resource: "user", Tag: "alice", Direction: true, Traffic: 10},
+	})
+
+	onlinesEvent := expectRealtimeEvent(t, ch, realtime.TopicOnlines)
+	if payload, ok := onlinesEvent.Payload.(onlines); !ok || len(payload.User) != 1 || payload.User[0] != "alice" {
+		t.Fatalf("unexpected onlines payload: %#v", onlinesEvent.Payload)
+	}
+	deltaEvent := expectRealtimeEvent(t, ch, realtime.TopicTrafficDelta)
+	deltas, ok := deltaEvent.Payload.([]trafficDelta)
+	if !ok || len(deltas) != 1 || deltas[0].Up != 10 {
+		t.Fatalf("unexpected delta payload: %#v", deltaEvent.Payload)
+	}
+}
+
+func expectRealtimeEvent(t *testing.T, ch <-chan realtime.Event, topic realtime.Topic) realtime.Event {
+	t.Helper()
+	select {
+	case event := <-ch:
+		if event.Type != topic {
+			t.Fatalf("expected %s, got %s", topic, event.Type)
+		}
+		return event
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for %s", topic)
+		return realtime.Event{}
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/ipmonitor"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 
 	"gorm.io/gorm"
 )
@@ -24,6 +25,13 @@ var (
 )
 
 type StatsService struct {
+}
+
+type trafficDelta struct {
+	Resource string `json:"resource"`
+	Tag      string `json:"tag"`
+	Up       int64  `json:"up,omitempty"`
+	Down     int64  `json:"down,omitempty"`
 }
 
 func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
@@ -46,14 +54,30 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 		onlineResourcesMu.Lock()
 		onlineResources = &currentOnlines
 		onlineResourcesMu.Unlock()
-		return ipmonitor.Flush()
+		if err := ipmonitor.Flush(); err != nil {
+			return err
+		}
+		publishStatsRealtime(currentOnlines, nil)
+		return nil
 	}
 
 	db := database.GetDB()
 	tx := db.Begin()
+	publishOnCommit := false
+	publishOnlines := onlines{}
+	var publishStats []model.Stats
 	defer func() {
 		if err == nil {
-			err = tx.Commit().Error
+			if commitErr := tx.Commit().Error; commitErr != nil {
+				err = commitErr
+				realtime.Publish(realtime.TopicCoreState, map[string]any{
+					"warning": "stats_commit_failed",
+				})
+				return
+			}
+			if publishOnCommit {
+				publishStatsRealtime(publishOnlines, publishStats)
+			}
 		} else {
 			tx.Rollback()
 		}
@@ -86,6 +110,9 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 	onlineResourcesMu.Lock()
 	onlineResources = &currentOnlines
 	onlineResourcesMu.Unlock()
+	publishOnCommit = true
+	publishOnlines = currentOnlines
+	publishStats = append([]model.Stats(nil), (*stats)...)
 
 	if !enableTraffic {
 		return ipmonitor.FlushTo(tx)
@@ -94,6 +121,39 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 		return err
 	}
 	return ipmonitor.FlushTo(tx)
+}
+
+func publishStatsRealtime(currentOnlines onlines, stats []model.Stats) {
+	realtime.Publish(realtime.TopicOnlines, currentOnlines)
+	realtime.Publish(realtime.TopicTrafficDelta, trafficDeltas(stats))
+}
+
+func trafficDeltas(stats []model.Stats) []trafficDelta {
+	type key struct {
+		resource string
+		tag      string
+	}
+	byKey := map[key]*trafficDelta{}
+	order := make([]key, 0)
+	for _, stat := range stats {
+		k := key{resource: stat.Resource, tag: stat.Tag}
+		delta := byKey[k]
+		if delta == nil {
+			delta = &trafficDelta{Resource: stat.Resource, Tag: stat.Tag}
+			byKey[k] = delta
+			order = append(order, k)
+		}
+		if stat.Direction {
+			delta.Up += stat.Traffic
+		} else {
+			delta.Down += stat.Traffic
+		}
+	}
+	result := make([]trafficDelta, 0, len(order))
+	for _, k := range order {
+		result = append(result, *byKey[k])
+	}
+	return result
 }
 
 func (s *StatsService) GetStats(resource string, tag string, limit int) ([]model.Stats, error) {
