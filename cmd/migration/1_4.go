@@ -87,6 +87,8 @@ func sqliteHasColumn(db *gorm.DB, table string, column string) (bool, error) {
 }
 
 func createAuditEventsTable(db *gorm.DB) error {
+	// audit_events.details is BLOB on legacy installs, TEXT on fresh installs (AutoMigrate).
+	// SQLite is loosely-typed; both work. See remediation-plan-g §B3.
 	if err := db.Exec(`
 CREATE TABLE IF NOT EXISTS audit_events (
 	id integer PRIMARY KEY AUTOINCREMENT,
