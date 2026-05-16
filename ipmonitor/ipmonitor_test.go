@@ -23,6 +23,9 @@ func initIPMonitorTestDB(t *testing.T) {
 	allowCache.Lock()
 	allowCache.byClient = map[string]allowCacheEntry{}
 	allowCache.Unlock()
+	securityEvents.Lock()
+	securityEvents.lastEmittedAt = map[string]time.Time{}
+	securityEvents.Unlock()
 	ipHashSalt.Lock()
 	ipHashSalt.value = nil
 	ipHashSalt.Unlock()
@@ -159,6 +162,49 @@ func TestAllowEnforceRejectPublishesSecurityEventWithoutRawIP(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("security_event was not published")
+	}
+}
+
+func TestAllowEnforceRejectSecurityEventDebounced(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		LimitIP:     1,
+		IPLimitMode: ModeEnforce,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ch := make(chan realtime.Event, 100)
+	unregister := realtime.Register(&realtime.ClientHandle{
+		User:   "admin",
+		Scope:  realtime.ScopeAdmin,
+		SendCh: ch,
+	})
+	defer unregister()
+
+	Record("alice", "198.51.100.10")
+	for i := 0; i < 100; i++ {
+		if Allow("alice", "198.51.100.11") {
+			t.Fatal("new IP over limit should be rejected")
+		}
+	}
+
+	got := 0
+	for {
+		select {
+		case event := <-ch:
+			if event.Type == realtime.TopicSecurityEvent {
+				got++
+			}
+		default:
+			if got != 1 {
+				t.Fatalf("expected exactly one debounced security_event, got %d", got)
+			}
+			return
+		}
 	}
 }
 

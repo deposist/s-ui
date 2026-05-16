@@ -19,8 +19,10 @@ const (
 	ModeMonitor = "monitor"
 	ModeEnforce = "enforce"
 
-	allowCacheTTL = 30 * time.Second
-	ipMaskPrefix  = 12
+	allowCacheTTL          = 30 * time.Second
+	securityEventDebounce  = 60 * time.Second
+	securityEventMaxMapAge = time.Hour
+	ipMaskPrefix           = 12
 )
 
 type pendingIP struct {
@@ -47,6 +49,13 @@ var allowCache = struct {
 	byClient map[string]allowCacheEntry
 }{
 	byClient: map[string]allowCacheEntry{},
+}
+
+var securityEvents = struct {
+	sync.Mutex
+	lastEmittedAt map[string]time.Time
+}{
+	lastEmittedAt: map[string]time.Time{},
 }
 
 var ipHashSalt = struct {
@@ -112,7 +121,7 @@ func Allow(clientName string, ip string) bool {
 	if len(seen) <= entry.limit {
 		return true
 	}
-	realtime.Publish(realtime.TopicSecurityEvent, map[string]any{
+	publishSecurityEvent(clientName, "ip_enforced_reject", map[string]any{
 		"kind":   "ip_enforced_reject",
 		"client": clientName,
 		"ipHash": ipHash,
@@ -120,6 +129,29 @@ func Allow(clientName string, ip string) bool {
 		"count":  len(seen),
 	})
 	return false
+}
+
+func publishSecurityEvent(clientName string, kind string, payload map[string]any) {
+	if !shouldPublishSecurityEvent(clientName, kind, time.Now()) {
+		return
+	}
+	realtime.Publish(realtime.TopicSecurityEvent, payload)
+}
+
+func shouldPublishSecurityEvent(clientName string, kind string, now time.Time) bool {
+	key := clientName + "|" + kind
+	securityEvents.Lock()
+	defer securityEvents.Unlock()
+	if last, ok := securityEvents.lastEmittedAt[key]; ok && now.Sub(last) < securityEventDebounce {
+		return false
+	}
+	securityEvents.lastEmittedAt[key] = now
+	for eventKey, last := range securityEvents.lastEmittedAt {
+		if now.Sub(last) > securityEventMaxMapAge {
+			delete(securityEvents.lastEmittedAt, eventKey)
+		}
+	}
+	return true
 }
 
 func Flush() error {
