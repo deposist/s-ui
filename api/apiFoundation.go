@@ -85,6 +85,24 @@ func (a *ApiService) requireAuditAdminScope(c *gin.Context) bool {
 	return false
 }
 
+func (a *ApiService) requireTokenScopeAny(c *gin.Context, resource string, allowed ...string) bool {
+	scope, hasScope := requestTokenScope(c)
+	if !hasScope {
+		return true
+	}
+	for _, allowedScope := range allowed {
+		if scope == allowedScope {
+			return true
+		}
+	}
+	a.recordAudit(c, requestActor(c), "scope_denied", resource, service.AuditSeverityWarn, map[string]any{
+		"scope":    scope,
+		"required": allowed,
+	})
+	c.JSON(http.StatusForbidden, Msg{Success: false, Msg: "insufficient scope"})
+	return false
+}
+
 func (a *ApiService) enforceAuditEndpointRateLimit(c *gin.Context) bool {
 	actor := requestActor(c)
 	if actor == "" {

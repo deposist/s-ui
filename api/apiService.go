@@ -401,6 +401,21 @@ func (a *ApiService) ImportDb(c *gin.Context) {
 	jsonMsg(c, "", err)
 }
 
+func (a *ApiService) RotateSubSecret(c *gin.Context) {
+	if !a.requireTokenScopeAny(c, "client", "admin", "write") {
+		return
+	}
+	clientID := c.Query("id")
+	clientName, err := a.ClientService.RotateSubSecret(clientID)
+	if err == nil {
+		a.recordAudit(c, requestActor(c), "sub_secret_rotated", "client", service.AuditSeverityWarn, map[string]any{
+			"clientId": clientID,
+			"client":   clientName,
+		})
+	}
+	jsonMsg(c, "rotateSubSecret", err)
+}
+
 func (a *ApiService) Logout(c *gin.Context) {
 	loginUser := GetLoginUser(c)
 	if loginUser != "" {

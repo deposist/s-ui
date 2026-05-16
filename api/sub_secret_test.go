@@ -1,0 +1,93 @@
+package api
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/service"
+	"github.com/gin-gonic/gin"
+)
+
+func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
+	initSessionTestDB(t)
+	client := model.Client{
+		Enable:    true,
+		Name:      "alice",
+		SubSecret: "old-secret",
+		Inbounds:  []byte("[]"),
+		Links:     []byte("[]"),
+	}
+	if err := database.GetDB().Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	readToken, err := (&service.UserService{}).AddToken("admin", 0, "read", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeToken, err := (&service.UserService{}).AddToken("admin", 0, "write", "write")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	NewAPIv2Handler(router.Group("/apiv2"))
+
+	readRecorder := performRotateSubSecretRequest(router, readToken, client.Id)
+	if readRecorder.Code != http.StatusForbidden {
+		t.Fatalf("read token should be forbidden, got %d", readRecorder.Code)
+	}
+	var stored model.Client
+	if err := database.GetDB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.SubSecret != "old-secret" {
+		t.Fatal("read token rotated sub secret")
+	}
+
+	writeRecorder := performRotateSubSecretRequest(router, writeToken, client.Id)
+	if writeRecorder.Code != http.StatusOK {
+		t.Fatalf("write token should be allowed, got %d", writeRecorder.Code)
+	}
+	var msg Msg
+	if err := json.Unmarshal(writeRecorder.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	if !msg.Success {
+		t.Fatalf("rotate request failed: %s", msg.Msg)
+	}
+	if err := database.GetDB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.SubSecret == "" || stored.SubSecret == "old-secret" {
+		t.Fatalf("sub secret was not rotated: %#v", stored)
+	}
+	if strings.Contains(writeRecorder.Body.String(), stored.SubSecret) {
+		t.Fatal("response leaked rotated sub secret")
+	}
+
+	var event model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "sub_secret_rotated").First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	if event.Actor != "admin" {
+		t.Fatalf("unexpected audit actor: %s", event.Actor)
+	}
+	if strings.Contains(string(event.Details), stored.SubSecret) {
+		t.Fatal("audit details leaked rotated sub secret")
+	}
+}
+
+func performRotateSubSecretRequest(router *gin.Engine, token string, clientID uint) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/apiv2/rotateSubSecret?id="+strconv.FormatUint(uint64(clientID), 10), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	router.ServeHTTP(recorder, req)
+	return recorder
+}

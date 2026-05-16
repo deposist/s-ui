@@ -1,6 +1,9 @@
 package service
 
 import (
+	"strconv"
+
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 
@@ -26,4 +29,21 @@ func (s *ClientService) prepareClientSubSecret(tx *gorm.DB, client *model.Client
 	}
 	client.SubSecret = common.Random(32)
 	return nil
+}
+
+func (s *ClientService) RotateSubSecret(id string) (string, error) {
+	clientID, err := strconv.ParseUint(id, 10, 64)
+	if err != nil || clientID == 0 {
+		return "", common.NewError("invalid client id")
+	}
+	db := database.GetDB()
+	var client model.Client
+	if err := db.Model(model.Client{}).Select("id, name").Where("id = ?", clientID).First(&client).Error; err != nil {
+		return "", err
+	}
+	newSecret := common.Random(32)
+	if err := db.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_secret", newSecret).Error; err != nil {
+		return "", err
+	}
+	return client.Name, nil
 }

@@ -37,6 +37,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	g.GET("/csrf", a.ApiService.GetCSRF)
 	g.GET("/version", a.ApiService.GetVersionInfo)
 	g.POST("/checkOutbounds", a.ApiService.CheckOutbounds)
+	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
 
 	security := g.Group("/security")
 	security.GET("/audit", a.ApiService.GetSecurityAudit)
@@ -78,6 +79,8 @@ func (a *APIHandler) postHandler(c *gin.Context) {
 		a.ApiService.SubConvert(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
+	case "rotateSubSecret":
+		a.ApiService.RotateSubSecret(c)
 	case "addToken":
 		a.ApiService.AddToken(c)
 		a.apiv2.ReloadTokens()

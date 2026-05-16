@@ -49,6 +49,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 		a.checkToken(c)
 	})
 	g.GET("/security/audit", a.ApiService.GetSecurityAudit)
+	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }
@@ -70,6 +71,8 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 		a.ApiService.SubConvert(c)
 	case "importdb":
 		a.ApiService.ImportDb(c)
+	case "rotateSubSecret":
+		a.ApiService.RotateSubSecret(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}
