@@ -170,6 +170,17 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("valid JSON fragment setting rejected: %v", err)
 	}
+	validNoises, err := json.Marshal(map[string]string{
+		"subJsonNoises": `[{"type":"rand","packet":"tlshello"}]`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validNoises)
+	}); err != nil {
+		t.Fatalf("valid JSON noises setting rejected: %v", err)
+	}
 
 	invalidPayload, err := json.Marshal(map[string]string{
 		"subJsonEnable": "sometimes",
@@ -205,6 +216,17 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		return settingService.Save(tx, invalidFragment)
 	}); err == nil {
 		t.Fatal("expected invalid JSON fragment setting to be rejected")
+	}
+	invalidNoises, err := json.Marshal(map[string]string{
+		"subJsonNoises": `{"type":"rand"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidNoises)
+	}); err == nil {
+		t.Fatal("expected invalid JSON noises setting to be rejected")
 	}
 
 	conflictingPaths, err := json.Marshal(map[string]string{

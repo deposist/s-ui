@@ -252,6 +252,9 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	if err := j.addFragment(jsonConfig); err != nil {
 		return err
 	}
+	if err := j.addNoises(jsonConfig); err != nil {
+		return err
+	}
 
 	rules_start := []interface{}{
 		map[string]interface{}{
@@ -316,6 +319,31 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	return nil
 }
 
+func (j *JsonService) addNoises(jsonConfig *map[string]interface{}) error {
+	noisesStr, err := j.SettingService.GetSubJsonNoises()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(noisesStr) == "" {
+		return nil
+	}
+	var noises []interface{}
+	if err := json.Unmarshal([]byte(noisesStr), &noises); err != nil {
+		return err
+	}
+	outbounds, ok := jsonConfigOutbounds(jsonConfig)
+	if !ok {
+		return nil
+	}
+	for _, outbound := range *outbounds {
+		protocol, _ := outbound["type"].(string)
+		if supportsJSONNoises(protocol) {
+			outbound["noises"] = noises
+		}
+	}
+	return nil
+}
+
 func (j *JsonService) addFragment(jsonConfig *map[string]interface{}) error {
 	fragmentStr, err := j.SettingService.GetSubJsonFragment()
 	if err != nil {
@@ -349,6 +377,15 @@ func jsonConfigOutbounds(jsonConfig *map[string]interface{}) (*[]map[string]inte
 		return &outbounds, true
 	default:
 		return nil, false
+	}
+}
+
+func supportsJSONNoises(protocol string) bool {
+	switch protocol {
+	case "vless", "vmess", "trojan":
+		return true
+	default:
+		return false
 	}
 }
 
