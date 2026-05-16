@@ -5,6 +5,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/ipmonitor"
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/service"
 )
@@ -43,5 +44,9 @@ func pruneClientIPs(retentionDays int) error {
 		return nil
 	}
 	before := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
-	return db.Where("last_seen < ?", before).Delete(&model.ClientIP{}).Error
+	if err := db.Where("last_seen < ?", before).Delete(&model.ClientIP{}).Error; err != nil {
+		return err
+	}
+	ipmonitor.InvalidateAllCache()
+	return nil
 }

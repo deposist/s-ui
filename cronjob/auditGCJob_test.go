@@ -8,6 +8,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/ipmonitor"
 )
 
 func initCronJobTestDB(t *testing.T) {
@@ -40,8 +41,8 @@ func TestAuditGCJobPrunesAuditEventsAndClientIPs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := database.GetDB().Create(&[]model.ClientIP{
-		{ClientName: "alice", IP: "198.51.100.10", FirstSeen: oldTime, LastSeen: oldTime},
-		{ClientName: "alice", IP: "198.51.100.11", FirstSeen: recentTime, LastSeen: recentTime},
+		{ClientName: "alice", IP: "198.51.100.10", IPHash: "hash-old", FirstSeen: oldTime, LastSeen: oldTime},
+		{ClientName: "alice", IP: "198.51.100.11", IPHash: "hash-recent", FirstSeen: recentTime, LastSeen: recentTime},
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -61,5 +62,39 @@ func TestAuditGCJobPrunesAuditEventsAndClientIPs(t *testing.T) {
 	}
 	if len(clientIPs) != 1 || clientIPs[0].IP != "198.51.100.11" {
 		t.Fatalf("unexpected client IPs after GC: %#v", clientIPs)
+	}
+}
+
+func TestPruneClientIPsInvalidatesIPMonitorAllowCache(t *testing.T) {
+	initCronJobTestDB(t)
+	ipmonitor.InvalidateAllCache()
+	oldTime := time.Now().Add(-31 * 24 * time.Hour).Unix()
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		LimitIP:     1,
+		IPLimitMode: ipmonitor.ModeEnforce,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Create(&model.ClientIP{
+		ClientName: "alice",
+		IP:         "198.51.100.10",
+		FirstSeen:  oldTime,
+		LastSeen:   oldTime,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if !ipmonitor.Allow("alice", "198.51.100.10") {
+		t.Fatal("known IP should warm allow cache")
+	}
+	if err := pruneClientIPs(30); err != nil {
+		t.Fatal(err)
+	}
+	if !ipmonitor.Allow("alice", "198.51.100.11") {
+		t.Fatal("new IP should be allowed after pruned cached IP is removed")
 	}
 }

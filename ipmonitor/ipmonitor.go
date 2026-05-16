@@ -342,6 +342,12 @@ func invalidateCache(clientName string) {
 	delete(allowCache.byClient, clientName)
 }
 
+func InvalidateAllCache() {
+	allowCache.Lock()
+	defer allowCache.Unlock()
+	allowCache.byClient = map[string]allowCacheEntry{}
+}
+
 func recordIPFields(ip string) (string, *string, bool) {
 	ipHash, err := hashIP(ip)
 	if err != nil {
