@@ -77,6 +77,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if webDomain != "" {
 		engine.Use(middleware.DomainValidator(webDomain))
 	}
+	engine.Use(middleware.AdminSecurityHeaders())
 
 	secret, err := s.settingService.GetSecret()
 	if err != nil {

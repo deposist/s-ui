@@ -59,6 +59,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if subDomain != "" {
 		engine.Use(middleware.DomainValidator(subDomain))
 	}
+	engine.Use(middleware.SubSecurityHeaders())
 
 	g := engine.Group(subPath)
 	NewSubHandler(g)
