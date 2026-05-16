@@ -80,7 +80,7 @@ func csrfProtectedMethod(method string) bool {
 }
 
 func csrfExemptPath(path string) bool {
-	return strings.HasSuffix(path, "/login")
+	return strings.HasSuffix(path, "/api/login")
 }
 
 func csrfForbidden(c *gin.Context, reason string) {

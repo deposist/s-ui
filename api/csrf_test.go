@@ -86,3 +86,21 @@ func TestCSRFMiddlewareRequiresTokenForMutatingBrowserAPI(t *testing.T) {
 		t.Fatalf("valid csrf token should allow request, got %d", accepted.Code)
 	}
 }
+
+func TestCSRFExemptPathOnlyAllowsAPILogin(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{path: "/api/login", want: true},
+		{path: "/app/api/login", want: true},
+		{path: "/api/admin/login", want: false},
+		{path: "/api/sublogin", want: false},
+		{path: "/login", want: false},
+	}
+	for _, tt := range tests {
+		if got := csrfExemptPath(tt.path); got != tt.want {
+			t.Fatalf("csrfExemptPath(%q)=%v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
