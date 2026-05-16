@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/gin-gonic/gin"
 )
@@ -51,6 +53,16 @@ func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 		t.Fatal("read token rotated sub secret")
 	}
 
+	realtime.CloseAll("test_reset")
+	t.Cleanup(func() { realtime.CloseAll("test_done") })
+	ch := make(chan realtime.Event, 1)
+	unregister := realtime.Register(&realtime.ClientHandle{
+		User:   "admin",
+		Scope:  realtime.ScopeAdmin,
+		SendCh: ch,
+	})
+	defer unregister()
+
 	writeRecorder := performRotateSubSecretRequest(router, writeToken, client.Id)
 	if writeRecorder.Code != http.StatusOK {
 		t.Fatalf("write token should be allowed, got %d", writeRecorder.Code)
@@ -70,6 +82,14 @@ func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 	}
 	if strings.Contains(writeRecorder.Body.String(), stored.SubSecret) {
 		t.Fatal("response leaked rotated sub secret")
+	}
+	select {
+	case event := <-ch:
+		if event.Type != realtime.TopicConfigInvalidated {
+			t.Fatalf("expected config_invalidated event, got %s", event.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("config_invalidated was not published after sub secret rotation")
 	}
 
 	var event model.AuditEvent

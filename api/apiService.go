@@ -12,6 +12,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
 	"github.com/deposist/s-ui-rus-inst/util/redact"
@@ -504,6 +505,7 @@ func (a *ApiService) RotateSubSecret(c *gin.Context) {
 			"clientId": clientID,
 			"client":   clientName,
 		})
+		realtime.Publish(realtime.TopicConfigInvalidated, nil)
 	}
 	jsonMsg(c, "rotateSubSecret", err)
 }
