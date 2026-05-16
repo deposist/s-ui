@@ -35,6 +35,13 @@ func TestAdminSecurityHeaders(t *testing.T) {
 	if !strings.Contains(headers.Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatalf("unexpected CSP: %q", headers.Get("Content-Security-Policy"))
 	}
+	csp := headers.Get("Content-Security-Policy")
+	if strings.Contains(csp, "script-src 'self' 'unsafe-inline'") {
+		t.Fatalf("script-src should not allow unsafe-inline: %q", csp)
+	}
+	if !strings.Contains(csp, "style-src 'self' 'unsafe-inline'") {
+		t.Fatalf("style-src should keep unsafe-inline for Vuetify: %q", csp)
+	}
 	if headers.Get("Strict-Transport-Security") == "" {
 		t.Fatal("HSTS should be set for secure requests")
 	}
