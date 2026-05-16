@@ -53,6 +53,10 @@ func (s *AuditService) List(limit int) ([]model.AuditEvent, error) {
 }
 
 func (s *AuditService) ListPage(cursor uint64, limit int) ([]model.AuditEvent, uint64, error) {
+	return s.ListPageFiltered(cursor, limit, "", "")
+}
+
+func (s *AuditService) ListPageFiltered(cursor uint64, limit int, event string, severity string) ([]model.AuditEvent, uint64, error) {
 	if limit <= 0 {
 		limit = 200
 	}
@@ -63,6 +67,12 @@ func (s *AuditService) ListPage(cursor uint64, limit int) ([]model.AuditEvent, u
 	query := database.GetDB().Model(model.AuditEvent{})
 	if cursor > 0 {
 		query = query.Where("id < ?", cursor)
+	}
+	if event != "" {
+		query = query.Where("event = ?", event)
+	}
+	if severity != "" {
+		query = query.Where("severity = ?", severity)
 	}
 	err := query.
 		Order("id desc").

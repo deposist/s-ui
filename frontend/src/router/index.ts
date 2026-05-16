@@ -71,6 +71,16 @@ const routes = [
         component: () => import('@/views/Admins.vue'),
       },
       {
+        path: '/telegram',
+        name: 'pages.telegram',
+        component: () => import('@/views/TelegramSettings.vue'),
+      },
+      {
+        path: '/audit',
+        name: 'pages.audit',
+        component: () => import('@/views/Audit.vue'),
+      },
+      {
         path: '/settings',
         name: 'pages.settings',
         component: () => import('@/views/Settings.vue'),

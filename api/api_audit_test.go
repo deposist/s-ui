@@ -108,6 +108,54 @@ func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 	}
 }
 
+func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
+	resetRateLimitState()
+	initSessionTestDB(t)
+	now := time.Now().Unix()
+	events := []model.AuditEvent{
+		{DateTime: now, Actor: "admin", Event: "telegram_test", Severity: "warn"},
+		{DateTime: now + 1, Actor: "admin", Event: "telegram_test", Severity: "info"},
+		{DateTime: now + 2, Actor: "admin", Event: "login_success", Severity: "info"},
+	}
+	if err := database.GetDB().Create(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram_test&severity=warn", nil)
+
+	(&ApiService{}).GetSecurityAudit(c)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d", recorder.Code)
+	}
+	var msg Msg
+	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	payload, ok := msg.Obj.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected payload: %#v", msg.Obj)
+	}
+	gotEvents, ok := payload["events"].([]any)
+	if !ok || len(gotEvents) != 1 {
+		t.Fatalf("expected one filtered event, got %#v", payload["events"])
+	}
+	got := gotEvents[0].(map[string]any)
+	if got["event"] != "telegram_test" || got["severity"] != "warn" {
+		t.Fatalf("unexpected filtered event: %#v", got)
+	}
+
+	recorder = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram test", nil)
+	(&ApiService{}).GetSecurityAudit(c)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("invalid event filter should fail, got %d", recorder.Code)
+	}
+}
+
 func TestGetSecurityAuditRejectsNonAdminTokenScope(t *testing.T) {
 	resetRateLimitState()
 	initSessionTestDB(t)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,7 +39,17 @@ func (a *ApiService) GetSecurityAudit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
 		return
 	}
-	events, nextCursor, err := a.AuditService.ListPage(cursor, limit)
+	eventFilter, err := parseAuditEventFilter(c.Query("event"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
+		return
+	}
+	severityFilter, err := parseAuditSeverityFilter(c.Query("severity"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
+		return
+	}
+	events, nextCursor, err := a.AuditService.ListPageFiltered(cursor, limit, eventFilter, severityFilter)
 	jsonObj(c, gin.H{
 		"events":     events,
 		"nextCursor": nextCursor,
@@ -72,6 +83,35 @@ func parseAuditCursor(raw string) (uint64, error) {
 		return 0, common.NewError("invalid cursor")
 	}
 	return cursor, nil
+}
+
+func parseAuditEventFilter(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", nil
+	}
+	if len(value) > 64 {
+		return "", common.NewError("invalid event filter")
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' || r == ':' {
+			continue
+		}
+		return "", common.NewError("invalid event filter")
+	}
+	return value, nil
+}
+
+func parseAuditSeverityFilter(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	switch value {
+	case "":
+		return "", nil
+	case service.AuditSeverityInfo, service.AuditSeverityWarn:
+		return value, nil
+	default:
+		return "", common.NewError("invalid severity filter")
+	}
 }
 
 func (a *ApiService) requireAuditAdminScope(c *gin.Context) bool {
@@ -139,7 +179,20 @@ func requestTokenScope(c *gin.Context) (string, bool) {
 }
 
 func (a *ApiService) TestTelegram(c *gin.Context) {
-	jsonObj(c, a.TelegramService.TestTelegram(), nil)
+	if !a.requireTokenScopeAny(c, "telegram", "admin") {
+		return
+	}
+	result := a.TelegramService.TestTelegram()
+	severity := service.AuditSeverityInfo
+	details := map[string]any{
+		"success": result.Success,
+	}
+	if !result.Success {
+		severity = service.AuditSeverityWarn
+		details["errorClass"] = result.ErrorClass
+	}
+	a.recordAudit(c, requestActor(c), "telegram_test", "telegram", severity, details)
+	jsonObj(c, result, nil)
 }
 
 func (a *ApiService) BackupToTelegram(c *gin.Context) {

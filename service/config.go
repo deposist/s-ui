@@ -13,6 +13,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/util/common"
+	"github.com/deposist/s-ui-rus-inst/util/redact"
 )
 
 var (
@@ -261,7 +262,7 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		Actor:    loginUser,
 		Key:      obj,
 		Action:   act,
-		Obj:      data,
+		Obj:      redactChangePayload(data),
 	}).Error
 	if err != nil {
 		return nil, err
@@ -270,6 +271,22 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 	setLastUpdate(time.Now().Unix())
 
 	return objs, nil
+}
+
+func redactChangePayload(data json.RawMessage) json.RawMessage {
+	var payload any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		encoded, marshalErr := json.Marshal(redact.String(string(data)))
+		if marshalErr != nil {
+			return json.RawMessage(`"[REDACTED]"`)
+		}
+		return encoded
+	}
+	encoded, err := json.Marshal(redact.Value(payload))
+	if err != nil {
+		return json.RawMessage(`"[REDACTED]"`)
+	}
+	return encoded
 }
 
 func (s *ConfigService) CheckChanges(lu string) (bool, error) {
