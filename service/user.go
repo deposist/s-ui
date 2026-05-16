@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
@@ -16,7 +17,17 @@ import (
 type UserService struct {
 }
 
-const defaultAPITokenScope = "admin"
+const (
+	defaultAPITokenScope = "admin"
+	maxAPITokenScopeLen  = len("observability")
+)
+
+var allowedAPITokenScopes = []string{
+	"admin",
+	"read",
+	"write",
+	"observability",
+}
 
 func (s *UserService) GetFirstUser() (*model.User, error) {
 	db := database.GetDB()
@@ -191,8 +202,12 @@ func (s *UserService) GetUserTokens(username string) (*[]model.Tokens, error) {
 
 func (s *UserService) AddToken(username string, expiry int64, desc string, scope string) (string, error) {
 	db := database.GetDB()
+	scope, err := validateTokenScope(scope)
+	if err != nil {
+		return "", err
+	}
 	var userId uint
-	err := db.Model(model.User{}).Where("username = ?", username).Select("id").Scan(&userId).Error
+	err = db.Model(model.User{}).Where("username = ?", username).Select("id").Scan(&userId).Error
 	if err != nil {
 		return "", err
 	}
@@ -209,7 +224,7 @@ func (s *UserService) AddToken(username string, expiry int64, desc string, scope
 		Desc:        desc,
 		TokenHash:   tokenHash,
 		TokenPrefix: tokenPrefix(plainToken),
-		Scope:       normalizeTokenScope(scope),
+		Scope:       scope,
 		Enabled:     true,
 		Expiry:      expiry,
 		CreatedAt:   now,
@@ -294,6 +309,41 @@ func normalizeTokenScope(scope string) string {
 		return defaultAPITokenScope
 	}
 	return scope
+}
+
+func validateTokenScope(scope string) (string, error) {
+	scope = normalizeTokenScope(scope)
+	if !apiTokenScopeAllowed(scope) {
+		return "", common.NewError("invalid token scope")
+	}
+	return scope, nil
+}
+
+func apiTokenScopeAllowed(scope string) bool {
+	if len(scope) > maxAPITokenScopeLen {
+		return false
+	}
+	matched := 0
+	for _, allowed := range allowedAPITokenScopes {
+		matched |= constantTimeStringEqual(scope, allowed, maxAPITokenScopeLen)
+	}
+	return matched == 1
+}
+
+func constantTimeStringEqual(a string, b string, maxLen int) int {
+	diff := byte(len(a) ^ len(b))
+	for i := 0; i < maxLen; i++ {
+		var av byte
+		var bv byte
+		if i < len(a) {
+			av = a[i]
+		}
+		if i < len(b) {
+			bv = b[i]
+		}
+		diff |= av ^ bv
+	}
+	return subtle.ConstantTimeByteEq(diff, 0)
 }
 
 func tokenPrefix(token string) string {

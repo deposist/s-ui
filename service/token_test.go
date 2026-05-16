@@ -50,3 +50,30 @@ func TestLoadTokensMigratesLegacyPlaintextToken(t *testing.T) {
 		t.Fatalf("legacy token defaults not populated: %#v", stored)
 	}
 }
+
+func TestAddTokenValidatesScopeAllowlist(t *testing.T) {
+	initSettingTestDB(t)
+	userService := &UserService{}
+
+	for _, scope := range []string{"", "admin", "read", "write", "observability"} {
+		if _, err := userService.AddToken("admin", 0, "valid "+scope, scope); err != nil {
+			t.Fatalf("scope %q should be accepted: %v", scope, err)
+		}
+	}
+	if _, err := userService.AddToken("admin", 0, "invalid", "full"); err == nil {
+		t.Fatal("scope full should be rejected")
+	}
+	if _, err := userService.AddToken("admin", 0, "invalid", "admin "); err != nil {
+		t.Fatalf("trimmed admin scope should be accepted: %v", err)
+	}
+
+	var tokens []model.Tokens
+	if err := database.GetDB().Order("id asc").Find(&tokens).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, token := range tokens {
+		if !apiTokenScopeAllowed(token.Scope) {
+			t.Fatalf("stored invalid scope: %#v", token)
+		}
+	}
+}
