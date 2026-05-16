@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,9 @@ var realtimeHub = struct {
 }
 
 func (a *ApiService) IssueWSToken(c *gin.Context) {
+	if !a.enforceWSHandshakeRateLimit(c, "ws-token") {
+		return
+	}
 	user := GetLoginUser(c)
 	if user == "" {
 		jsonMsg(c, "wsToken", common.NewError("invalid login"))
@@ -78,6 +82,9 @@ func (a *ApiService) IssueWSToken(c *gin.Context) {
 }
 
 func (a *ApiService) RealtimeWS(c *gin.Context) {
+	if !a.enforceWSHandshakeRateLimit(c, "ws") {
+		return
+	}
 	user := GetLoginUser(c)
 	if !a.validateWSOrigin(c, user) {
 		return
@@ -139,6 +146,23 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 			return
 		}
 	}
+}
+
+func (a *ApiService) enforceWSHandshakeRateLimit(c *gin.Context, endpoint string) bool {
+	err := checkWSHandshakeRateLimit(wsHandshakeRateLimitKey(endpoint, getRemoteIp(c)))
+	if err == nil {
+		return true
+	}
+	a.recordAudit(c, "", "ws_rate_limited", "realtime", service.AuditSeverityWarn, map[string]any{
+		"endpoint": endpoint,
+	})
+	c.Header("Retry-After", strconv.Itoa(int(wsHandshakeRateLimitWindow/time.Second)))
+	if endpoint == "ws-token" {
+		c.JSON(http.StatusTooManyRequests, Msg{Success: false, Msg: "wsToken: " + err.Error()})
+	} else {
+		c.Status(http.StatusTooManyRequests)
+	}
+	return false
 }
 
 func CloseRealtimeSessions(code websocket.StatusCode, reason string) {

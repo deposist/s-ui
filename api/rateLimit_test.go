@@ -1,15 +1,29 @@
 package api
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+
+	"github.com/gin-gonic/gin"
 )
 
 func resetRateLimitState() {
 	loginRateLimitMu.Lock()
 	defer loginRateLimitMu.Unlock()
 	loginRateLimits = map[string]loginAttempt{}
+	loginRateLimitGC = time.Time{}
+	wsHandshakeRateLimitMu.Lock()
+	defer wsHandshakeRateLimitMu.Unlock()
+	wsHandshakeRateLimits = map[string]wsHandshakeAttempt{}
+	wsHandshakeRateLimitGC = time.Time{}
 }
 
 func TestLoginRateLimitBlocksAfterMaxFailures(t *testing.T) {
@@ -62,4 +76,73 @@ func TestLoginRateLimitConcurrent(t *testing.T) {
 		}(g)
 	}
 	wg.Wait()
+}
+
+func TestWSHandshakeRateLimitBlocksAfterMaxAttemptsPerEndpointAndIP(t *testing.T) {
+	resetRateLimitState()
+	key := wsHandshakeRateLimitKey("ws", "198.51.100.10")
+	for i := 0; i < wsHandshakeRateLimitMax; i++ {
+		if err := checkWSHandshakeRateLimit(key); err != nil {
+			t.Fatalf("attempt %d should not be blocked: %v", i, err)
+		}
+	}
+	if err := checkWSHandshakeRateLimit(key); err == nil || !strings.Contains(err.Error(), "too many websocket handshake attempts") {
+		t.Fatalf("expected rate-limit error, got %v", err)
+	}
+	if err := checkWSHandshakeRateLimit(wsHandshakeRateLimitKey("ws-token", "198.51.100.10")); err != nil {
+		t.Fatalf("separate endpoint bucket should not be blocked: %v", err)
+	}
+	if err := checkWSHandshakeRateLimit(wsHandshakeRateLimitKey("ws", "198.51.100.11")); err != nil {
+		t.Fatalf("separate IP bucket should not be blocked: %v", err)
+	}
+}
+
+func TestEnforceWSHandshakeRateLimitReturns429AndAudits(t *testing.T) {
+	resetRateLimitState()
+	initSessionTestDB(t)
+	key := wsHandshakeRateLimitKey("ws-token", "198.51.100.10")
+	for i := 0; i < wsHandshakeRateLimitMax; i++ {
+		if err := checkWSHandshakeRateLimit(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/realtime/ws-token", nil)
+	req.RemoteAddr = "198.51.100.10:1234"
+	c.Request = req
+
+	if (&ApiService{}).enforceWSHandshakeRateLimit(c, "ws-token") {
+		t.Fatal("expected request to be rate-limited")
+	}
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("unexpected status %d", recorder.Code)
+	}
+	if recorder.Header().Get("Retry-After") == "" {
+		t.Fatal("Retry-After header was not set")
+	}
+	var msg Msg
+	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Success || !strings.Contains(msg.Msg, "too many websocket handshake attempts") {
+		t.Fatalf("unexpected JSON response: %#v", msg)
+	}
+
+	var event model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "ws_rate_limited").First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	var details map[string]any
+	if err := json.Unmarshal(event.Details, &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["endpoint"] != "ws-token" {
+		t.Fatalf("unexpected audit details: %#v", details)
+	}
+	if _, ok := details["token"]; ok {
+		t.Fatalf("token leaked into audit details: %#v", details)
+	}
 }

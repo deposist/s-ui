@@ -13,6 +13,11 @@ const (
 	loginRateLimitMax     = 5
 	loginRateLimitMaxKeys = 4096
 	loginRateLimitGCEvery = 1 * time.Minute
+
+	wsHandshakeRateLimitWindow  = 1 * time.Minute
+	wsHandshakeRateLimitMax     = 30
+	wsHandshakeRateLimitMaxKeys = 4096
+	wsHandshakeRateLimitGCEvery = 1 * time.Minute
 )
 
 type loginAttempt struct {
@@ -21,10 +26,20 @@ type loginAttempt struct {
 	blockedUntil time.Time
 }
 
+type wsHandshakeAttempt struct {
+	count     int
+	windowAt  time.Time
+	updatedAt time.Time
+}
+
 var (
 	loginRateLimitMu sync.Mutex
 	loginRateLimits  = map[string]loginAttempt{}
 	loginRateLimitGC time.Time
+
+	wsHandshakeRateLimitMu sync.Mutex
+	wsHandshakeRateLimits  = map[string]wsHandshakeAttempt{}
+	wsHandshakeRateLimitGC time.Time
 )
 
 // gcLoginRateLimitsLocked drops stale entries. Caller must hold loginRateLimitMu.
@@ -91,4 +106,48 @@ func resetLoginFailures(key string) {
 	loginRateLimitMu.Lock()
 	defer loginRateLimitMu.Unlock()
 	delete(loginRateLimits, key)
+}
+
+func gcWSHandshakeRateLimitsLocked(now time.Time) {
+	if now.Sub(wsHandshakeRateLimitGC) < wsHandshakeRateLimitGCEvery && len(wsHandshakeRateLimits) < wsHandshakeRateLimitMaxKeys {
+		return
+	}
+	wsHandshakeRateLimitGC = now
+	for key, attempt := range wsHandshakeRateLimits {
+		if now.Sub(attempt.updatedAt) > wsHandshakeRateLimitWindow {
+			delete(wsHandshakeRateLimits, key)
+		}
+	}
+	if len(wsHandshakeRateLimits) > wsHandshakeRateLimitMaxKeys {
+		for key := range wsHandshakeRateLimits {
+			delete(wsHandshakeRateLimits, key)
+			if len(wsHandshakeRateLimits) <= wsHandshakeRateLimitMaxKeys {
+				break
+			}
+		}
+	}
+}
+
+func checkWSHandshakeRateLimit(key string) error {
+	wsHandshakeRateLimitMu.Lock()
+	defer wsHandshakeRateLimitMu.Unlock()
+	now := time.Now()
+	gcWSHandshakeRateLimitsLocked(now)
+	attempt := wsHandshakeRateLimits[key]
+	if attempt.windowAt.IsZero() || now.Sub(attempt.windowAt) >= wsHandshakeRateLimitWindow {
+		attempt = wsHandshakeAttempt{windowAt: now}
+	}
+	if attempt.count >= wsHandshakeRateLimitMax {
+		attempt.updatedAt = now
+		wsHandshakeRateLimits[key] = attempt
+		return common.NewError("too many websocket handshake attempts")
+	}
+	attempt.count++
+	attempt.updatedAt = now
+	wsHandshakeRateLimits[key] = attempt
+	return nil
+}
+
+func wsHandshakeRateLimitKey(endpoint string, ip string) string {
+	return endpoint + "|" + ip
 }
