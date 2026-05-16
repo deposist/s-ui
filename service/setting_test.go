@@ -159,6 +159,18 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		t.Fatalf("valid custom subscription paths rejected: %v", err)
 	}
 
+	validFragment, err := json.Marshal(map[string]string{
+		"subJsonFragment": `{"enabled":true,"packets":"tlshello"}`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validFragment)
+	}); err != nil {
+		t.Fatalf("valid JSON fragment setting rejected: %v", err)
+	}
+
 	invalidPayload, err := json.Marshal(map[string]string{
 		"subJsonEnable": "sometimes",
 	})
@@ -181,6 +193,18 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		return settingService.Save(tx, invalidURLPayload)
 	}); err == nil {
 		t.Fatal("expected invalid URL setting to be rejected")
+	}
+
+	invalidFragment, err := json.Marshal(map[string]string{
+		"subJsonFragment": "enabled",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidFragment)
+	}); err == nil {
+		t.Fatal("expected invalid JSON fragment setting to be rejected")
 	}
 
 	conflictingPaths, err := json.Marshal(map[string]string{

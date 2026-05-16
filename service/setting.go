@@ -739,6 +739,22 @@ func validateSubscriptionSettingInput(key string, value string) error {
 		if err := validateOptionalHTTPURL(value); err != nil {
 			return err
 		}
+	case "subJsonFragment":
+		if err := validateOptionalJSONObject(value, key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateOptionalJSONObject(value string, key string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal([]byte(value), &obj); err != nil {
+		return common.NewError("invalid JSON setting: ", key)
 	}
 	return nil
 }

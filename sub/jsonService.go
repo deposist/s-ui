@@ -249,6 +249,10 @@ func (j *JsonService) addDefaultOutbounds(outbounds *[]map[string]interface{}, o
 }
 
 func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
+	if err := j.addFragment(jsonConfig); err != nil {
+		return err
+	}
+
 	rules_start := []interface{}{
 		map[string]interface{}{
 			"action": "sniff",
@@ -310,6 +314,51 @@ func (j *JsonService) addOthers(jsonConfig *map[string]interface{}) error {
 	(*jsonConfig)["route"] = route
 
 	return nil
+}
+
+func (j *JsonService) addFragment(jsonConfig *map[string]interface{}) error {
+	fragmentStr, err := j.SettingService.GetSubJsonFragment()
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(fragmentStr) == "" {
+		return nil
+	}
+	var fragment map[string]interface{}
+	if err := json.Unmarshal([]byte(fragmentStr), &fragment); err != nil {
+		return err
+	}
+	outbounds, ok := jsonConfigOutbounds(jsonConfig)
+	if !ok {
+		return nil
+	}
+	for _, outbound := range *outbounds {
+		protocol, _ := outbound["type"].(string)
+		if supportsJSONFragment(protocol) {
+			outbound["fragment"] = fragment
+		}
+	}
+	return nil
+}
+
+func jsonConfigOutbounds(jsonConfig *map[string]interface{}) (*[]map[string]interface{}, bool) {
+	switch outbounds := (*jsonConfig)["outbounds"].(type) {
+	case *[]map[string]interface{}:
+		return outbounds, true
+	case []map[string]interface{}:
+		return &outbounds, true
+	default:
+		return nil, false
+	}
+}
+
+func supportsJSONFragment(protocol string) bool {
+	switch protocol {
+	case "vless", "vmess", "trojan":
+		return true
+	default:
+		return false
+	}
 }
 
 func (j *JsonService) pushMixed(outbounds *[]map[string]interface{}, outTags *[]string, out map[string]interface{}) {
