@@ -25,9 +25,6 @@ func (a *ApiService) GetSecurityAudit(c *gin.Context) {
 	if err != nil {
 		limit = 200
 	}
-	if retention, err := a.SettingService.GetAuditRetentionDays(); err == nil {
-		_ = a.AuditService.Prune(retention)
-	}
 	events, err := a.AuditService.List(limit)
 	jsonObj(c, events, err)
 }

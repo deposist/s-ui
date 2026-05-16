@@ -42,41 +42,42 @@ var defaultConfig = `{
 }`
 
 var defaultValueMap = map[string]string{
-	"webListen":             "",
-	"webDomain":             "",
-	"webPort":               "2095",
-	"secret":                common.Random(32),
-	"installSalt":           common.Random(32),
-	"webCertFile":           "",
-	"webKeyFile":            "",
-	"webPath":               "/app/",
-	"webURI":                "",
-	"sessionMaxAge":         "0",
-	"sessionGeneration":     "",
-	"trafficAge":            "30",
-	"timeLocation":          "Europe/Moscow",
-	"subListen":             "",
-	"subPort":               "2096",
-	"subPath":               "/sub/",
-	"subDomain":             "",
-	"subCertFile":           "",
-	"subKeyFile":            "",
-	"subUpdates":            "12",
-	"subEncode":             "true",
-	"subShowInfo":           "false",
-	"subSecretRequired":     "false",
-	"subURI":                "",
-	"subJsonExt":            "",
-	"subClashExt":           "",
-	"auditRetentionDays":    "30",
-	"telegramEnabled":       "false",
-	"telegramBotToken":      "",
-	"telegramChatID":        "",
-	"telegramProxyURL":      "",
-	"telegramProxyUsername": "",
-	"telegramProxyPassword": "",
-	"config":                defaultConfig,
-	"version":               config.GetVersion(),
+	"webListen":              "",
+	"webDomain":              "",
+	"webPort":                "2095",
+	"secret":                 common.Random(32),
+	"installSalt":            common.Random(32),
+	"webCertFile":            "",
+	"webKeyFile":             "",
+	"webPath":                "/app/",
+	"webURI":                 "",
+	"sessionMaxAge":          "0",
+	"sessionGeneration":      "",
+	"trafficAge":             "30",
+	"timeLocation":           "Europe/Moscow",
+	"subListen":              "",
+	"subPort":                "2096",
+	"subPath":                "/sub/",
+	"subDomain":              "",
+	"subCertFile":            "",
+	"subKeyFile":             "",
+	"subUpdates":             "12",
+	"subEncode":              "true",
+	"subShowInfo":            "false",
+	"subSecretRequired":      "false",
+	"subURI":                 "",
+	"subJsonExt":             "",
+	"subClashExt":            "",
+	"auditRetentionDays":     "30",
+	"ipHistoryRetentionDays": "30",
+	"telegramEnabled":        "false",
+	"telegramBotToken":       "",
+	"telegramChatID":         "",
+	"telegramProxyURL":       "",
+	"telegramProxyUsername":  "",
+	"telegramProxyPassword":  "",
+	"config":                 defaultConfig,
+	"version":                config.GetVersion(),
 }
 
 type SettingService struct {
@@ -291,6 +292,10 @@ func (s *SettingService) GetTrafficAge() (int, error) {
 
 func (s *SettingService) GetAuditRetentionDays() (int, error) {
 	return s.getInt("auditRetentionDays")
+}
+
+func (s *SettingService) GetIPHistoryRetentionDays() (int, error) {
+	return s.getInt("ipHistoryRetentionDays")
 }
 
 func (s *SettingService) GetTimeLocation() (*time.Location, error) {
