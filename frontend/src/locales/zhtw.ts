@@ -73,6 +73,8 @@ export default {
     severity: "級別",
     resource: "資源",
     details: "詳情",
+    since: "開始",
+    until: "結束",
     next: "下一頁",
     previous: "上一頁",
   },

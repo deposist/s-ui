@@ -73,6 +73,8 @@ export default {
     severity: "Severity",
     resource: "Resource",
     details: "Details",
+    since: "Since",
+    until: "Until",
     next: "Next",
     previous: "Previous",
   },

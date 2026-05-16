@@ -143,6 +143,86 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 	}
 }
 
+func TestGetSecurityAuditFiltersDateRange(t *testing.T) {
+	resetRateLimitState()
+	settingService := initSessionTestDB(t)
+	now := time.Now().Unix()
+	events := []model.AuditEvent{
+		{DateTime: now - 10, Actor: "admin", Event: "before", Severity: "info"},
+		{DateTime: now, Actor: "admin", Event: "inside", Severity: "info"},
+		{DateTime: now + 10, Actor: "admin", Event: "after", Severity: "info"},
+	}
+	if err := database.GetDB().Create(&events).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?since="+strconv.FormatInt(now, 10)+"&until="+strconv.FormatInt(now+5, 10), nil), cookies...)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d", recorder.Code)
+	}
+	var msg Msg
+	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	payload, ok := msg.Obj.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected payload: %#v", msg.Obj)
+	}
+	gotEvents, ok := payload["events"].([]any)
+	if !ok || len(gotEvents) != 1 {
+		t.Fatalf("expected one date-filtered event, got %#v", payload["events"])
+	}
+	got := gotEvents[0].(map[string]any)
+	if got["event"] != "inside" {
+		t.Fatalf("unexpected date-filtered event: %#v", got)
+	}
+
+	recorder = performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?since=17000000000", nil), cookies...)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("oversized since filter should fail, got %d", recorder.Code)
+	}
+	recorder = performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?until=170000000a", nil), cookies...)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("non-digit until filter should fail, got %d", recorder.Code)
+	}
+}
+
+func TestParseAuditUnixSecondsFilter(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    int64
+		wantErr bool
+	}{
+		{name: "empty", raw: "", want: 0},
+		{name: "zero", raw: "0", want: 0},
+		{name: "seconds", raw: "1700000000", want: 1700000000},
+		{name: "too long", raw: "17000000000", wantErr: true},
+		{name: "alpha", raw: "170000000a", wantErr: true},
+		{name: "negative", raw: "-1", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseAuditUnixSecondsFilter("since", tt.raw)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("expected %d, got %d", tt.want, got)
+			}
+		})
+	}
+}
+
 func TestGetSecurityAuditRejectsNonAdminTokenScope(t *testing.T) {
 	resetRateLimitState()
 	settingService := initSessionTestDB(t)

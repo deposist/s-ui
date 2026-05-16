@@ -49,7 +49,17 @@ func (a *ApiService) GetSecurityAudit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
 		return
 	}
-	events, nextCursor, err := a.AuditService.ListPageFiltered(cursor, limit, eventFilter, severityFilter)
+	since, err := parseAuditUnixSecondsFilter("since", c.Query("since"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
+		return
+	}
+	until, err := parseAuditUnixSecondsFilter("until", c.Query("until"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "audit: " + err.Error()})
+		return
+	}
+	events, nextCursor, err := a.AuditService.ListPageFiltered(cursor, limit, eventFilter, severityFilter, since, until)
 	jsonObj(c, gin.H{
 		"events":     events,
 		"nextCursor": nextCursor,
@@ -112,6 +122,25 @@ func parseAuditSeverityFilter(raw string) (string, error) {
 	default:
 		return "", common.NewError("invalid severity filter")
 	}
+}
+
+func parseAuditUnixSecondsFilter(name string, raw string) (int64, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	if len(raw) > 10 {
+		return 0, common.NewError("invalid " + name)
+	}
+	for _, r := range raw {
+		if r < '0' || r > '9' {
+			return 0, common.NewError("invalid " + name)
+		}
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, common.NewError("invalid " + name)
+	}
+	return value, nil
 }
 
 func (a *ApiService) requireAuditAdminScope(c *gin.Context) bool {
