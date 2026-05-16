@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strconv"
 	"time"
@@ -278,10 +280,7 @@ func (a *ApiService) Login(c *gin.Context) {
 		a.recordAudit(c, username, "login_failed", "auth", service.AuditSeverityWarn, map[string]any{
 			"reason": err.Error(),
 		})
-		a.TelegramService.NotifyTelegramEvent("login_failed", map[string]string{
-			"user": username,
-			"ip":   remoteIP,
-		})
+		a.TelegramService.NotifyTelegramEvent("login_failed", telegramRequestFields(c))
 		jsonMsg(c, "", err)
 		return
 	}
@@ -359,13 +358,24 @@ func (a *ApiService) RestartApp(c *gin.Context) {
 func (a *ApiService) RestartSb(c *gin.Context) {
 	err := a.ConfigService.RestartCore()
 	if err != nil {
-		a.TelegramService.NotifyTelegramEvent("core_restart_failed", map[string]string{
-			"error": err.Error(),
-		})
+		a.TelegramService.NotifyTelegramEvent("core_restart_failed", telegramRequestFields(c))
 	} else {
 		a.TelegramService.NotifyTelegramEvent("core_restarted", nil)
 	}
 	jsonMsg(c, "restartSb", err)
+}
+
+func telegramRequestFields(c *gin.Context) map[string]string {
+	return map[string]string{
+		"ip":      getRemoteIp(c),
+		"ua_hash": hashUserAgent(c.Request.UserAgent()),
+		"ts":      time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
+func hashUserAgent(userAgent string) string {
+	sum := sha256.Sum256([]byte(userAgent))
+	return hex.EncodeToString(sum[:])
 }
 
 func (a *ApiService) LinkConvert(c *gin.Context) {

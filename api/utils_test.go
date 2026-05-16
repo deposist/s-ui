@@ -1,9 +1,12 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -50,5 +53,31 @@ func TestGetRemoteIpRejectsSpoofedXFFFromUntrustedClient(t *testing.T) {
 	c := makeContext(t, "203.0.113.5:1234", "1.2.3.4, 5.6.7.8")
 	if got := getRemoteIp(c); got != "203.0.113.5" {
 		t.Fatalf("expected transport peer, got %s", got)
+	}
+}
+
+func TestTelegramRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
+	c := makeContext(t, "203.0.113.5:1234", "")
+	userAgent := "Mozilla/5.0 test agent"
+	c.Request.Header.Set("User-Agent", userAgent)
+
+	fields := telegramRequestFields(c)
+	if len(fields) != 3 {
+		t.Fatalf("expected exactly 3 fields, got %#v", fields)
+	}
+	if fields["ip"] != "203.0.113.5" {
+		t.Fatalf("unexpected ip field: %q", fields["ip"])
+	}
+	sum := sha256.Sum256([]byte(userAgent))
+	if fields["ua_hash"] != hex.EncodeToString(sum[:]) {
+		t.Fatalf("unexpected ua_hash: %q", fields["ua_hash"])
+	}
+	if _, err := time.Parse(time.RFC3339, fields["ts"]); err != nil {
+		t.Fatalf("ts is not RFC3339: %q", fields["ts"])
+	}
+	for _, forbidden := range []string{"user", "username", "reason", "error"} {
+		if _, ok := fields[forbidden]; ok {
+			t.Fatalf("forbidden field %q leaked into Telegram payload: %#v", forbidden, fields)
+		}
 	}
 }
