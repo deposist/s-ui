@@ -147,6 +147,7 @@ import HttpUtils from '@/plugins/httputil'
 import { FindDiff } from '@/plugins/utils'
 import SubJsonExtVue from '@/components/SubJsonExt.vue'
 import SubClashExtVue from '@/components/SubClashExt.vue'
+import { normalizeSecretFields, stripSecretPlaceholders } from '@/components/settingsSecretField'
 import { push } from 'notivue'
 const tab = ref("t1")
 const loading:Ref = inject('loading')?? ref(false)
@@ -193,13 +194,15 @@ const loadData = async () => {
 }
 
 const setData = (data: any) => {
-  settings.value = data
-  oldSettings.value = { ...data }
+  const normalized = normalizeSecretFields(data)
+  settings.value = normalized
+  oldSettings.value = { ...normalized }
 }
 
 const save = async () => {
   loading.value = true
-  const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(settings.value) })
+  const payload = stripSecretPlaceholders(settings.value)
+  const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(payload) })
   if (msg.success) {
     push.success({
       title: i18n.global.t('success'),
