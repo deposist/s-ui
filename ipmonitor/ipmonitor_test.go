@@ -17,11 +17,18 @@ import (
 func initIPMonitorTestDB(t *testing.T) {
 	t.Helper()
 	pending.Lock()
-	pending.byClient = map[string]map[string]int64{}
+	pending.byClient = map[string]map[string]pendingIP{}
 	pending.Unlock()
 	allowCache.Lock()
 	allowCache.byClient = map[string]allowCacheEntry{}
 	allowCache.Unlock()
+	ipHashSalt.Lock()
+	ipHashSalt.value = nil
+	ipHashSalt.Unlock()
+	ipPrivacySettings.Lock()
+	ipPrivacySettings.showRaw = false
+	ipPrivacySettings.expiresAt = time.Time{}
+	ipPrivacySettings.Unlock()
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -104,6 +111,100 @@ func TestAllowEnforceRejectsNewIPOverLimit(t *testing.T) {
 	}
 	if Allow("alice", "198.51.100.11") {
 		t.Fatal("new IP over limit should still be rejected after pending flush")
+	}
+}
+
+func TestRecordFlushStoresHashedIPAndMasksHistoryByDefault(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		IPLimitMode: ModeMonitor,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const rawIP = "198.51.100.10"
+	Record("alice", rawIP)
+	if err := Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	var row model.ClientIP
+	if err := database.GetDB().Where("client_name = ?", "alice").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.IP == rawIP {
+		t.Fatal("raw IP was stored in legacy ip column")
+	}
+	if row.IPHash == "" || row.IP != row.IPHash {
+		t.Fatalf("expected legacy ip column to hold hash for new rows: %#v", row)
+	}
+	if row.IPDisplay != nil {
+		t.Fatalf("ip_display must stay NULL while ipShowRaw=false: %#v", row.IPDisplay)
+	}
+
+	history, err := History("alice", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("expected one history row, got %d", len(history))
+	}
+	if history[0].IP == rawIP || history[0].IPHash != "" || history[0].IPDisplay != nil {
+		t.Fatalf("history leaked raw/hash internals: %#v", history[0])
+	}
+	if !strings.HasPrefix(history[0].IP, "masked:") {
+		t.Fatalf("history did not return a masked IP: %#v", history[0])
+	}
+}
+
+func TestRecordFlushStoresRawDisplayOnlyWhenEnabled(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := database.GetDB().Create(&model.Setting{Key: "ipShowRaw", Value: "true"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	ipPrivacySettings.Lock()
+	ipPrivacySettings.expiresAt = time.Time{}
+	ipPrivacySettings.Unlock()
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		IPLimitMode: ModeMonitor,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const rawIP = "198.51.100.10"
+	Record("alice", rawIP)
+	if err := Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	var row model.ClientIP
+	if err := database.GetDB().Where("client_name = ?", "alice").First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.IPDisplay == nil || *row.IPDisplay != rawIP {
+		t.Fatalf("raw display was not stored when ipShowRaw=true: %#v", row)
+	}
+	if row.IP == rawIP || row.IPHash == "" {
+		t.Fatalf("raw IP leaked into hash columns: %#v", row)
+	}
+
+	history, err := History("alice", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].IP != rawIP {
+		t.Fatalf("history should return raw display when explicitly enabled: %#v", history)
+	}
+	if history[0].IPDisplay != nil || history[0].IPHash != "" {
+		t.Fatalf("history leaked storage internals: %#v", history[0])
 	}
 }
 

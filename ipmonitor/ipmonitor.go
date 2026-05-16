@@ -1,11 +1,16 @@
 package ipmonitor
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 	"gorm.io/gorm"
 )
 
@@ -14,13 +19,19 @@ const (
 	ModeEnforce = "enforce"
 
 	allowCacheTTL = 30 * time.Second
+	ipMaskPrefix  = 12
 )
+
+type pendingIP struct {
+	lastSeen int64
+	display  *string
+}
 
 var pending = struct {
 	sync.Mutex
-	byClient map[string]map[string]int64
+	byClient map[string]map[string]pendingIP
 }{
-	byClient: map[string]map[string]int64{},
+	byClient: map[string]map[string]pendingIP{},
 }
 
 type allowCacheEntry struct {
@@ -37,18 +48,36 @@ var allowCache = struct {
 	byClient: map[string]allowCacheEntry{},
 }
 
+var ipHashSalt = struct {
+	sync.Mutex
+	value []byte
+}{}
+
+var ipPrivacySettings = struct {
+	sync.Mutex
+	showRaw   bool
+	expiresAt time.Time
+}{}
+
 func Record(clientName string, ip string) {
 	if clientName == "" || ip == "" {
+		return
+	}
+	ipHash, display, ok := recordIPFields(ip)
+	if !ok {
 		return
 	}
 	now := time.Now().Unix()
 	pending.Lock()
 	if pending.byClient[clientName] == nil {
-		pending.byClient[clientName] = map[string]int64{}
+		pending.byClient[clientName] = map[string]pendingIP{}
 	}
-	pending.byClient[clientName][ip] = now
+	pending.byClient[clientName][ipHash] = pendingIP{
+		lastSeen: now,
+		display:  display,
+	}
 	pending.Unlock()
-	cacheAddIP(clientName, ip)
+	cacheAddIP(clientName, ipHash)
 }
 
 func Allow(clientName string, ip string) bool {
@@ -59,6 +88,10 @@ func Allow(clientName string, ip string) bool {
 	if db == nil {
 		return true
 	}
+	ipHash, err := hashIP(ip)
+	if err != nil {
+		return true
+	}
 	entry, ok := cachedClient(clientName, time.Now())
 	if !ok {
 		return true
@@ -66,13 +99,13 @@ func Allow(clientName string, ip string) bool {
 	if entry.mode != ModeEnforce || entry.limit <= 0 {
 		return true
 	}
-	seen := map[string]struct{}{ip: {}}
-	for seenIP := range entry.ips {
-		seen[seenIP] = struct{}{}
+	seen := map[string]struct{}{ipHash: {}}
+	for seenHash := range entry.ips {
+		seen[seenHash] = struct{}{}
 	}
 	pending.Lock()
-	for seenIP := range pending.byClient[clientName] {
-		seen[seenIP] = struct{}{}
+	for seenHash := range pending.byClient[clientName] {
+		seen[seenHash] = struct{}{}
 	}
 	pending.Unlock()
 	return len(seen) <= entry.limit
@@ -85,7 +118,7 @@ func Flush() error {
 	}
 	pending.Lock()
 	snapshot := pending.byClient
-	pending.byClient = map[string]map[string]int64{}
+	pending.byClient = map[string]map[string]pendingIP{}
 	pending.Unlock()
 	if len(snapshot) == 0 {
 		return nil
@@ -107,7 +140,7 @@ func Flush() error {
 func FlushTo(tx *gorm.DB) error {
 	pending.Lock()
 	snapshot := pending.byClient
-	pending.byClient = map[string]map[string]int64{}
+	pending.byClient = map[string]map[string]pendingIP{}
 	pending.Unlock()
 	if len(snapshot) == 0 {
 		return nil
@@ -115,29 +148,38 @@ func FlushTo(tx *gorm.DB) error {
 	return flushSnapshot(tx, snapshot)
 }
 
-func flushSnapshot(tx *gorm.DB, snapshot map[string]map[string]int64) error {
+func flushSnapshot(tx *gorm.DB, snapshot map[string]map[string]pendingIP) error {
 	for clientName, ips := range snapshot {
 		lastSeen := int64(0)
-		for ip, seenAt := range ips {
-			if seenAt > lastSeen {
-				lastSeen = seenAt
+		for ipHash, pendingIP := range ips {
+			if pendingIP.lastSeen > lastSeen {
+				lastSeen = pendingIP.lastSeen
 			}
 			var row model.ClientIP
-			err := tx.Model(model.ClientIP{}).Where("client_name = ? AND ip = ?", clientName, ip).First(&row).Error
+			err := tx.Model(model.ClientIP{}).Where("client_name = ? AND ip_hash = ?", clientName, ipHash).First(&row).Error
+			if database.IsNotFound(err) {
+				err = tx.Model(model.ClientIP{}).Where("client_name = ? AND ip = ?", clientName, ipHash).First(&row).Error
+			}
 			if database.IsNotFound(err) {
 				err = tx.Create(&model.ClientIP{
 					ClientName: clientName,
-					IP:         ip,
-					FirstSeen:  seenAt,
-					LastSeen:   seenAt,
+					IP:         ipHash,
+					IPHash:     ipHash,
+					IPDisplay:  pendingIP.display,
+					FirstSeen:  pendingIP.lastSeen,
+					LastSeen:   pendingIP.lastSeen,
 				}).Error
 			} else if err == nil {
-				err = tx.Model(model.ClientIP{}).Where("id = ?", row.Id).Update("last_seen", seenAt).Error
+				err = tx.Model(model.ClientIP{}).Where("id = ?", row.Id).Updates(map[string]interface{}{
+					"ip_hash":    ipHash,
+					"last_seen":  pendingIP.lastSeen,
+					"ip_display": ipDisplayValue(pendingIP.display),
+				}).Error
 			}
 			if err != nil {
 				return err
 			}
-			cacheAddIP(clientName, ip)
+			cacheAddIP(clientName, ipHash)
 		}
 		var count int64
 		if err := tx.Model(model.ClientIP{}).Where("client_name = ?", clientName).Count(&count).Error; err != nil {
@@ -163,6 +205,9 @@ func History(clientName string, limit int) ([]model.ClientIP, error) {
 		Order("last_seen desc").
 		Limit(limit).
 		Find(&rows).Error
+	if err == nil {
+		prepareHistoryRows(rows)
+	}
 	return rows, err
 }
 
@@ -207,10 +252,16 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 		ips:       map[string]struct{}{},
 		expiresAt: now.Add(allowCacheTTL),
 	}
-	var ips []string
-	_ = db.Model(model.ClientIP{}).Where("client_name = ?", clientName).Pluck("ip", &ips).Error
-	for _, ip := range ips {
-		entry.ips[ip] = struct{}{}
+	rows := make([]model.ClientIP, 0)
+	_ = db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error
+	for _, row := range rows {
+		ipHash := row.IPHash
+		if ipHash == "" {
+			ipHash = hashLegacyIPValue(row.IP)
+		}
+		if ipHash != "" {
+			entry.ips[ipHash] = struct{}{}
+		}
 	}
 	return entry, true
 }
@@ -246,4 +297,140 @@ func invalidateCache(clientName string) {
 	allowCache.Lock()
 	defer allowCache.Unlock()
 	delete(allowCache.byClient, clientName)
+}
+
+func recordIPFields(ip string) (string, *string, bool) {
+	ipHash, err := hashIP(ip)
+	if err != nil {
+		return "", nil, false
+	}
+	showRaw, err := getIPShowRaw(time.Now())
+	if err != nil || !showRaw {
+		return ipHash, nil, true
+	}
+	display := ip
+	return ipHash, &display, true
+}
+
+func hashIP(ip string) (string, error) {
+	salt, err := getInstallSalt()
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	_, _ = h.Write(salt)
+	_, _ = h.Write([]byte(ip))
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func getInstallSalt() ([]byte, error) {
+	ipHashSalt.Lock()
+	defer ipHashSalt.Unlock()
+	if len(ipHashSalt.value) > 0 {
+		salt := make([]byte, len(ipHashSalt.value))
+		copy(salt, ipHashSalt.value)
+		return salt, nil
+	}
+	if database.GetDB() == nil {
+		return nil, errors.New("database is not initialized")
+	}
+	var setting model.Setting
+	err := database.GetDB().Model(model.Setting{}).Where("key = ?", "installSalt").First(&setting).Error
+	if database.IsNotFound(err) {
+		setting = model.Setting{Key: "installSalt", Value: common.Random(32)}
+		err = database.GetDB().Create(&setting).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	salt := []byte(setting.Value)
+	ipHashSalt.value = append([]byte(nil), salt...)
+	return append([]byte(nil), salt...), nil
+}
+
+func getIPShowRaw(now time.Time) (bool, error) {
+	ipPrivacySettings.Lock()
+	defer ipPrivacySettings.Unlock()
+	if now.Before(ipPrivacySettings.expiresAt) {
+		return ipPrivacySettings.showRaw, nil
+	}
+	if database.GetDB() == nil {
+		ipPrivacySettings.showRaw = false
+		ipPrivacySettings.expiresAt = now.Add(allowCacheTTL)
+		return false, nil
+	}
+	var setting model.Setting
+	err := database.GetDB().Model(model.Setting{}).Where("key = ?", "ipShowRaw").First(&setting).Error
+	if database.IsNotFound(err) {
+		ipPrivacySettings.showRaw = false
+		ipPrivacySettings.expiresAt = now.Add(allowCacheTTL)
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	showRaw, err := strconv.ParseBool(setting.Value)
+	if err != nil {
+		return false, err
+	}
+	ipPrivacySettings.showRaw = showRaw
+	ipPrivacySettings.expiresAt = now.Add(allowCacheTTL)
+	return showRaw, nil
+}
+
+func prepareHistoryRows(rows []model.ClientIP) {
+	showRaw, err := getIPShowRaw(time.Now())
+	if err != nil {
+		showRaw = false
+	}
+	for i := range rows {
+		display := maskedIP(rows[i])
+		if showRaw {
+			if rows[i].IPDisplay != nil && *rows[i].IPDisplay != "" {
+				display = *rows[i].IPDisplay
+			} else if rows[i].IPHash == "" && !looksLikeSHA256Hex(rows[i].IP) {
+				display = rows[i].IP
+			}
+		}
+		rows[i].IP = display
+		rows[i].IPHash = ""
+		rows[i].IPDisplay = nil
+	}
+}
+
+func maskedIP(row model.ClientIP) string {
+	ipHash := row.IPHash
+	if ipHash == "" {
+		ipHash = hashLegacyIPValue(row.IP)
+	}
+	if len(ipHash) < ipMaskPrefix {
+		return "masked"
+	}
+	return "masked:" + ipHash[:ipMaskPrefix]
+}
+
+func hashLegacyIPValue(ip string) string {
+	if looksLikeSHA256Hex(ip) {
+		return ip
+	}
+	ipHash, err := hashIP(ip)
+	if err != nil {
+		return ""
+	}
+	return ipHash
+}
+
+func looksLikeSHA256Hex(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func ipDisplayValue(display *string) interface{} {
+	if display == nil {
+		return nil
+	}
+	return *display
 }

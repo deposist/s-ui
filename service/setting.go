@@ -69,6 +69,7 @@ var defaultValueMap = map[string]string{
 	"subJsonExt":             "",
 	"subClashExt":            "",
 	"auditRetentionDays":     "30",
+	"ipShowRaw":              "false",
 	"ipHistoryRetentionDays": "30",
 	"telegramEnabled":        "false",
 	"telegramBotToken":       "",
@@ -296,6 +297,10 @@ func (s *SettingService) GetAuditRetentionDays() (int, error) {
 
 func (s *SettingService) GetIPHistoryRetentionDays() (int, error) {
 	return s.getInt("ipHistoryRetentionDays")
+}
+
+func (s *SettingService) GetIPShowRaw() (bool, error) {
+	return s.getBool("ipShowRaw")
 }
 
 func (s *SettingService) GetTimeLocation() (*time.Location, error) {
