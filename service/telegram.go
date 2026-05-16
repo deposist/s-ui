@@ -285,9 +285,22 @@ func (s *TelegramService) send(text string) TelegramResult {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return TelegramResult{ErrorClass: common.NewErrorf("telegram_status_%d", resp.StatusCode).Error()}
+		return TelegramResult{ErrorClass: telegramStatusErrorClass(resp.StatusCode)}
 	}
 	return TelegramResult{Success: true}
+}
+
+func telegramStatusErrorClass(status int) string {
+	switch status {
+	case http.StatusUnauthorized:
+		return "unauthorized"
+	case http.StatusNotFound:
+		return "chat_not_found"
+	case http.StatusTooManyRequests:
+		return "rate_limited"
+	default:
+		return "unknown"
+	}
 }
 
 func (s *TelegramService) telegramEnabled() (bool, error) {

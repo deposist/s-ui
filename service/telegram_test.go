@@ -29,6 +29,18 @@ func (r *countingRoundTripper) Count() int {
 	return int(r.count.Load())
 }
 
+type statusRoundTripper struct {
+	status int
+}
+
+func (r statusRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: r.status,
+		Body:       http.NoBody,
+		Header:     http.Header{},
+	}, nil
+}
+
 func TestTelegramDisabledMakesNoOutboundCall(t *testing.T) {
 	initSettingTestDB(t)
 	rt := &countingRoundTripper{}
@@ -98,6 +110,38 @@ func TestTelegramInvalidProxySettingFailsBeforeOutbound(t *testing.T) {
 	result := (&TelegramService{}).TestTelegram()
 	if result.Success || result.ErrorClass != "proxy" {
 		t.Fatalf("unexpected result: %#v", result)
+	}
+}
+
+func TestTelegramStatusErrorClassMapping(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	enableTelegramForTest(t, settingService)
+	tests := []struct {
+		status int
+		want   string
+	}{
+		{status: http.StatusUnauthorized, want: "unauthorized"},
+		{status: http.StatusNotFound, want: "chat_not_found"},
+		{status: http.StatusTooManyRequests, want: "rate_limited"},
+		{status: http.StatusInternalServerError, want: "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			restore := setTelegramHTTPClient(&http.Client{Transport: statusRoundTripper{status: tt.status}, Timeout: time.Second})
+			defer restore()
+			result := (&TelegramService{}).TestTelegram()
+			if result.Success || result.ErrorClass != tt.want {
+				t.Fatalf("unexpected result for %d: %#v", tt.status, result)
+			}
+		})
+	}
+}
+
+func TestTelegramStatusErrorClassAllowlist(t *testing.T) {
+	for _, class := range []string{"unauthorized", "chat_not_found", "rate_limited", "unknown"} {
+		if class == "" || strings.Contains(class, "telegram_status_") {
+			t.Fatalf("invalid mapped class: %q", class)
+		}
 	}
 }
 
