@@ -2,6 +2,7 @@ package service
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/logger"
@@ -26,6 +27,7 @@ const (
 	observabilitySampleEstimateBytes  = 2048
 	observabilityCoreSampleBytes      = 1024
 	observabilityWarnMemoryMinSeconds = 60
+	observabilityMemoryCapCacheTTL    = 60 * time.Second
 )
 
 var observabilityDefaultBucketCaps = map[ObservabilityBucket]int{
@@ -58,7 +60,7 @@ type ObservabilityService struct {
 }
 
 type observabilityStore struct {
-	sync.Mutex
+	mu                   sync.RWMutex
 	samples              map[ObservabilityBucket]*ringBuffer[ObservabilitySample]
 	core                 map[ObservabilityBucket]*ringBuffer[CoreSample]
 	lastMemoryWarnCapMB  int
@@ -67,6 +69,27 @@ type observabilityStore struct {
 }
 
 var observabilityHistory = newObservabilityStore()
+var observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, time.Now)
+
+type observabilityMemoryCapCacheState struct {
+	capMB             atomic.Int64
+	expiresAtUnixNano atomic.Int64
+	refreshMu         sync.Mutex
+	ttl               time.Duration
+	now               func() time.Time
+}
+
+func newObservabilityMemoryCapCache(ttl time.Duration, now func() time.Time) *observabilityMemoryCapCacheState {
+	if now == nil {
+		now = time.Now
+	}
+	cache := &observabilityMemoryCapCacheState{
+		ttl: ttl,
+		now: now,
+	}
+	cache.capMB.Store(observabilityDefaultMemoryCapMB)
+	return cache
+}
 
 func newObservabilityStore() *observabilityStore {
 	caps := copyObservabilityCaps(observabilityDefaultBucketCaps)
@@ -115,10 +138,10 @@ func (s *ObservabilityService) RecordObservabilitySample(bucket ObservabilityBuc
 	if !IsValidObservabilityBucket(bucket) {
 		return common.NewError("invalid observability bucket")
 	}
-	caps, capMB := s.observabilityCaps()
-	observabilityHistory.Lock()
-	defer observabilityHistory.Unlock()
-	observabilityHistory.applyCaps(caps, capMB)
+	capMB := s.observabilityMemoryCapMB()
+	observabilityHistory.mu.Lock()
+	defer observabilityHistory.mu.Unlock()
+	observabilityHistory.applyCapsIfNeeded(capMB)
 	observabilityHistory.samples[bucket].append(sample)
 	return nil
 }
@@ -127,10 +150,10 @@ func (s *ObservabilityService) RecordCoreSample(bucket ObservabilityBucket, samp
 	if !IsValidObservabilityBucket(bucket) {
 		return common.NewError("invalid observability bucket")
 	}
-	caps, capMB := s.observabilityCaps()
-	observabilityHistory.Lock()
-	defer observabilityHistory.Unlock()
-	observabilityHistory.applyCaps(caps, capMB)
+	capMB := s.observabilityMemoryCapMB()
+	observabilityHistory.mu.Lock()
+	defer observabilityHistory.mu.Unlock()
+	observabilityHistory.applyCapsIfNeeded(capMB)
 	observabilityHistory.core[bucket].append(sample)
 	return nil
 }
@@ -139,10 +162,8 @@ func (s *ObservabilityService) HistoryForBucket(bucket ObservabilityBucket) ([]O
 	if !IsValidObservabilityBucket(bucket) {
 		return nil, common.NewError("invalid observability bucket")
 	}
-	caps, capMB := s.observabilityCaps()
-	observabilityHistory.Lock()
-	defer observabilityHistory.Unlock()
-	observabilityHistory.applyCaps(caps, capMB)
+	observabilityHistory.mu.RLock()
+	defer observabilityHistory.mu.RUnlock()
 	return observabilityHistory.samples[bucket].snapshot(), nil
 }
 
@@ -158,10 +179,8 @@ func (s *ObservabilityService) CoreHistoryForBucket(bucket ObservabilityBucket) 
 	if !IsValidObservabilityBucket(bucket) {
 		return nil, common.NewError("invalid observability bucket")
 	}
-	caps, capMB := s.observabilityCaps()
-	observabilityHistory.Lock()
-	defer observabilityHistory.Unlock()
-	observabilityHistory.applyCaps(caps, capMB)
+	observabilityHistory.mu.RLock()
+	defer observabilityHistory.mu.RUnlock()
 	return observabilityHistory.core[bucket].snapshot(), nil
 }
 
@@ -253,12 +272,55 @@ func ParseObservabilityBucket(raw string) (ObservabilityBucket, error) {
 	return bucket, nil
 }
 
-func (s *ObservabilityService) observabilityCaps() (map[ObservabilityBucket]int, int) {
+func (s *ObservabilityService) observabilityMemoryCapMB() int {
+	return observabilityMemoryCapCache.Get(func() int {
+		capMB, err := s.loadObservabilityMemoryCapMB()
+		if err != nil || capMB <= 0 {
+			return observabilityDefaultMemoryCapMB
+		}
+		return capMB
+	})
+}
+
+func (s *ObservabilityService) loadObservabilityMemoryCapMB() (int, error) {
 	capMB, err := s.SettingService.GetObservabilityMemoryCapMB()
 	if err != nil || capMB <= 0 {
+		return observabilityDefaultMemoryCapMB, err
+	}
+	return capMB, nil
+}
+
+func (c *observabilityMemoryCapCacheState) Get(load func() int) int {
+	now := c.now()
+	if capMB, ok := c.cached(now); ok {
+		return capMB
+	}
+
+	c.refreshMu.Lock()
+	defer c.refreshMu.Unlock()
+	now = c.now()
+	if capMB, ok := c.cached(now); ok {
+		return capMB
+	}
+
+	capMB := load()
+	if capMB <= 0 {
 		capMB = observabilityDefaultMemoryCapMB
 	}
-	return capsForObservabilityMemory(capMB), capMB
+	c.capMB.Store(int64(capMB))
+	c.expiresAtUnixNano.Store(now.Add(c.ttl).UnixNano())
+	return capMB
+}
+
+func (c *observabilityMemoryCapCacheState) cached(now time.Time) (int, bool) {
+	capMB := c.capMB.Load()
+	if capMB <= 0 {
+		return 0, false
+	}
+	if now.UnixNano() >= c.expiresAtUnixNano.Load() {
+		return 0, false
+	}
+	return int(capMB), true
 }
 
 func capsForObservabilityMemory(capMB int) map[ObservabilityBucket]int {
@@ -411,6 +473,13 @@ func (h *observabilityStore) applyCaps(caps map[ObservabilityBucket]int, capMB i
 	}
 	h.warnIfCapped(caps, capMB)
 	h.lastAppliedMemoryCap = capMB
+}
+
+func (h *observabilityStore) applyCapsIfNeeded(capMB int) {
+	if h.lastAppliedMemoryCap == capMB {
+		return
+	}
+	h.applyCaps(capsForObservabilityMemory(capMB), capMB)
 }
 
 func (h *observabilityStore) warnIfCapped(caps map[ObservabilityBucket]int, capMB int) {

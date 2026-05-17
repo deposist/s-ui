@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
@@ -82,6 +83,48 @@ func TestObservabilityMemoryCapShrinksBuckets(t *testing.T) {
 	}
 }
 
+func TestObservabilityMemoryCapCacheRefreshesAfterTTL(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	resetObservabilityHistoryForTest(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_700_000_000, 0)
+	observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, func() time.Time {
+		return now
+	})
+
+	if err := setObservabilityMemoryCapForTest("1"); err != nil {
+		t.Fatal(err)
+	}
+	svc := &ObservabilityService{}
+	if err := svc.RecordObservabilitySample(ObservabilityBucket2s, testObservabilitySample(1)); err != nil {
+		t.Fatal(err)
+	}
+	if applied := appliedObservabilityMemoryCapForTest(); applied != 1 {
+		t.Fatalf("expected initial cap 1, got %d", applied)
+	}
+
+	if err := setObservabilityMemoryCapForTest("32"); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(observabilityMemoryCapCacheTTL - time.Second)
+	if err := svc.RecordObservabilitySample(ObservabilityBucket2s, testObservabilitySample(2)); err != nil {
+		t.Fatal(err)
+	}
+	if applied := appliedObservabilityMemoryCapForTest(); applied != 1 {
+		t.Fatalf("cap refreshed before TTL expired: %d", applied)
+	}
+
+	now = now.Add(2 * time.Second)
+	if err := svc.RecordObservabilitySample(ObservabilityBucket2s, testObservabilitySample(3)); err != nil {
+		t.Fatal(err)
+	}
+	if applied := appliedObservabilityMemoryCapForTest(); applied != observabilityDefaultMemoryCapMB {
+		t.Fatalf("cap did not refresh after TTL: %d", applied)
+	}
+}
+
 func TestObservabilityMemoryCapSettingValidation(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	payload, err := json.Marshal(map[string]string{
@@ -101,9 +144,47 @@ func TestObservabilityMemoryCapSettingValidation(t *testing.T) {
 func resetObservabilityHistoryForTest(t *testing.T) {
 	t.Helper()
 	oldHistory := observabilityHistory
+	oldMemoryCapCache := observabilityMemoryCapCache
 	observabilityHistory = newObservabilityStore()
+	observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, time.Now)
 	t.Cleanup(func() {
 		observabilityHistory = oldHistory
+		observabilityMemoryCapCache = oldMemoryCapCache
+	})
+}
+
+func setObservabilityMemoryCapForTest(value string) error {
+	return database.GetDB().Model(model.Setting{}).
+		Where("key = ?", "observabilityMemoryCapMB").
+		Update("value", value).Error
+}
+
+func appliedObservabilityMemoryCapForTest() int {
+	observabilityHistory.mu.RLock()
+	defer observabilityHistory.mu.RUnlock()
+	return observabilityHistory.lastAppliedMemoryCap
+}
+
+func BenchmarkObservabilityHistoryForBucketRead(b *testing.B) {
+	oldHistory := observabilityHistory
+	observabilityHistory = newObservabilityStore()
+	b.Cleanup(func() { observabilityHistory = oldHistory })
+
+	observabilityHistory.mu.Lock()
+	for i := 0; i < observabilityDefaultBucketCaps[ObservabilityBucket2s]; i++ {
+		observabilityHistory.samples[ObservabilityBucket2s].append(testObservabilitySample(i))
+	}
+	observabilityHistory.mu.Unlock()
+
+	svc := &ObservabilityService{}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if _, err := svc.HistoryForBucket(ObservabilityBucket2s); err != nil {
+				b.Fatal(err)
+			}
+		}
 	})
 }
 
