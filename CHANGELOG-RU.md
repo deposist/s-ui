@@ -82,6 +82,13 @@
 - Добавлены views Telegram-настроек и Audit. Audit-страница использует
   cursor pagination и server-side фильтры `event`/`severity`.
 
+### Packaging и CI
+
+- Docker-сборка теперь содержит аргумент `CRONET_GO_VERSION`,
+  синхронизированный с `release.yml`, и документирует датированный fallback
+  на upstream `latest` prebuilt-артефакт `libcronet`, пока нет
+  commit-addressable assets.
+
 ### Тесты
 
 - Добавлено или расширено покрытие: миграция secret-настроек, redaction,

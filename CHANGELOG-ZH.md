@@ -74,6 +74,12 @@
 - 新增 Telegram 设置与 Audit 视图。Audit 视图使用 cursor 分页与服务端
   `event`/`severity` 过滤。
 
+### 打包与 CI
+
+- Docker 构建现在包含与 `release.yml` 同步的 `CRONET_GO_VERSION` 参数，并
+  记录在缺少按 commit 发布的上游资产时，临时回退到带日期说明的最新
+  prebuilt `libcronet` 资产。
+
 ### 测试
 
 - 为 secret 设置迁移、redaction、IP 监控缓存/enforce 行为、审计过滤与

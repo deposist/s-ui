@@ -80,6 +80,12 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - Added Telegram settings and Audit views. The Audit view uses cursor
   pagination and server-side `event`/`severity` filters.
 
+### Packaging and CI
+
+- Docker builds now include a `CRONET_GO_VERSION` argument synchronized with
+  `release.yml` and document the dated fallback to upstream's latest prebuilt
+  `libcronet` asset until commit-addressable assets are available.
+
 ### Tests
 
 - Added or extended regression coverage for secret settings migration,
