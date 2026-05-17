@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -548,26 +549,13 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	if err = s.validateSubscriptionPathSettings(settings); err != nil {
+	if err = s.validateAll(settings); err != nil {
 		return err
 	}
-	for key, obj := range settings {
+	for _, key := range sortedSettingKeys(settings) {
+		obj := settings[key]
 		if strings.HasSuffix(key, "HasSecret") {
 			continue
-		}
-		if key == "telegramProxyURL" && obj != "" {
-			if err = validateTelegramProxyURL(obj); err != nil {
-				return err
-			}
-		}
-		if err = validateTelegramSettingInput(key, obj); err != nil {
-			return err
-		}
-		if err = validateObservabilitySettingInput(key, obj); err != nil {
-			return err
-		}
-		if err = validateSubscriptionSettingInput(key, obj); err != nil {
-			return err
 		}
 		if isEncryptedSettingKey(key) {
 			if obj == "" {
@@ -578,22 +566,8 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 				return err
 			}
 		}
-		// Secure file existence check
-		if obj != "" && (key == "webCertFile" ||
-			key == "webKeyFile" ||
-			key == "subCertFile" ||
-			key == "subKeyFile") {
-			err = s.fileExists(obj)
-			if err != nil {
-				return common.NewError(" -> ", obj, " is not exists")
-			}
-		}
-
 		// Correct Pathes start and ends with `/`
-		if key == "webPath" ||
-			key == "subPath" ||
-			key == "subJsonPath" ||
-			key == "subClashPath" {
+		if isPathSetting(key) {
 			obj, err = normalizeAndValidatePathSetting(key, obj)
 			if err != nil {
 				return err
@@ -613,6 +587,70 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		}
 	}
 	return err
+}
+
+func (s *SettingService) validateAll(settings map[string]string) error {
+	if err := s.validateSubscriptionPathSettings(settings); err != nil {
+		return err
+	}
+	for _, key := range sortedSettingKeys(settings) {
+		obj := settings[key]
+		if strings.HasSuffix(key, "HasSecret") {
+			continue
+		}
+		if key == "telegramProxyURL" && obj != "" {
+			if err := validateTelegramProxyURL(obj); err != nil {
+				return err
+			}
+		}
+		if err := validateTelegramSettingInput(key, obj); err != nil {
+			return err
+		}
+		if err := validateObservabilitySettingInput(key, obj); err != nil {
+			return err
+		}
+		if err := validateSubscriptionSettingInput(key, obj); err != nil {
+			return err
+		}
+		if obj != "" && isCertificatePathSetting(key) {
+			if err := s.fileExists(obj); err != nil {
+				return common.NewError(" -> ", obj, " is not exists")
+			}
+		}
+		if isPathSetting(key) {
+			if _, err := normalizeAndValidatePathSetting(key, obj); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func sortedSettingKeys(settings map[string]string) []string {
+	keys := make([]string, 0, len(settings))
+	for key := range settings {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func isCertificatePathSetting(key string) bool {
+	switch key {
+	case "webCertFile", "webKeyFile", "subCertFile", "subKeyFile":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPathSetting(key string) bool {
+	switch key {
+	case "webPath", "subPath", "subJsonPath", "subClashPath":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *SettingService) GetSubJsonExt() (string, error) {

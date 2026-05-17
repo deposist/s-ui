@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -313,6 +314,48 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		return settingService.Save(tx, subPathConflict)
 	}); err == nil {
 		t.Fatal("expected subscription format path under subPath to be rejected")
+	}
+}
+
+func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
+	payloads := []json.RawMessage{
+		json.RawMessage(`{"telegramNotifyCpu":"true","telegramCpuThreshold":"75","observabilityMemoryCapMB":"64","subPath":"/sub-custom","subJsonPath":"/json-custom","subClashPath":"/clash-custom","subJsonEnable":"false"}`),
+		json.RawMessage(`{"subJsonEnable":"false","subClashPath":"/clash-custom","subJsonPath":"/json-custom","subPath":"/sub-custom","observabilityMemoryCapMB":"64","telegramCpuThreshold":"75","telegramNotifyCpu":"true"}`),
+	}
+	keys := []string{
+		"telegramNotifyCpu",
+		"telegramCpuThreshold",
+		"observabilityMemoryCapMB",
+		"subPath",
+		"subJsonPath",
+		"subClashPath",
+		"subJsonEnable",
+	}
+
+	var snapshots []map[string]string
+	for _, payload := range payloads {
+		settingService := initSettingTestDB(t)
+		if _, err := settingService.GetAllSetting(); err != nil {
+			t.Fatal(err)
+		}
+		if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+			return settingService.Save(tx, payload)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		snapshot := map[string]string{}
+		for _, key := range keys {
+			var setting model.Setting
+			if err := database.GetDB().Where("key = ?", key).First(&setting).Error; err != nil {
+				t.Fatal(err)
+			}
+			snapshot[key] = setting.Value
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+
+	if !reflect.DeepEqual(snapshots[0], snapshots[1]) {
+		t.Fatalf("settings differ for equivalent payload orders: %#v != %#v", snapshots[0], snapshots[1])
 	}
 }
 
