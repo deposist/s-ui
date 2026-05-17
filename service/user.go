@@ -190,7 +190,7 @@ func (s *UserService) GetUserTokens(username string) (*[]model.Tokens, error) {
 		Order("id desc").
 		Find(&token).Error
 	if err != nil && !database.IsNotFound(err) {
-		println(err.Error())
+		logger.Warning("get user tokens failed:", err)
 		return nil, err
 	}
 	for i := range token {
