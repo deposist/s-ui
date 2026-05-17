@@ -51,6 +51,66 @@ func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
 	}
 }
 
+func TestGetFinalSubURIFormatsIPv6Hosts(t *testing.T) {
+	tests := []struct {
+		name     string
+		host     string
+		settings map[string]string
+		want     string
+	}{
+		{
+			name: "loopback with explicit port",
+			host: "::1",
+			settings: map[string]string{
+				"subPort": "8443",
+				"subPath": "/sub/",
+			},
+			want: "http://[::1]:8443/sub/",
+		},
+		{
+			name: "documentation address with explicit port",
+			host: "2001:db8::1",
+			settings: map[string]string{
+				"subPort": "8080",
+				"subPath": "/sub/",
+			},
+			want: "http://[2001:db8::1]:8080/sub/",
+		},
+		{
+			name: "default https port omitted",
+			host: "::1",
+			settings: map[string]string{
+				"subPort":     "443",
+				"subCertFile": "/tmp/cert.pem",
+				"subKeyFile":  "/tmp/key.pem",
+				"subPath":     "/sub/",
+			},
+			want: "https://[::1]/sub/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			settingService := initSettingTestDB(t)
+			if _, err := settingService.GetAllSetting(); err != nil {
+				t.Fatal(err)
+			}
+			for key, value := range tt.settings {
+				if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			uri, err := settingService.GetFinalSubURI(tt.host)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uri != tt.want {
+				t.Fatalf("unexpected URI: %s, want %s", uri, tt.want)
+			}
+		})
+	}
+}
+
 func TestSaveRejectsReservedWebPath(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {

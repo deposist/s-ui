@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"net"
 	"net/url"
 	"os"
 	"runtime"
@@ -507,11 +508,21 @@ func (s *SettingService) GetFinalSubURI(host string) (string, error) {
 		host = (*allSetting)["subDomain"]
 	}
 	portValue := (*allSetting)["subPort"]
-	port := ":" + portValue
+	authority := hostForURL(host)
 	if (portValue == "80" && protocol == "http") || (portValue == "443" && protocol == "https") {
-		port = ""
+		portValue = ""
 	}
-	return protocol + "://" + host + port + (*allSetting)["subPath"], nil
+	if portValue != "" {
+		authority = net.JoinHostPort(host, portValue)
+	}
+	return protocol + "://" + authority + (*allSetting)["subPath"], nil
+}
+
+func hostForURL(host string) string {
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		return "[" + host + "]"
+	}
+	return host
 }
 
 func (s *SettingService) GetConfig() (string, error) {
