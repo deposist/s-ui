@@ -181,6 +181,11 @@ jobs:
     needs: build-linux
     runs-on: ubuntu-latest
     steps:
+      - name: Check out repository (for release notes)
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 1
+
       - name: Normalize release tag
         id: vars
         run: |
@@ -191,8 +196,18 @@ jobs:
           fi
           case "$TAG" in
             v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
-            *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;
+            *) TAG="v$TAG"; echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
           esac
+          case "$TAG" in
+            *-alpha*|*-beta*|*-rc*|*-pre*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          NOTES_FILE=".github/RELEASE_NOTES_${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "notes_path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "notes_path=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Download Linux build artifacts
         uses: actions/download-artifact@v8
@@ -207,5 +222,7 @@ jobs:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: s-ui ${{ steps.vars.outputs.tag }}
           target_commitish: ${{ github.sha }}
+          prerelease: ${{ steps.vars.outputs.prerelease == 'true' }}
+          body_path: ${{ steps.vars.outputs.notes_path }}
           fail_on_unmatched_files: true
           files: release-assets/*
