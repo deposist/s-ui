@@ -424,6 +424,10 @@ func IsSQLiteDB(file io.Reader) (bool, error) {
 // which makes SendSighup execute its normal signal logic.
 var sendSighupHook func() error
 
+func SetSendSighupHook(hook func() error) {
+	sendSighupHook = hook
+}
+
 func SendSighup() error {
 	if sendSighupHook != nil {
 		return sendSighupHook()
@@ -435,8 +439,7 @@ func SendSighup() error {
 	}
 
 	// Send SIGHUP to the current process
-	go func() {
-		time.Sleep(3 * time.Second)
+	time.AfterFunc(3*time.Second, func() {
 		if runtime.GOOS == "windows" {
 			err = process.Kill()
 		} else {
@@ -445,6 +448,6 @@ func SendSighup() error {
 		if err != nil {
 			logger.Error("send signal SIGHUP failed:", err)
 		}
-	}()
+	})
 	return nil
 }

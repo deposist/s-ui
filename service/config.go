@@ -17,13 +17,11 @@ import (
 )
 
 var (
-	corePtr             *core.Core
-	startCoreMu         sync.Mutex
-	startCoreInProgress bool
-	lastStartFailTime   time.Time
-	startCooldown       = 15 * time.Second
-	lastUpdateMu        sync.RWMutex
-	LastUpdate          int64
+	corePtr           *core.Core
+	lastStartFailTime time.Time
+	startCooldown     = 15 * time.Second
+	lastUpdateMu      sync.RWMutex
+	LastUpdate        int64
 )
 
 type ConfigService struct {
@@ -94,29 +92,22 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 // starts is bypassed, which is required for user-initiated restarts so the API
 // reflects the real start status instead of silently succeeding.
 func (s *ConfigService) startCore(force bool) error {
+	return defaultRestartManager.run(func() error {
+		return s.startCoreLocked(force)
+	})
+}
+
+func (s *ConfigService) startCoreLocked(force bool) error {
 	if corePtr == nil {
 		return common.NewError("core not initialized")
 	}
 	if corePtr.IsRunning() {
 		return nil
 	}
-	startCoreMu.Lock()
-	if startCoreInProgress {
-		startCoreMu.Unlock()
-		return nil
-	}
 	if !force && time.Since(lastStartFailTime) < startCooldown {
 		logger.Info("start core cooldown ", startCooldown/time.Second, " seconds")
-		startCoreMu.Unlock()
 		return nil
 	}
-	startCoreInProgress = true
-	startCoreMu.Unlock()
-	defer func() {
-		startCoreMu.Lock()
-		startCoreInProgress = false
-		startCoreMu.Unlock()
-	}()
 
 	logger.Info("starting core")
 	rawConfig, err := s.GetConfig("")
@@ -125,15 +116,11 @@ func (s *ConfigService) startCore(force bool) error {
 	}
 	err = corePtr.Start(*rawConfig)
 	if err != nil {
-		startCoreMu.Lock()
 		lastStartFailTime = time.Now()
-		startCoreMu.Unlock()
 		logger.Error("start sing-box err:", err.Error())
 		return err
 	}
-	startCoreMu.Lock()
 	lastStartFailTime = time.Time{}
-	startCoreMu.Unlock()
 	logger.Info("sing-box started")
 	return nil
 }
@@ -147,13 +134,15 @@ func (s *ConfigService) StartCore() error {
 // RestartCore is invoked from user actions; it bypasses the cooldown so the
 // caller observes the true start status.
 func (s *ConfigService) RestartCore() error {
-	if corePtr == nil {
-		return common.NewError("core not initialized")
-	}
-	if err := s.StopCore(); err != nil {
-		return err
-	}
-	return s.startCore(true)
+	return defaultRestartManager.run(func() error {
+		if corePtr == nil {
+			return common.NewError("core not initialized")
+		}
+		if err := s.StopCore(); err != nil {
+			return err
+		}
+		return s.startCoreLocked(true)
+	})
 }
 
 func (s *ConfigService) StopCore() error {

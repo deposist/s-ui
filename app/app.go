@@ -104,6 +104,7 @@ func (a *APP) Start() error {
 }
 
 func (a *APP) Stop() {
+	service.StopRestartManager()
 	a.cronJob.Stop()
 	err := a.subServer.Stop()
 	if err != nil {
