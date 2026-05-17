@@ -12,15 +12,32 @@ import (
 
 var (
 	logger      *logging.Logger
-	logBufferMu sync.Mutex
-	logBuffer   []bufferedLog
+	logBufferMu sync.RWMutex
+	logBuffer   = newLogRingBuffer(logBufferCapacity)
 )
+
+const logBufferCapacity = 10240
 
 type bufferedLog struct {
 	time   string
 	level  logging.Level
 	source string
 	log    string
+}
+
+type logRingBuffer struct {
+	items []bufferedLog
+	next  int
+	full  bool
+}
+
+func newLogRingBuffer(capacity int) *logRingBuffer {
+	if capacity < 1 {
+		capacity = 1
+	}
+	return &logRingBuffer{
+		items: make([]bufferedLog, 0, capacity),
+	}
 }
 
 func InitLogger(level logging.Level) {
@@ -173,12 +190,9 @@ func addToBuffer(source string, level string, newLog string) {
 	t := time.Now()
 	logBufferMu.Lock()
 	defer logBufferMu.Unlock()
-	if len(logBuffer) >= 10240 {
-		logBuffer = logBuffer[1:]
-	}
 
 	logLevel, _ := logging.LogLevel(level)
-	logBuffer = append(logBuffer, bufferedLog{
+	logBuffer.append(bufferedLog{
 		time:   t.Format("2006/01/02 15:04:05"),
 		level:  logLevel,
 		source: source,
@@ -194,10 +208,12 @@ func GetLogsFiltered(c int, level string, source string, filter string) []string
 	var output []string
 	logLevel, _ := logging.LogLevel(level)
 
-	logBufferMu.Lock()
-	defer logBufferMu.Unlock()
-	for i := len(logBuffer) - 1; i >= 0 && len(output) < c; i-- {
-		entry := logBuffer[i]
+	logBufferMu.RLock()
+	snapshot := logBuffer.snapshot()
+	logBufferMu.RUnlock()
+
+	for i := len(snapshot) - 1; i >= 0 && len(output) < c; i-- {
+		entry := snapshot[i]
 		if source != "" && entry.source != source {
 			continue
 		}
@@ -209,4 +225,34 @@ func GetLogsFiltered(c int, level string, source string, filter string) []string
 		}
 	}
 	return output
+}
+
+func (r *logRingBuffer) append(entry bufferedLog) {
+	if cap(r.items) == 0 {
+		r.items = make([]bufferedLog, 0, 1)
+	}
+	if len(r.items) < cap(r.items) {
+		r.items = append(r.items, entry)
+		if len(r.items) == cap(r.items) {
+			r.full = true
+			r.next = 0
+		}
+		return
+	}
+	r.items[r.next] = entry
+	r.next = (r.next + 1) % len(r.items)
+	r.full = true
+}
+
+func (r *logRingBuffer) snapshot() []bufferedLog {
+	if len(r.items) == 0 {
+		return nil
+	}
+	out := make([]bufferedLog, 0, len(r.items))
+	if !r.full {
+		return append(out, r.items...)
+	}
+	out = append(out, r.items[r.next:]...)
+	out = append(out, r.items[:r.next]...)
+	return out
 }
