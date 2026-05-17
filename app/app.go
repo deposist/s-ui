@@ -113,6 +113,11 @@ func (a *APP) Stop() {
 	if err != nil {
 		logger.Warning("stop Core err:", err)
 	}
+	tokenCtx, tokenCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer tokenCancel()
+	if err := service.StopTokenUseDebouncer(tokenCtx); err != nil {
+		logger.Warning("stop token use debouncer err:", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := service.StopAuditWriter(ctx); err != nil {

@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
@@ -75,5 +77,74 @@ func TestAddTokenValidatesScopeAllowlist(t *testing.T) {
 		if !apiTokenScopeAllowed(token.Scope) {
 			t.Fatalf("stored invalid scope: %#v", token)
 		}
+	}
+}
+
+func TestTokenUseDebouncerKeepsLatestUseUntilFlush(t *testing.T) {
+	written := make(chan map[uint]tokenUseUpdate, 1)
+	debouncer := newTokenUseDebouncer(time.Hour, func(updates map[uint]tokenUseUpdate) error {
+		copied := make(map[uint]tokenUseUpdate, len(updates))
+		for id, update := range updates {
+			copied[id] = update
+		}
+		written <- copied
+		return nil
+	})
+
+	debouncer.Record(7, "198.51.100.1", 100)
+	debouncer.Record(7, "198.51.100.2", 200)
+	if err := debouncer.Flush(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	updates := <-written
+	if len(updates) != 1 {
+		t.Fatalf("expected one debounced token update, got %#v", updates)
+	}
+	if updates[7].ip != "198.51.100.2" || updates[7].ts != 200 {
+		t.Fatalf("debouncer did not keep latest token use: %#v", updates[7])
+	}
+}
+
+func TestRecordTokenUseFlushesBatchedUpdate(t *testing.T) {
+	initSettingTestDB(t)
+	resetTokenUseDebouncerForTest()
+	t.Cleanup(resetTokenUseDebouncerForTest)
+
+	userService := &UserService{}
+	if err := database.GetDB().Create(&model.Tokens{
+		Desc:      "tracked",
+		TokenHash: "hash",
+		Enabled:   true,
+		UserId:    1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var token model.Tokens
+	if err := database.GetDB().Where("desc = ?", "tracked").First(&token).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := userService.RecordTokenUse(token.Id, "198.51.100.10"); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().First(&token, token.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if token.LastUsedAt != 0 || token.LastUsedIP != "" {
+		t.Fatalf("token use was written before flush: %#v", token)
+	}
+
+	if err := userService.RecordTokenUse(token.Id, "198.51.100.11"); err != nil {
+		t.Fatal(err)
+	}
+	if err := StopTokenUseDebouncer(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().First(&token, token.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if token.LastUsedAt == 0 || token.LastUsedIP != "198.51.100.11" {
+		t.Fatalf("token use was not flushed with latest value: %#v", token)
 	}
 }

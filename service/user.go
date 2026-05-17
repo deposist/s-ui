@@ -253,12 +253,8 @@ func (s *UserService) SetTokenEnabled(id string, enabled bool) error {
 }
 
 func (s *UserService) RecordTokenUse(id uint, ip string) error {
-	return database.GetDB().Model(model.Tokens{}).
-		Where("id = ?", id).
-		Updates(map[string]interface{}{
-			"last_used_at": time.Now().Unix(),
-			"last_used_ip": ip,
-		}).Error
+	getTokenUseDebouncer().Record(id, ip, time.Now().Unix())
+	return nil
 }
 
 func (s *UserService) HashAPIToken(token string) (string, error) {
