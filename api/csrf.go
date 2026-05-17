@@ -47,7 +47,7 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 }
 
 func (a *APIHandler) csrfMiddleware(c *gin.Context) {
-	if !csrfProtectedMethod(c.Request.Method) || csrfExemptPath(c.Request.URL.Path) {
+	if !csrfProtectedMethod(c.Request.Method) || csrfExemptPath(c.Request.URL.Path, a.csrfLoginPath) {
 		c.Next()
 		return
 	}
@@ -79,8 +79,35 @@ func csrfProtectedMethod(method string) bool {
 	}
 }
 
-func csrfExemptPath(path string) bool {
-	return strings.HasSuffix(path, "/api/login")
+func (a *APIHandler) cachedCSRFLoginPath() string {
+	webPath, err := a.SettingService.GetWebPath()
+	if err != nil {
+		webPath = "/"
+	}
+	return csrfLoginPathForBase(webPath)
+}
+
+func csrfLoginPathForBase(basePath string) string {
+	return joinURL(basePath, "api/login")
+}
+
+func csrfExemptPath(path string, loginPath string) bool {
+	return path != "" && path == loginPath
+}
+
+func joinURL(base string, child string) string {
+	base = strings.TrimSpace(base)
+	child = strings.TrimLeft(strings.TrimSpace(child), "/")
+	if base == "" {
+		base = "/"
+	}
+	if !strings.HasPrefix(base, "/") {
+		base = "/" + base
+	}
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+	return base + child
 }
 
 func csrfForbidden(c *gin.Context, reason string) {

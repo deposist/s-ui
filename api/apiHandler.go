@@ -10,7 +10,8 @@ import (
 
 type APIHandler struct {
 	ApiService
-	apiv2 *APIv2Handler
+	apiv2         *APIv2Handler
+	csrfLoginPath string
 }
 
 func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler) {
@@ -21,6 +22,7 @@ func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler) {
 }
 
 func (a *APIHandler) initRouter(g *gin.RouterGroup) {
+	a.csrfLoginPath = a.cachedCSRFLoginPath()
 	g.Use(func(c *gin.Context) {
 		path := c.Request.URL.Path
 		if !strings.HasSuffix(path, "login") && !strings.HasSuffix(path, "logout") {

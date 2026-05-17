@@ -89,18 +89,22 @@ func TestCSRFMiddlewareRequiresTokenForMutatingBrowserAPI(t *testing.T) {
 
 func TestCSRFExemptPathOnlyAllowsAPILogin(t *testing.T) {
 	tests := []struct {
+		name string
+		base string
 		path string
 		want bool
 	}{
-		{path: "/api/login", want: true},
-		{path: "/app/api/login", want: true},
-		{path: "/api/admin/login", want: false},
-		{path: "/api/sublogin", want: false},
-		{path: "/login", want: false},
+		{name: "exact base path", base: "/app/", path: "/app/api/login", want: true},
+		{name: "suffix match rejected", base: "/app/", path: "/api/login", want: false},
+		{name: "empty path rejected", base: "/app/", path: "", want: false},
+		{name: "without base url", base: "/", path: "/api/login", want: true},
+		{name: "similar suffix rejected", base: "/", path: "/api/sublogin", want: false},
 	}
 	for _, tt := range tests {
-		if got := csrfExemptPath(tt.path); got != tt.want {
-			t.Fatalf("csrfExemptPath(%q)=%v, want %v", tt.path, got, tt.want)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := csrfExemptPath(tt.path, csrfLoginPathForBase(tt.base)); got != tt.want {
+				t.Fatalf("csrfExemptPath(%q, %q)=%v, want %v", tt.path, csrfLoginPathForBase(tt.base), got, tt.want)
+			}
+		})
 	}
 }
