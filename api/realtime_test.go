@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -24,6 +25,12 @@ import (
 func resetRealtimeForTest() {
 	wsTokens.Lock()
 	wsTokens.tokens = map[string]realtimeToken{}
+	wsTokens.lastSweep = time.Time{}
+	if wsTokens.sweepTimer != nil {
+		wsTokens.sweepTimer.Stop()
+		wsTokens.sweepTimer = nil
+	}
+	wsTokens.sweepGeneration++
 	wsTokens.Unlock()
 	realtime.CloseAll("test_reset")
 }
@@ -57,6 +64,57 @@ func TestConsumeWSTokenIsOneTime(t *testing.T) {
 	}
 	if _, ok := consumeWSToken("token"); ok {
 		t.Fatal("expected second consume to fail")
+	}
+}
+
+func TestWSTokenSweepRemovesExpiredUnusedTokens(t *testing.T) {
+	resetRealtimeForTest()
+	now := time.Now()
+
+	wsTokens.Lock()
+	wsTokens.tokens["expired"] = realtimeToken{user: "admin", expiresAt: now.Add(-time.Second)}
+	wsTokens.tokens["active"] = realtimeToken{user: "admin", expiresAt: now.Add(time.Minute)}
+	sweepWSTokensLocked(now)
+	_, expiredOK := wsTokens.tokens["expired"]
+	_, activeOK := wsTokens.tokens["active"]
+	lastSweep := wsTokens.lastSweep
+	wsTokens.Unlock()
+
+	if expiredOK {
+		t.Fatal("expired websocket token was not swept")
+	}
+	if !activeOK {
+		t.Fatal("active websocket token was swept")
+	}
+	if !lastSweep.Equal(now) {
+		t.Fatalf("lastSweep=%s, want %s", lastSweep, now)
+	}
+}
+
+func TestWSTokenCapDropsOldestByExpiry(t *testing.T) {
+	resetRealtimeForTest()
+	base := time.Now()
+
+	wsTokens.Lock()
+	for i := 0; i < maxWSTokens+2; i++ {
+		token := fmt.Sprintf("token-%04d", i)
+		wsTokens.tokens[token] = realtimeToken{user: "admin", expiresAt: base.Add(time.Duration(i) * time.Millisecond)}
+	}
+	enforceWSTokenCapLocked()
+	count := len(wsTokens.tokens)
+	_, firstOK := wsTokens.tokens["token-0000"]
+	_, secondOK := wsTokens.tokens["token-0001"]
+	_, thirdOK := wsTokens.tokens["token-0002"]
+	wsTokens.Unlock()
+
+	if count != maxWSTokens {
+		t.Fatalf("token count=%d, want %d", count, maxWSTokens)
+	}
+	if firstOK || secondOK {
+		t.Fatal("oldest websocket tokens were not dropped")
+	}
+	if !thirdOK {
+		t.Fatal("newer websocket token was dropped")
 	}
 }
 

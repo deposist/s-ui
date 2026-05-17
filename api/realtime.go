@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,6 +27,9 @@ const (
 	maxWSPerIP    = 20
 	wsQueueSize   = 16
 	wsSubprotocol = "sui.realtime"
+
+	wsTokenSweepInterval = time.Minute
+	maxWSTokens          = 4096
 )
 
 var (
@@ -40,7 +44,10 @@ type realtimeToken struct {
 
 var wsTokens = struct {
 	sync.Mutex
-	tokens map[string]realtimeToken
+	tokens          map[string]realtimeToken
+	lastSweep       time.Time
+	sweepTimer      *time.Timer
+	sweepGeneration uint64
 }{
 	tokens: map[string]realtimeToken{},
 }
@@ -57,13 +64,18 @@ func (a *ApiService) IssueWSToken(c *gin.Context) {
 	if !a.validateWSOrigin(c, user) {
 		return
 	}
+	now := time.Now()
+	expiresAt := now.Add(wsTokenTTL)
 	token := common.Random(32)
 	wsTokens.Lock()
-	wsTokens.tokens[token] = realtimeToken{user: user, expiresAt: time.Now().Add(wsTokenTTL)}
+	maybeSweepWSTokensLocked(now)
+	wsTokens.tokens[token] = realtimeToken{user: user, expiresAt: expiresAt}
+	enforceWSTokenCapLocked()
+	scheduleWSTokenSweepLocked()
 	wsTokens.Unlock()
 	jsonObj(c, gin.H{
 		"token":     token,
-		"expiresAt": time.Now().Add(wsTokenTTL).Unix(),
+		"expiresAt": expiresAt.Unix(),
 	}, nil)
 }
 
@@ -315,4 +327,67 @@ func consumeWSToken(token string) (string, bool) {
 		return "", false
 	}
 	return data.user, true
+}
+
+func maybeSweepWSTokensLocked(now time.Time) {
+	if wsTokens.lastSweep.IsZero() || now.Sub(wsTokens.lastSweep) > wsTokenSweepInterval {
+		sweepWSTokensLocked(now)
+	}
+}
+
+func runWSTokenSweep(generation uint64) {
+	wsTokens.Lock()
+	defer wsTokens.Unlock()
+	if generation != wsTokens.sweepGeneration {
+		return
+	}
+	wsTokens.sweepTimer = nil
+	sweepWSTokensLocked(time.Now())
+	scheduleWSTokenSweepLocked()
+}
+
+func scheduleWSTokenSweepLocked() {
+	if len(wsTokens.tokens) == 0 || wsTokens.sweepTimer != nil {
+		return
+	}
+	generation := wsTokens.sweepGeneration
+	wsTokens.sweepTimer = time.AfterFunc(wsTokenSweepInterval, func() {
+		runWSTokenSweep(generation)
+	})
+}
+
+func sweepWSTokensLocked(now time.Time) {
+	for token, data := range wsTokens.tokens {
+		if now.After(data.expiresAt) {
+			delete(wsTokens.tokens, token)
+		}
+	}
+	wsTokens.lastSweep = now
+	enforceWSTokenCapLocked()
+}
+
+func enforceWSTokenCapLocked() {
+	overflow := len(wsTokens.tokens) - maxWSTokens
+	if overflow <= 0 {
+		return
+	}
+	entries := make([]struct {
+		token     string
+		expiresAt time.Time
+	}, 0, len(wsTokens.tokens))
+	for token, data := range wsTokens.tokens {
+		entries = append(entries, struct {
+			token     string
+			expiresAt time.Time
+		}{token: token, expiresAt: data.expiresAt})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].expiresAt.Equal(entries[j].expiresAt) {
+			return entries[i].token < entries[j].token
+		}
+		return entries[i].expiresAt.Before(entries[j].expiresAt)
+	})
+	for i := 0; i < overflow; i++ {
+		delete(wsTokens.tokens, entries[i].token)
+	}
 }
