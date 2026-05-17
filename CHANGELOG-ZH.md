@@ -79,6 +79,7 @@
 - Docker 构建现在包含与 `release.yml` 同步的 `CRONET_GO_VERSION` 参数，并
   记录在缺少按 commit 发布的上游资产时，临时回退到带日期说明的最新
   prebuilt `libcronet` 资产。
+- Docker 镜像默认 `TZ` 现在与面板默认值 `Europe/Moscow` 保持一致。
 
 ### 测试
 

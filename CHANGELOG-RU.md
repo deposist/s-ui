@@ -88,6 +88,8 @@
   синхронизированный с `release.yml`, и документирует датированный fallback
   на upstream `latest` prebuilt-артефакт `libcronet`, пока нет
   commit-addressable assets.
+- Дефолтный `TZ` Docker-образа теперь совпадает с дефолтом панели
+  `Europe/Moscow`.
 
 ### Тесты
 

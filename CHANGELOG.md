@@ -21,3 +21,5 @@ cookie contains only a signed session ID while session data is stored in the
 local `sessions` table.
 Docker builds now document the `cronet-go` source pin used by release builds
 and the dated fallback to upstream's latest prebuilt `libcronet` asset.
+The Docker image default timezone now matches the panel default
+`Europe/Moscow`.

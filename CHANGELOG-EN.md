@@ -85,6 +85,8 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - Docker builds now include a `CRONET_GO_VERSION` argument synchronized with
   `release.yml` and document the dated fallback to upstream's latest prebuilt
   `libcronet` asset until commit-addressable assets are available.
+- The Docker image default `TZ` now matches the panel default
+  `Europe/Moscow`.
 
 ### Tests
 

@@ -45,7 +45,8 @@ RUN if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6"
     -o sui main.go
 
 FROM alpine
-ENV TZ=Asia/Shanghai
+# Match defaultValueMap["timeLocation"] in service settings.
+ENV TZ=Europe/Moscow
 WORKDIR /app
 RUN set -ex && apk add --no-cache --upgrade bash tzdata ca-certificates nftables
 COPY --from=backend-builder /app/sui /app/libcronet.so /app/
