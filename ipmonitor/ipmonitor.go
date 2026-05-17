@@ -2,6 +2,7 @@ package ipmonitor
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"strconv"
@@ -51,6 +52,13 @@ var allowCache = struct {
 	byClient: map[string]allowCacheEntry{},
 }
 
+var allowCacheRefresh = struct {
+	sync.Mutex
+	inFlight map[string]struct{}
+}{
+	inFlight: map[string]struct{}{},
+}
+
 var securityEvents = struct {
 	sync.Mutex
 	lastEmittedAt map[string]time.Time
@@ -94,16 +102,13 @@ func Allow(clientName string, ip string) bool {
 	if clientName == "" || ip == "" {
 		return true
 	}
-	db := database.GetDB()
-	if db == nil {
-		return true
-	}
 	ipHash, err := hashIP(ip)
 	if err != nil {
 		return true
 	}
 	entry, ok := cachedClient(clientName, time.Now())
 	if !ok {
+		refreshClientAsync(clientName)
 		return true
 	}
 	if entry.mode != ModeEnforce || entry.limit <= 0 {
@@ -129,6 +134,24 @@ func Allow(clientName string, ip string) bool {
 		"count":  len(seen),
 	})
 	return false
+}
+
+func WarmUp() error {
+	db := database.GetDB()
+	if db == nil {
+		return nil
+	}
+	if _, err := getInstallSalt(); err != nil {
+		return err
+	}
+	entries, err := loadActiveEnforceEntries(db, time.Now())
+	if err != nil {
+		return err
+	}
+	allowCache.Lock()
+	allowCache.byClient = entries
+	allowCache.Unlock()
+	return nil
 }
 
 func publishSecurityEvent(clientName string, kind string, payload map[string]any) {
@@ -270,13 +293,8 @@ func cachedClient(clientName string, now time.Time) (allowCacheEntry, bool) {
 	if entry, ok := allowCache.byClient[clientName]; ok && now.Before(entry.expiresAt) {
 		return cloneCacheEntry(entry), true
 	}
-	entry, ok := loadCacheEntry(clientName, now)
-	if !ok {
-		delete(allowCache.byClient, clientName)
-		return allowCacheEntry{}, false
-	}
-	allowCache.byClient[clientName] = entry
-	return cloneCacheEntry(entry), true
+	delete(allowCache.byClient, clientName)
+	return allowCacheEntry{}, false
 }
 
 func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
@@ -285,7 +303,10 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 		return allowCacheEntry{}, false
 	}
 	var client model.Client
-	if err := db.Model(model.Client{}).Select("limit_ip, ip_limit_mode").Where("name = ?", clientName).First(&client).Error; err != nil {
+	if err := db.Model(model.Client{}).Select("enable, limit_ip, ip_limit_mode").Where("name = ?", clientName).First(&client).Error; err != nil {
+		return allowCacheEntry{}, false
+	}
+	if !client.Enable {
 		return allowCacheEntry{}, false
 	}
 	entry := allowCacheEntry{
@@ -306,6 +327,91 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 		}
 	}
 	return entry, true
+}
+
+type activeEnforceCacheRow struct {
+	ClientName  string
+	LimitIP     int
+	IPLimitMode string
+	IP          sql.NullString
+	IPHash      sql.NullString
+}
+
+func loadActiveEnforceEntries(db *gorm.DB, now time.Time) (map[string]allowCacheEntry, error) {
+	rows := make([]activeEnforceCacheRow, 0)
+	err := db.Raw(`
+		SELECT
+			clients.name AS client_name,
+			clients.limit_ip,
+			clients.ip_limit_mode,
+			client_ips.ip,
+			client_ips.ip_hash
+		FROM clients
+		LEFT JOIN client_ips ON client_ips.client_name = clients.name
+		WHERE clients.enable = true
+			AND clients.ip_limit_mode = ?
+			AND clients.limit_ip > 0
+		ORDER BY clients.name
+	`, ModeEnforce).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	entries := make(map[string]allowCacheEntry)
+	for _, row := range rows {
+		entry, ok := entries[row.ClientName]
+		if !ok {
+			entry = allowCacheEntry{
+				limit:     row.LimitIP,
+				mode:      row.IPLimitMode,
+				ips:       map[string]struct{}{},
+				expiresAt: now.Add(allowCacheTTL),
+			}
+		}
+		ipHash := ""
+		if row.IPHash.Valid {
+			ipHash = row.IPHash.String
+		}
+		if ipHash == "" && row.IP.Valid {
+			ipHash = hashLegacyIPValue(row.IP.String)
+		}
+		if ipHash != "" {
+			entry.ips[ipHash] = struct{}{}
+		}
+		entries[row.ClientName] = entry
+	}
+	return entries, nil
+}
+
+func refreshClientAsync(clientName string) {
+	allowCacheRefresh.Lock()
+	if _, ok := allowCacheRefresh.inFlight[clientName]; ok {
+		allowCacheRefresh.Unlock()
+		return
+	}
+	allowCacheRefresh.inFlight[clientName] = struct{}{}
+	allowCacheRefresh.Unlock()
+
+	go func() {
+		defer func() {
+			allowCacheRefresh.Lock()
+			delete(allowCacheRefresh.inFlight, clientName)
+			allowCacheRefresh.Unlock()
+		}()
+		refreshClient(clientName, time.Now())
+	}()
+}
+
+func refreshClient(clientName string, now time.Time) bool {
+	entry, ok := loadCacheEntry(clientName, now)
+	allowCache.Lock()
+	defer allowCache.Unlock()
+	if !ok {
+		delete(allowCache.byClient, clientName)
+		return false
+	}
+	allowCache.byClient[clientName] = entry
+	return true
 }
 
 func cloneCacheEntry(entry allowCacheEntry) allowCacheEntry {

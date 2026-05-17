@@ -24,6 +24,9 @@ func initIPMonitorTestDB(t *testing.T) {
 	allowCache.Lock()
 	allowCache.byClient = map[string]allowCacheEntry{}
 	allowCache.Unlock()
+	allowCacheRefresh.Lock()
+	allowCacheRefresh.inFlight = map[string]struct{}{}
+	allowCacheRefresh.Unlock()
 	securityEvents.Lock()
 	securityEvents.lastEmittedAt = map[string]time.Time{}
 	securityEvents.Unlock()
@@ -114,6 +117,7 @@ func TestAllowEnforceRejectsNewIPOverLimit(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	warmUpIPMonitorForTest(t)
 	Record("alice", "198.51.100.10")
 	if !Allow("alice", "198.51.100.10") {
 		t.Fatal("known IP should be allowed")
@@ -141,6 +145,7 @@ func TestAllowEnforceRejectPublishesSecurityEventWithoutRawIP(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	warmUpIPMonitorForTest(t)
 	ch := make(chan realtime.Event, 1)
 	unregister := realtime.Register(&realtime.ClientHandle{
 		User:   "admin",
@@ -187,6 +192,7 @@ func TestAllowEnforceRejectSecurityEventDebounced(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	warmUpIPMonitorForTest(t)
 	ch := make(chan realtime.Event, 100)
 	unregister := realtime.Register(&realtime.ClientHandle{
 		User:   "admin",
@@ -312,7 +318,7 @@ func TestRecordFlushStoresRawDisplayOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestAllowUsesCacheUntilExpiry(t *testing.T) {
+func TestWarmUpLoadsActiveEnforceClients(t *testing.T) {
 	initIPMonitorTestDB(t)
 	if err := database.GetDB().Create(&model.Client{
 		Enable:      true,
@@ -332,15 +338,12 @@ func TestAllowUsesCacheUntilExpiry(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	warmUpIPMonitorForTest(t)
 	queryCounter := &countingGormLogger{}
 	database.GetDB().Config.Logger = queryCounter
 
 	if !Allow("alice", "198.51.100.10") {
 		t.Fatal("known IP should be allowed")
-	}
-	afterMiss := queryCounter.Count()
-	if afterMiss == 0 {
-		t.Fatal("expected cache miss to query database")
 	}
 	for i := 0; i < 100; i++ {
 		if !Allow("alice", "198.51.100.10") {
@@ -350,9 +353,38 @@ func TestAllowUsesCacheUntilExpiry(t *testing.T) {
 			t.Fatal("new IP over limit should be rejected")
 		}
 	}
-	if got := queryCounter.Count(); got != afterMiss {
-		t.Fatalf("expected cache hits to avoid database queries, got %d after initial %d", got, afterMiss)
+	if got := queryCounter.Count(); got != 0 {
+		t.Fatalf("expected warm cache to avoid database queries, got %d", got)
 	}
+}
+
+func TestAllowFailOpenOnCacheMissAndRefreshesAsync(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := database.GetDB().Create(&model.Client{
+		Enable:      true,
+		Name:        "alice",
+		LimitIP:     1,
+		IPLimitMode: ModeEnforce,
+		Inbounds:    []byte("[]"),
+		Links:       []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Create(&model.ClientIP{
+		ClientName: "alice",
+		IP:         "198.51.100.10",
+		FirstSeen:  1,
+		LastSeen:   1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if !Allow("alice", "198.51.100.11") {
+		t.Fatal("cache miss should fail open while async refresh starts")
+	}
+	waitForIPMonitorCondition(t, time.Second, func() bool {
+		return !Allow("alice", "198.51.100.11")
+	})
 }
 
 func TestAllowCacheConcurrent10K(t *testing.T) {
@@ -367,6 +399,7 @@ func TestAllowCacheConcurrent10K(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	warmUpIPMonitorForTest(t)
 	Record("alice", "198.51.100.10")
 	if !Allow("alice", "198.51.100.10") {
 		t.Fatal("known pending IP should be allowed")
@@ -396,6 +429,25 @@ func TestAllowCacheConcurrent10K(t *testing.T) {
 	if got := queryCounter.Count(); got != 0 {
 		t.Fatalf("expected warmed cache to avoid database queries, got %d", got)
 	}
+}
+
+func warmUpIPMonitorForTest(t *testing.T) {
+	t.Helper()
+	if err := WarmUp(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func waitForIPMonitorCondition(t *testing.T, timeout time.Duration, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("condition was not met before timeout")
 }
 
 type countingGormLogger struct {

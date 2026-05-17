@@ -10,6 +10,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/core"
 	"github.com/deposist/s-ui-rus-inst/cronjob"
 	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/ipmonitor"
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/sub"
@@ -53,6 +54,9 @@ func (a *APP) Init() error {
 
 	// Init Setting
 	a.SettingService.GetAllSetting()
+	if err := ipmonitor.WarmUp(); err != nil {
+		return err
+	}
 
 	a.core = core.NewCore()
 
