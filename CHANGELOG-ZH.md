@@ -85,6 +85,9 @@
   `SUI_MIGRATE_ONLY=1`。
 - 迁移 runner 现在只会在事务成功 commit 后执行 SQLite WAL checkpoint，修复
   从 `1.4.x` 升级到 `1.5.1-beta` 时可能出现的 `database table is locked`。
+- 管理员前端不再依赖用于 base path 的 inline script，因此严格的 Content
+  Security Policy 可以生效，自定义 web path 也会正确用于 API、CSRF 和
+  realtime fallback 请求。
 
 ### 测试
 

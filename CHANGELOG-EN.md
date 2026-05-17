@@ -93,6 +93,9 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - The migration runner now performs the SQLite WAL checkpoint only after a
   successful transaction commit, fixing `database table is locked` failures
   seen during `1.4.x` to `1.5.1-beta` upgrades.
+- The admin frontend no longer depends on an inline base-path script, so the
+  strict Content Security Policy is honored and custom web paths route API,
+  CSRF and realtime fallback requests correctly.
 
 ### Tests
 

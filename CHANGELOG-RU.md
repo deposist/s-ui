@@ -98,6 +98,9 @@
 - Миграционный runner теперь выполняет SQLite WAL checkpoint только после
   успешного commit транзакции, что исправляет `database table is locked` при
   обновлении с `1.4.x` до `1.5.1-beta`.
+- Админский фронтенд больше не зависит от inline-скрипта с base path:
+  строгий Content Security Policy соблюдается, а кастомные web path корректно
+  применяются к API, CSRF и realtime fallback-запросам.
 
 ### Тесты
 

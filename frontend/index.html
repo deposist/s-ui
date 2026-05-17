@@ -5,12 +5,7 @@
   <meta charset="UTF-8" />
   <link rel="icon" href="assets/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script>
-    window.BASE_URL = "{{ .BASE_URL }}"
-
-    // Dev Mode
-    if (window.BASE_URL.charAt(0) === '{') window.BASE_URL = "/app/"
-  </script>
+  <meta name="s-ui-base-url" content="{{ .BASE_URL }}" />
   <title>S-UI</title>
 </head>
 

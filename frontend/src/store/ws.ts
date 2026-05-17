@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import HttpUtils from '@/plugins/httputil'
 import Data from '@/store/modules/data'
 import { clearCSRFToken } from '@/store/csrf'
+import { getBaseUrl } from '@/plugins/base-url'
 
 export type WsConnectionState = 'connected' | 'reconnecting' | 'degraded'
 
@@ -63,7 +64,7 @@ export class WsRuntime {
     try {
       const ws = this.deps.createSocket(this.wsURL(), token)
       this.ws = ws
-      this.noOpenTimer = this.timer().setTimeout(() => {
+      this.noOpenTimer = this.setRuntimeTimeout(() => {
         this.ws = null
         ws.onclose = null
         ws.close()
@@ -95,7 +96,7 @@ export class WsRuntime {
         }
         this.setState('reconnecting')
         const retry = this.closeCount - 1
-        this.reconnectTimer = this.timer().setTimeout(() => {
+        this.reconnectTimer = this.setRuntimeTimeout(() => {
           void this.connect()
         }, reconnectDelayForRetry(retry))
       }
@@ -110,7 +111,7 @@ export class WsRuntime {
   disconnect() {
     this.clearNoOpenTimer()
     if (this.reconnectTimer) {
-      this.timer().clearTimeout(this.reconnectTimer)
+      this.clearRuntimeTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
     if (this.ws) {
@@ -127,20 +128,20 @@ export class WsRuntime {
     this.clearNoOpenTimer()
     this.setState('degraded')
     if (this.fallbackTimer) return
-    this.fallbackTimer = this.timer().setInterval(() => {
+    this.fallbackTimer = this.setRuntimeInterval(() => {
       void this.deps.loadData()
     }, fallbackPollMs)
   }
 
   private stopFallback() {
     if (!this.fallbackTimer) return
-    this.timer().clearInterval(this.fallbackTimer)
+    this.clearRuntimeInterval(this.fallbackTimer)
     this.fallbackTimer = null
   }
 
   private clearNoOpenTimer() {
     if (!this.noOpenTimer) return
-    this.timer().clearTimeout(this.noOpenTimer)
+    this.clearRuntimeTimeout(this.noOpenTimer)
     this.noOpenTimer = null
   }
 
@@ -152,17 +153,28 @@ export class WsRuntime {
   private wsURL() {
     const loc = this.deps.location ?? window.location
     const scheme = loc.protocol === 'https:' ? 'wss' : 'ws'
-    const base = this.deps.baseUrl ?? ((window as any).BASE_URL ?? '/')
+    const base = this.deps.baseUrl ?? getBaseUrl()
     return `${scheme}://${loc.host}${base}api/realtime/ws`
   }
 
-  private timer() {
-    return {
-      setTimeout: this.deps.setTimeout ?? setTimeout,
-      clearTimeout: this.deps.clearTimeout ?? clearTimeout,
-      setInterval: this.deps.setInterval ?? setInterval,
-      clearInterval: this.deps.clearInterval ?? clearInterval,
-    }
+  private setRuntimeTimeout(callback: () => void, delay: number) {
+    const timer = this.deps.setTimeout ?? globalThis.setTimeout.bind(globalThis)
+    return timer(callback, delay)
+  }
+
+  private clearRuntimeTimeout(timerID: ReturnType<typeof setTimeout>) {
+    const clear = this.deps.clearTimeout ?? globalThis.clearTimeout.bind(globalThis)
+    clear(timerID)
+  }
+
+  private setRuntimeInterval(callback: () => void, delay: number) {
+    const timer = this.deps.setInterval ?? globalThis.setInterval.bind(globalThis)
+    return timer(callback, delay)
+  }
+
+  private clearRuntimeInterval(timerID: ReturnType<typeof setInterval>) {
+    const clear = this.deps.clearInterval ?? globalThis.clearInterval.bind(globalThis)
+    clear(timerID)
   }
 }
 

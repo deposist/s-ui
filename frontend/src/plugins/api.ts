@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { clearCSRFToken, getCSRFToken } from '@/store/csrf'
+import { getBaseUrl } from '@/plugins/base-url'
 
 const api = axios.create({
-    baseURL: './',
+    baseURL: getBaseUrl(),
     headers: {
         common: {
             'X-Requested-With': 'XMLHttpRequest',

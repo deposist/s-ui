@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Login from '@/views/Login.vue'
 import Data from '@/store/modules/data'
 import Ws from '@/store/ws'
+import { getBaseUrl } from '@/plugins/base-url'
 
 const routes = [
   {
@@ -90,7 +91,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory((window as any).BASE_URL),
+  history: createWebHistory(getBaseUrl()),
   routes,
 })
 

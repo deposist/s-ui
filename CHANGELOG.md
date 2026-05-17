@@ -29,3 +29,6 @@ startup; use `SUI_MIGRATE_ONLY=1` for a manual migration-only run.
 The migration runner now executes the WAL checkpoint only after a successful
 transaction commit, avoiding `database table is locked` failures during
 upgrades from `1.4.x`.
+The admin frontend no longer relies on an inline base-path script, so the
+strict CSP is honored and custom web paths route API, CSRF and realtime
+fallback requests correctly.

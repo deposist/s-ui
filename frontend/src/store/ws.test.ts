@@ -61,6 +61,42 @@ describe('WsRuntime fallback', () => {
     expect(loadData).toHaveBeenCalledTimes(1)
   })
 
+  it('uses native timers without illegal invocation in fallback mode', async () => {
+    vi.useRealTimers()
+    const loadData = vi.fn()
+    const nativeSetInterval = globalThis.setInterval
+    const nativeClearInterval = globalThis.clearInterval
+    const timers = {
+      setInterval(callback: () => void, delay?: number) {
+        if (this !== globalThis) {
+          throw new TypeError('Illegal invocation')
+        }
+        return nativeSetInterval(callback, delay)
+      },
+      clearInterval(timerID: ReturnType<typeof setInterval>) {
+        if (this !== globalThis) {
+          throw new TypeError('Illegal invocation')
+        }
+        nativeClearInterval(timerID)
+      },
+    }
+    vi.stubGlobal('setInterval', timers.setInterval)
+    vi.stubGlobal('clearInterval', timers.clearInterval)
+
+    const runtime = new WsRuntime({
+      getToken: async () => null,
+      createSocket: () => new FakeSocket(),
+      loadData,
+      location: { protocol: 'http:', host: 'panel.test' },
+      baseUrl: '/',
+    })
+
+    await expect(runtime.connect()).resolves.toBeUndefined()
+    expect(runtime.state).toBe('degraded')
+    runtime.disconnect()
+    vi.unstubAllGlobals()
+  })
+
   it('uses capped exponential reconnect backoff with jitter', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     expect([0, 1, 2, 3, 4, 5].map(reconnectDelayForRetry)).toEqual([

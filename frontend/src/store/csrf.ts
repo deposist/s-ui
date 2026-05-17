@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getBaseUrl } from '@/plugins/base-url'
 
 let csrfToken: string | null = null
 let csrfTokenPromise: Promise<string> | null = null
@@ -11,7 +12,7 @@ export const getCSRFToken = async () => {
   if (!csrfTokenPromise) {
     const generation = csrfTokenGeneration
     csrfTokenPromise = axios.get('api/csrf', {
-      baseURL: './',
+      baseURL: getBaseUrl(),
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
       },
