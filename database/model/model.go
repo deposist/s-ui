@@ -94,7 +94,7 @@ type AuditEvent struct {
 type Tokens struct {
 	Id          uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
 	Desc        string `json:"desc" form:"desc"`
-	Token       string `json:"token,omitempty" form:"token"`
+	Token       string `json:"-" form:"token"`
 	TokenHash   string `json:"-" gorm:"index"`
 	TokenPrefix string `json:"tokenPrefix"`
 	Scope       string `json:"scope" gorm:"default:admin;not null"`
