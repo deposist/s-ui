@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
+vi.mock('axios', () => ({
+  default: { get: vi.fn() },
+}))
+
 vi.mock('@/plugins/httputil', () => ({
   default: { get: vi.fn() },
 }))
@@ -8,6 +12,8 @@ vi.mock('@/store/modules/data', () => ({
   default: () => ({ loadData: vi.fn(), onlines: {} }),
 }))
 
+import axios from 'axios'
+import { clearCSRFToken, getCSRFToken } from './csrf'
 import { reconnectDelayForRetry, WsLike, WsRuntime } from './ws'
 
 class FakeSocket implements WsLike {
@@ -26,6 +32,7 @@ describe('WsRuntime fallback', () => {
   })
 
   afterEach(() => {
+    clearCSRFToken()
     vi.useRealTimers()
     vi.restoreAllMocks()
   })
@@ -68,5 +75,29 @@ describe('WsRuntime fallback', () => {
     vi.mocked(Math.random).mockReturnValue(0.5)
     expect(reconnectDelayForRetry(0)).toBe(375)
     expect(reconnectDelayForRetry(1)).toBe(625)
+  })
+
+  it('clears csrf token after session-rotated websocket close', async () => {
+    vi.mocked(axios.get)
+      .mockResolvedValueOnce({ data: { obj: { token: 'csrf-1' } } })
+      .mockResolvedValueOnce({ data: { obj: { token: 'csrf-2' } } })
+
+    await expect(getCSRFToken()).resolves.toBe('csrf-1')
+
+    const socket = new FakeSocket()
+    const runtime = new WsRuntime({
+      getToken: async () => 'ws-token',
+      createSocket: () => socket,
+      loadData: vi.fn(),
+      location: { protocol: 'http:', host: 'panel.test' },
+      baseUrl: '/',
+    })
+
+    await runtime.connect()
+    socket.onopen?.()
+    socket.onclose?.({ code: 4401, reason: 'session_rotated' })
+
+    await expect(getCSRFToken()).resolves.toBe('csrf-2')
+    expect(axios.get).toHaveBeenCalledTimes(2)
   })
 })

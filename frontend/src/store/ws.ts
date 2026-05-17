@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import HttpUtils from '@/plugins/httputil'
 import Data from '@/store/modules/data'
+import { clearCSRFToken } from '@/store/csrf'
 
 export type WsConnectionState = 'connected' | 'reconnecting' | 'degraded'
 
@@ -81,7 +82,10 @@ export class WsRuntime {
           // Keep realtime open when a single event is malformed.
         }
       }
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        if (isSessionClose(event)) {
+          clearCSRFToken()
+        }
         this.clearNoOpenTimer()
         this.ws = null
         this.closeCount++
@@ -174,6 +178,8 @@ const applyRealtimeEvent = (event: any) => {
       break
   }
 }
+
+const isSessionClose = (event?: any) => event?.code === 4401 || event?.reason === 'session_rotated'
 
 const Ws = defineStore('Ws', {
   state: () => ({

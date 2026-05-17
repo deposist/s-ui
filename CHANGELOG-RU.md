@@ -31,6 +31,9 @@
   только путь к файлу.
 - `s-ui admin -show` больше не выводит сохранённый password hash; команда
   показывает username и подсказку по сбросу пароля.
+- Фронтенд очищает cached CSRF-token после logout, logout-all и realtime
+  session-rotation close, поэтому следующий mutating request получает новый
+  токен.
 
 ### Privacy и подписки
 

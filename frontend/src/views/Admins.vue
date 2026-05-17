@@ -89,6 +89,7 @@ import ChangeModal  from '@/layouts/modals/Changes.vue'
 import TokenModal from '@/layouts/modals/Token.vue'
 import { i18n } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
+import { clearCSRFToken } from '@/store/csrf'
 import { Ref, ref, inject, onMounted } from 'vue'
 import router from '@/router'
 
@@ -184,6 +185,7 @@ const logoutAllAdmins = async () => {
   loading.value = false
   logoutAllMenu.value = false
   if (response.success) {
+    clearCSRFToken()
     router.push('/login')
   }
 }

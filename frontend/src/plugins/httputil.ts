@@ -2,6 +2,7 @@ import api from './api'
 import { i18n } from '@/locales'
 import router from '@/router'
 import { push } from 'notivue'
+import { clearCSRFToken } from '@/store/csrf'
 
 export interface Msg {
   success: boolean
@@ -35,6 +36,7 @@ function _handleMsg(msg: any): void {
 }
 
 export const logout = async () => {
+  clearCSRFToken()
   const response = await HttpUtils.get('api/logout')
   if(response.success){
     router.push('/login')

@@ -30,6 +30,9 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   owner-only permissions, and startup only prints the file path.
 - `s-ui admin -show` no longer prints the stored password hash; it shows the
   username and reset guidance instead.
+- The frontend clears cached CSRF tokens after logout, logout-all, and
+  realtime session-rotation closes so the next mutating request fetches a new
+  token.
 
 ### Privacy and subscriptions
 
