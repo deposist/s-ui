@@ -29,17 +29,22 @@ type TelegramService struct {
 }
 
 type TelegramResult struct {
-	Success    bool   `json:"success"`
-	ErrorClass string `json:"errorClass,omitempty"`
+	Success    bool          `json:"success"`
+	ErrorClass string        `json:"errorClass,omitempty"`
+	RetryAfter time.Duration `json:"-"`
 }
 
-const telegramQueueCapacity = 256
+const (
+	telegramQueueCapacity = 256
+	telegramMaxRetryAfter = 300 * time.Second
+)
 
 var (
 	telegramHTTPClientMu sync.RWMutex
 	telegramHTTPClient   = &http.Client{Timeout: 10 * time.Second}
 	telegramHTTPOverride bool
 	telegramHTTPConfig   telegramProxyConfig
+	telegramSleep        = time.Sleep
 
 	defaultTelegramNotifier = newTelegramNotifier(
 		telegramQueueCapacity,
@@ -155,7 +160,11 @@ func (n *telegramNotifier) deliver(job telegramNotification) {
 			return
 		}
 		if attempt < len(n.backoff) {
-			time.Sleep(n.backoff[attempt])
+			delay := n.backoff[attempt]
+			if result.RetryAfter > 0 {
+				delay = result.RetryAfter
+			}
+			telegramSleep(delay)
 		}
 	}
 	if result.ErrorClass == "" {
@@ -373,9 +382,37 @@ func (s *TelegramService) send(text string) TelegramResult {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return TelegramResult{ErrorClass: telegramStatusErrorClass(resp.StatusCode)}
+		body, _ := io.ReadAll(resp.Body)
+		return TelegramResult{
+			ErrorClass: telegramStatusErrorClass(resp.StatusCode),
+			RetryAfter: telegramRetryAfter(resp.StatusCode, body),
+		}
 	}
 	return TelegramResult{Success: true}
+}
+
+func telegramRetryAfter(status int, body []byte) time.Duration {
+	if status != http.StatusTooManyRequests || len(body) == 0 {
+		return 0
+	}
+	var response struct {
+		OK         bool `json:"ok"`
+		ErrorCode  int  `json:"error_code"`
+		Parameters struct {
+			RetryAfter int `json:"retry_after"`
+		} `json:"parameters"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return 0
+	}
+	if response.ErrorCode != http.StatusTooManyRequests || response.Parameters.RetryAfter <= 0 {
+		return 0
+	}
+	retryAfter := time.Duration(response.Parameters.RetryAfter) * time.Second
+	if retryAfter > telegramMaxRetryAfter {
+		return telegramMaxRetryAfter
+	}
+	return retryAfter
 }
 
 func telegramStatusErrorClass(status int) string {

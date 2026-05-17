@@ -8,6 +8,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,6 +47,18 @@ func (r statusRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
 		Body:       http.NoBody,
 		Header:     http.Header{},
 	}, nil
+}
+
+type telegramServerRoundTripper struct {
+	base      *url.URL
+	transport http.RoundTripper
+}
+
+func (r telegramServerRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	cloned.URL.Scheme = r.base.Scheme
+	cloned.URL.Host = r.base.Host
+	return r.transport.RoundTrip(cloned)
 }
 
 type captureRoundTripper struct {
@@ -245,6 +259,59 @@ func TestTelegramStatusErrorClassAllowlist(t *testing.T) {
 		if class == "" || strings.Contains(class, "telegram_status_") {
 			t.Fatalf("invalid mapped class: %q", class)
 		}
+	}
+}
+
+func TestTelegramNotifierUsesRetryAfterFrom429Response(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	enableTelegramForTest(t, settingService)
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; !strings.Contains(got, "/sendMessage") {
+			t.Fatalf("unexpected telegram path: %s", got)
+		}
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"ok":false,"error_code":429,"parameters":{"retry_after":1}}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	baseURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoreClient := setTelegramHTTPClient(&http.Client{
+		Transport: telegramServerRoundTripper{base: baseURL, transport: http.DefaultTransport},
+		Timeout:   time.Second,
+	})
+	defer restoreClient()
+
+	var slept []time.Duration
+	oldSleep := telegramSleep
+	telegramSleep = func(delay time.Duration) {
+		slept = append(slept, delay)
+	}
+	defer func() { telegramSleep = oldSleep }()
+
+	notifier := newTelegramNotifier(1, (&TelegramService{}).send, nil)
+	notifier.backoff = []time.Duration{time.Hour}
+	notifier.deliver(telegramNotification{event: "rate_limited", text: "message"})
+
+	if requests.Load() != 2 {
+		t.Fatalf("expected retry after 429, got %d requests", requests.Load())
+	}
+	if len(slept) != 1 || slept[0] != time.Second {
+		t.Fatalf("unexpected retry sleep durations: %#v", slept)
+	}
+}
+
+func TestTelegramRetryAfterCapsAtMax(t *testing.T) {
+	got := telegramRetryAfter(http.StatusTooManyRequests, []byte(`{"ok":false,"error_code":429,"parameters":{"retry_after":999}}`))
+	if got != telegramMaxRetryAfter {
+		t.Fatalf("retry_after cap=%s, want %s", got, telegramMaxRetryAfter)
 	}
 }
 
