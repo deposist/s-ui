@@ -15,12 +15,13 @@ type CheckOutboundResult struct {
 	Error string
 }
 
-func CheckOutbound(ctx context.Context, tag string, link string) (result CheckOutboundResult) {
-	if outbound_manager == nil {
+func (c *Core) CheckOutbound(ctx context.Context, tag string, link string) (result CheckOutboundResult) {
+	outboundManager := c.OutboundManager()
+	if outboundManager == nil {
 		result.Error = "core not running"
 		return result
 	}
-	ob, ok := outbound_manager.Outbound(tag)
+	ob, ok := outboundManager.Outbound(tag)
 	if !ok {
 		result.Error = "outbound not found"
 		return result

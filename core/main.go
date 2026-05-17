@@ -17,24 +17,38 @@ import (
 )
 
 var (
-	globalCtx        context.Context
-	inbound_manager  adapter.InboundManager
-	outbound_manager adapter.OutboundManager
-	service_manager  adapter.ServiceManager
-	endpoint_manager adapter.EndpointManager
-	router           adapter.Router
-	factory          log.Factory
+	globalCtx = struct {
+		sync.RWMutex
+		value context.Context
+	}{}
 )
 
 type Core struct {
-	access    sync.RWMutex
-	isRunning bool
-	instance  *Box
+	access          sync.RWMutex
+	isRunning       bool
+	instance        *Box
+	inboundManager  adapter.InboundManager
+	outboundManager adapter.OutboundManager
+	serviceManager  adapter.ServiceManager
+	endpointManager adapter.EndpointManager
+	router          adapter.Router
+	factory         log.Factory
+}
+
+type coreRuntime struct {
+	ctx             context.Context
+	inboundManager  adapter.InboundManager
+	outboundManager adapter.OutboundManager
+	serviceManager  adapter.ServiceManager
+	endpointManager adapter.EndpointManager
+	router          adapter.Router
+	factory         log.Factory
 }
 
 func NewCore() *Core {
-	globalCtx = context.Background()
-	globalCtx = sb.Context(globalCtx, InboundRegistry(), OutboundRegistry(), EndpointRegistry(), DNSTransportRegistry(), ServiceRegistry())
+	ctx := context.Background()
+	ctx = sb.Context(ctx, InboundRegistry(), OutboundRegistry(), EndpointRegistry(), DNSTransportRegistry(), ServiceRegistry())
+	setGlobalCtx(ctx)
 	return &Core{
 		isRunning: false,
 		instance:  nil,
@@ -42,7 +56,7 @@ func NewCore() *Core {
 }
 
 func (c *Core) GetCtx() context.Context {
-	return globalCtx
+	return getGlobalCtx()
 }
 
 func (c *Core) GetInstance() *Box {
@@ -53,13 +67,14 @@ func (c *Core) GetInstance() *Box {
 
 func (c *Core) Start(sbConfig []byte) error {
 	var opt option.Options
-	err := opt.UnmarshalJSONContext(globalCtx, sbConfig)
+	ctx := c.GetCtx()
+	err := opt.UnmarshalJSONContext(ctx, sbConfig)
 	if err != nil {
 		logger.Error("Unmarshal config err:", err.Error())
 	}
 
 	instance, err := NewBox(Options{
-		Context: globalCtx,
+		Context: ctx,
 		Options: opt,
 	})
 	if err != nil {
@@ -72,16 +87,18 @@ func (c *Core) Start(sbConfig []byte) error {
 		return err
 	}
 
-	globalCtx = service.ContextWith(globalCtx, c)
-	inbound_manager = service.FromContext[adapter.InboundManager](globalCtx)
-	outbound_manager = service.FromContext[adapter.OutboundManager](globalCtx)
-	service_manager = service.FromContext[adapter.ServiceManager](globalCtx)
-	endpoint_manager = service.FromContext[adapter.EndpointManager](globalCtx)
-	router = service.FromContext[adapter.Router](globalCtx)
+	ctx = service.ContextWith(ctx, c)
+	setGlobalCtx(ctx)
 
 	c.access.Lock()
 	c.instance = instance
 	c.isRunning = true
+	c.inboundManager = instance.Inbound()
+	c.outboundManager = instance.Outbound()
+	c.serviceManager = instance.Service()
+	c.endpointManager = instance.Endpoint()
+	c.router = instance.Router()
+	c.factory = instance.LogFactory()
 	c.access.Unlock()
 	return nil
 }
@@ -95,6 +112,12 @@ func (c *Core) Stop() error {
 	}
 	instance := c.instance
 	c.instance = nil
+	c.inboundManager = nil
+	c.outboundManager = nil
+	c.serviceManager = nil
+	c.endpointManager = nil
+	c.router = nil
+	c.factory = nil
 	c.access.Unlock()
 	err := instance.Close()
 	return err
@@ -104,4 +127,48 @@ func (c *Core) IsRunning() bool {
 	c.access.RLock()
 	defer c.access.RUnlock()
 	return c.isRunning
+}
+
+func getGlobalCtx() context.Context {
+	globalCtx.RLock()
+	defer globalCtx.RUnlock()
+	if globalCtx.value == nil {
+		return context.Background()
+	}
+	return globalCtx.value
+}
+
+func setGlobalCtx(ctx context.Context) {
+	globalCtx.Lock()
+	globalCtx.value = ctx
+	globalCtx.Unlock()
+}
+
+func (c *Core) runtime() (coreRuntime, bool) {
+	c.access.RLock()
+	defer c.access.RUnlock()
+	if !c.isRunning || c.instance == nil {
+		return coreRuntime{}, false
+	}
+	return coreRuntime{
+		ctx:             c.GetCtx(),
+		inboundManager:  c.inboundManager,
+		outboundManager: c.outboundManager,
+		serviceManager:  c.serviceManager,
+		endpointManager: c.endpointManager,
+		router:          c.router,
+		factory:         c.factory,
+	}, true
+}
+
+func (c *Core) Router() adapter.Router {
+	c.access.RLock()
+	defer c.access.RUnlock()
+	return c.router
+}
+
+func (c *Core) OutboundManager() adapter.OutboundManager {
+	c.access.RLock()
+	defer c.access.RUnlock()
+	return c.outboundManager
 }

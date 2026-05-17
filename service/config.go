@@ -179,7 +179,7 @@ func (s *ConfigService) CheckOutbound(tag string, link string) core.CheckOutboun
 	if corePtr == nil || !corePtr.IsRunning() {
 		return core.CheckOutboundResult{Error: "core not running"}
 	}
-	return core.CheckOutbound(corePtr.GetCtx(), tag, link)
+	return corePtr.CheckOutbound(corePtr.GetCtx(), tag, link)
 }
 
 func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string, link string) core.CheckOutboundResult {
@@ -189,7 +189,7 @@ func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string
 	if corePtr == nil || !corePtr.IsRunning() {
 		return core.CheckOutboundResult{Error: "core not running"}
 	}
-	return core.CheckOutbound(ctx, tag, link)
+	return corePtr.CheckOutbound(ctx, tag, link)
 }
 
 func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) (objs []string, err error) {

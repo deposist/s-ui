@@ -153,7 +153,6 @@ func NewBox(options Options) (*Box, error) {
 	if err != nil {
 		return nil, common.NewError("create log factory", err)
 	}
-	factory = logFactory
 
 	var internalServices []adapter.LifecycleService
 	certificateOptions := sbCommon.PtrValueOrDefault(options.Certificate)
@@ -579,8 +578,16 @@ func (s *Box) Outbound() adapter.OutboundManager {
 	return s.outbound
 }
 
+func (s *Box) Service() adapter.ServiceManager {
+	return s.service
+}
+
 func (s *Box) Endpoint() adapter.EndpointManager {
 	return s.endpoint
+}
+
+func (s *Box) LogFactory() log.Factory {
+	return s.logFactory
 }
 
 func (s *Box) StatsTracker() *StatsTracker {
