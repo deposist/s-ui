@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"log"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/cmd/migration"
 	"github.com/deposist/s-ui-rus-inst/config"
@@ -110,6 +112,11 @@ func (a *APP) Stop() {
 	err = a.configService.StopCore()
 	if err != nil {
 		logger.Warning("stop Core err:", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := service.StopAuditWriter(ctx); err != nil {
+		logger.Warning("stop audit writer err:", err)
 	}
 }
 

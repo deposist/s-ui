@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
@@ -27,15 +28,29 @@ type AuditEvent struct {
 	Details   map[string]any
 }
 
+var AuditSyncForTest bool
+
 func (s *AuditService) Record(event AuditEvent) error {
+	record, err := buildAuditRecord(event)
+	if err != nil {
+		return err
+	}
+	if AuditSyncForTest {
+		return writeAuditEvents([]model.AuditEvent{record})
+	}
+	getAuditWriter().Enqueue(record)
+	return nil
+}
+
+func buildAuditRecord(event AuditEvent) (model.AuditEvent, error) {
 	if event.Severity == "" {
 		event.Severity = AuditSeverityInfo
 	}
 	details, err := json.Marshal(redact.Value(event.Details))
 	if err != nil {
-		return err
+		return model.AuditEvent{}, err
 	}
-	return database.GetDB().Create(&model.AuditEvent{
+	return model.AuditEvent{
 		DateTime:  time.Now().Unix(),
 		Actor:     event.Actor,
 		Event:     event.Event,
@@ -44,7 +59,18 @@ func (s *AuditService) Record(event AuditEvent) error {
 		IP:        event.IP,
 		UserAgent: event.UserAgent,
 		Details:   details,
-	}).Error
+	}, nil
+}
+
+func writeAuditEvents(events []model.AuditEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	db := database.GetDB()
+	if db == nil {
+		return errors.New("audit database is not initialized")
+	}
+	return db.Create(&events).Error
 }
 
 func (s *AuditService) List(limit int) ([]model.AuditEvent, error) {

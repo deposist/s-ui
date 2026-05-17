@@ -14,6 +14,9 @@ import (
 
 func initSettingTestDB(t *testing.T) *SettingService {
 	t.Helper()
+	prevAuditSync := AuditSyncForTest
+	AuditSyncForTest = true
+	t.Cleanup(func() { AuditSyncForTest = prevAuditSync })
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {

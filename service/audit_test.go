@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -74,5 +75,85 @@ func TestAuditPruneDeletesOldEvents(t *testing.T) {
 	}
 	if len(events) != 1 || events[0].Event != "recent" {
 		t.Fatalf("unexpected events after prune: %#v", events)
+	}
+}
+
+func TestAuditWriterDropsOldestWhenFull(t *testing.T) {
+	wrote := []model.AuditEvent{}
+	auditDroppedTotal.Store(0)
+	writer := newAuditWriter(2, 10, time.Hour, func(events []model.AuditEvent) error {
+		t.Fatal("drop-oldest test should not start the writer")
+		return nil
+	})
+
+	writer.push(model.AuditEvent{Event: "first"})
+	writer.push(model.AuditEvent{Event: "second"})
+	writer.push(model.AuditEvent{Event: "third"})
+
+	if AuditDroppedTotal() != 1 {
+		t.Fatalf("audit dropped total=%d, want 1", AuditDroppedTotal())
+	}
+	writer.mu.Lock()
+	wrote = append(wrote, writer.queue...)
+	writer.mu.Unlock()
+	if len(wrote) != 2 || wrote[0].Event != "second" || wrote[1].Event != "third" {
+		t.Fatalf("unexpected queued events after drop-oldest: %#v", wrote)
+	}
+}
+
+func TestAuditWriterFlushesBatchAtBatchSize(t *testing.T) {
+	wrote := make(chan []model.AuditEvent, 1)
+	writer := newAuditWriter(10, 2, time.Hour, func(events []model.AuditEvent) error {
+		copied := append([]model.AuditEvent(nil), events...)
+		wrote <- copied
+		return nil
+	})
+
+	writer.Enqueue(model.AuditEvent{Event: "one"})
+	writer.Enqueue(model.AuditEvent{Event: "two"})
+	defer func() {
+		if err := writer.Stop(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	select {
+	case events := <-wrote:
+		if len(events) != 2 || events[0].Event != "one" || events[1].Event != "two" {
+			t.Fatalf("unexpected batch: %#v", events)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("audit writer did not flush at batch size")
+	}
+}
+
+func TestAuditRecordSyncForTestWritesImmediately(t *testing.T) {
+	auditService := &AuditService{}
+	initSettingTestDB(t)
+
+	if err := auditService.Record(AuditEvent{Event: "sync_test"}); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := database.GetDB().Model(model.AuditEvent{}).Where("event = ?", "sync_test").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("sync audit record count=%d, want 1", count)
+	}
+}
+
+func TestAuditRecordReturnsMarshalErrorOnly(t *testing.T) {
+	auditService := &AuditService{}
+	initSettingTestDB(t)
+	prevSync := AuditSyncForTest
+	AuditSyncForTest = false
+	t.Cleanup(func() { AuditSyncForTest = prevSync })
+
+	if err := auditService.Record(AuditEvent{
+		Event:   "bad_details",
+		Details: map[string]any{"bad": func() {}},
+	}); err == nil {
+		t.Fatal("expected marshal error")
 	}
 }
