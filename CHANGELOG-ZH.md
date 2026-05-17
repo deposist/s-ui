@@ -23,6 +23,9 @@
   事件只包含 `success`/`errorClass` 元数据。
 - 为面板和订阅服务器新增了 security headers 中间件，订阅响应使用
   `Cache-Control: no-store`。
+- 全新安装生成的管理员密码不再写入应用日志；密码只会保存到
+  `<dataDir>/initial-admin.txt`，文件使用仅所有者可读写的权限，启动输出中
+  只包含文件路径。
 
 ### 隐私与订阅
 

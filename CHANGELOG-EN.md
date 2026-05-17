@@ -25,6 +25,9 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   an audit event containing only success/errorClass metadata.
 - Security headers middleware was added for the panel and subscription server,
   with no-store cache handling on subscription responses.
+- Fresh-install admin passwords are no longer written to application logs; the
+  generated password is saved once to `<dataDir>/initial-admin.txt` with
+  owner-only permissions, and startup only prints the file path.
 
 ### Privacy and subscriptions
 

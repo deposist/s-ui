@@ -8,3 +8,7 @@ preferred language:
 - 简体中文 — [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
 
 All three files cover the same set of releases and are kept in sync.
+
+Current `1.5.1-beta` remediation notes include moving fresh-install admin
+password disclosure out of logs and into `<dataDir>/initial-admin.txt` with
+owner-only permissions.

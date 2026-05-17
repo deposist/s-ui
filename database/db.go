@@ -2,9 +2,8 @@ package database
 
 import (
 	"encoding/json"
-	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -20,16 +19,20 @@ import (
 
 var db *gorm.DB
 
-func initUser() error {
+func initUser(dbPath string) error {
 	var count int64
 	err := db.Model(&model.User{}).Count(&count).Error
 	if err != nil {
 		return err
 	}
+	passwordPath := initialAdminPasswordPath(dbPath)
 	if count == 0 {
 		password := common.Random(24)
 		passwordHash, err := common.HashPassword(password)
 		if err != nil {
+			return err
+		}
+		if err := writeInitialAdminPassword(passwordPath, password); err != nil {
 			return err
 		}
 		user := &model.User{
@@ -37,15 +40,18 @@ func initUser() error {
 			Password: passwordHash,
 		}
 		if err := db.Create(user).Error; err != nil {
+			_ = os.Remove(passwordPath)
 			return err
 		}
-		log.Printf("created initial admin user. username=admin password=%s", password)
+		notifyInitialAdminPasswordSaved(passwordPath)
+		return nil
 	}
+	warnIfInitialAdminPasswordFileExists(passwordPath)
 	return nil
 }
 
 func OpenDB(dbPath string) error {
-	dir := path.Dir(dbPath)
+	dir := filepath.Dir(dbPath)
 	err := os.MkdirAll(dir, 0o750)
 	if err != nil {
 		return err
@@ -126,7 +132,7 @@ func InitDB(dbPath string) error {
 	if err := ensureIndexes(); err != nil {
 		return err
 	}
-	err = initUser()
+	err = initUser(dbPath)
 	if err != nil {
 		return err
 	}
