@@ -83,6 +83,8 @@
 - 手动 release workflow 现在默认使用 tag `v1.5.1-beta`。
 - 容器 entrypoint 不再在启动前重复执行自动迁移；需要手动只迁移运行时可使用
   `SUI_MIGRATE_ONLY=1`。
+- 迁移 runner 现在只会在事务成功 commit 后执行 SQLite WAL checkpoint，修复
+  从 `1.4.x` 升级到 `1.5.1-beta` 时可能出现的 `database table is locked`。
 
 ### 测试
 

@@ -95,6 +95,9 @@
 - Container entrypoint больше не запускает дублирующую автоматическую
   миграцию перед стартом; для ручного migration-only запуска используйте
   `SUI_MIGRATE_ONLY=1`.
+- Миграционный runner теперь выполняет SQLite WAL checkpoint только после
+  успешного commit транзакции, что исправляет `database table is locked` при
+  обновлении с `1.4.x` до `1.5.1-beta`.
 
 ### Тесты
 

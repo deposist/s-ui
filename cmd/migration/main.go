@@ -29,12 +29,19 @@ func MigrateDb() error {
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("db handle: %w", err)
+	}
+	defer sqlDB.Close()
 
 	tx := db.Begin()
+	if tx.Error != nil {
+		return fmt.Errorf("begin migration: %w", tx.Error)
+	}
+	committed := false
 	defer func() {
-		if err == nil {
-			tx.Commit()
-		} else {
+		if !committed {
 			tx.Rollback()
 		}
 	}()
@@ -108,6 +115,17 @@ func MigrateDb() error {
 	if err != nil {
 		return fmt.Errorf("update version: %w", err)
 	}
+	if err = tx.Commit().Error; err != nil {
+		return fmt.Errorf("commit migration: %w", err)
+	}
+	committed = true
+	if err = checkpointWAL(db); err != nil {
+		fmt.Println("Warning: WAL checkpoint skipped:", err)
+	}
 	fmt.Println("Migration done!")
 	return nil
+}
+
+func checkpointWAL(db *gorm.DB) error {
+	return db.Exec("PRAGMA wal_checkpoint(FULL)").Error
 }

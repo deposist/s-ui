@@ -90,6 +90,9 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - The manual release workflow now defaults to tag `v1.5.1-beta`.
 - The container entrypoint no longer runs a duplicate automatic migration
   before startup; use `SUI_MIGRATE_ONLY=1` for a manual migration-only run.
+- The migration runner now performs the SQLite WAL checkpoint only after a
+  successful transaction commit, fixing `database table is locked` failures
+  seen during `1.4.x` to `1.5.1-beta` upgrades.
 
 ### Tests
 

@@ -34,7 +34,7 @@ func to1_5(db *gorm.DB) error {
 	if err := backfillClientSubSecrets(db); err != nil {
 		return err
 	}
-	return db.Exec("PRAGMA wal_checkpoint(FULL)").Error
+	return nil
 }
 
 func createClientIPsTable(db *gorm.DB) error {
