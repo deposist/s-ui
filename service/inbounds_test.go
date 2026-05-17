@@ -1,0 +1,75 @@
+package service
+
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	"github.com/deposist/s-ui-rus-inst/database"
+	"github.com/deposist/s-ui-rus-inst/database/model"
+)
+
+func TestInboundGetAllLoadsUsersForManyInboundsInBatch(t *testing.T) {
+	initSettingTestDB(t)
+
+	inbounds := make([]model.Inbound, 0, 50)
+	for i := 0; i < 50; i++ {
+		inbounds = append(inbounds, model.Inbound{
+			Type:    "vmess",
+			Tag:     fmt.Sprintf("vmess-%02d", i),
+			Options: json.RawMessage(`{}`),
+		})
+	}
+	if err := database.GetDB().Create(&inbounds).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	inboundIDs := make([]uint, 0, len(inbounds))
+	expectedIDs := make(map[uint]bool, len(inbounds))
+	for _, inbound := range inbounds {
+		inboundIDs = append(inboundIDs, inbound.Id)
+		expectedIDs[inbound.Id] = true
+	}
+	inboundIDsJSON, err := json.Marshal(inboundIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clients := make([]model.Client, 0, 100)
+	for i := 0; i < 100; i++ {
+		clients = append(clients, model.Client{
+			Name:     fmt.Sprintf("client-%03d", i),
+			Inbounds: json.RawMessage(inboundIDsJSON),
+		})
+	}
+	if err := database.GetDB().Create(&clients).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := (&InboundService{}).GetAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen := 0
+	for _, inbound := range *got {
+		id, ok := inbound["id"].(uint)
+		if !ok || !expectedIDs[id] {
+			continue
+		}
+		users, ok := inbound["users"].([]string)
+		if !ok {
+			t.Fatalf("inbound %d users has unexpected type %T", id, inbound["users"])
+		}
+		if len(users) != 100 {
+			t.Fatalf("inbound %d expected 100 users, got %d", id, len(users))
+		}
+		if users[0] != "client-000" || users[99] != "client-099" {
+			t.Fatalf("inbound %d users are not in client order: first=%q last=%q", id, users[0], users[99])
+		}
+		seen++
+	}
+	if seen != 50 {
+		t.Fatalf("expected 50 tested inbounds, got %d", seen)
+	}
+}

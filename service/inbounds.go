@@ -19,6 +19,17 @@ type InboundService struct {
 	ClientService
 }
 
+type inboundListItem struct {
+	id           uint
+	data         map[string]interface{}
+	includeUsers bool
+}
+
+type inboundUserNameRow struct {
+	InboundID uint
+	Name      string
+}
+
 func (s *InboundService) Get(ids string) (*[]map[string]interface{}, error) {
 	if ids == "" {
 		return s.GetAll()
@@ -51,7 +62,8 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	var data []map[string]interface{}
+	items := make([]inboundListItem, 0, len(inbounds))
+	userInboundIDs := make([]uint, 0, len(inbounds))
 	for _, inbound := range inbounds {
 		var shadowtls_version uint
 		ss_managed := false
@@ -75,20 +87,56 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 				json.Unmarshal(restFields["managed"], &ss_managed)
 			}
 		}
-		if s.hasUser(inbound.Type) &&
+		includeUsers := s.hasUser(inbound.Type) &&
 			!(inbound.Type == "shadowtls" && shadowtls_version < 3) &&
-			!(inbound.Type == "shadowsocks" && ss_managed) {
-			users := []string{}
-			err = db.Raw("SELECT clients.name FROM clients, json_each(clients.inbounds) as je WHERE je.value = ?", inbound.Id).Scan(&users).Error
-			if err != nil {
-				return nil, err
-			}
-			inbData["users"] = users
+			!(inbound.Type == "shadowsocks" && ss_managed)
+		if includeUsers {
+			userInboundIDs = append(userInboundIDs, inbound.Id)
 		}
 
-		data = append(data, inbData)
+		items = append(items, inboundListItem{
+			id:           inbound.Id,
+			data:         inbData,
+			includeUsers: includeUsers,
+		})
+	}
+	usersByInbound, err := fetchInboundUserNames(db, userInboundIDs)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]map[string]interface{}, 0, len(items))
+	for _, item := range items {
+		if item.includeUsers {
+			item.data["users"] = usersByInbound[item.id]
+		}
+		data = append(data, item.data)
 	}
 	return &data, nil
+}
+
+func fetchInboundUserNames(db *gorm.DB, inboundIDs []uint) (map[uint][]string, error) {
+	usersByInbound := make(map[uint][]string, len(inboundIDs))
+	if len(inboundIDs) == 0 {
+		return usersByInbound, nil
+	}
+	for _, id := range inboundIDs {
+		usersByInbound[id] = []string{}
+	}
+
+	var rows []inboundUserNameRow
+	err := db.Raw(`
+		SELECT je.value AS inbound_id, clients.name
+		FROM clients, json_each(clients.inbounds) AS je
+		WHERE je.value IN ?
+		ORDER BY clients.id, je.key
+	`, inboundIDs).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		usersByInbound[row.InboundID] = append(usersByInbound[row.InboundID], row.Name)
+	}
+	return usersByInbound, nil
 }
 
 func (s *InboundService) FromIds(ids []uint) ([]*model.Inbound, error) {
@@ -219,20 +267,20 @@ func (s *InboundService) hasUser(inboundType string) bool {
 // inbound types the user-fetch query understands; combined with using JSON
 // path placeholders this prevents SQL injection through the type string.
 var userJSONField = map[string]string{
-	"mixed":          "mixed",
-	"socks":          "socks",
-	"http":           "http",
-	"shadowsocks":    "shadowsocks",
-	"shadowsocks16":  "shadowsocks",
-	"vmess":          "vmess",
-	"trojan":         "trojan",
-	"naive":          "naive",
-	"hysteria":       "hysteria",
-	"shadowtls":      "shadowtls",
-	"tuic":           "tuic",
-	"hysteria2":      "hysteria2",
-	"vless":          "vless",
-	"anytls":         "anytls",
+	"mixed":         "mixed",
+	"socks":         "socks",
+	"http":          "http",
+	"shadowsocks":   "shadowsocks",
+	"shadowsocks16": "shadowsocks",
+	"vmess":         "vmess",
+	"trojan":        "trojan",
+	"naive":         "naive",
+	"hysteria":      "hysteria",
+	"shadowtls":     "shadowtls",
+	"tuic":          "tuic",
+	"hysteria2":     "hysteria2",
+	"vless":         "vless",
+	"anytls":        "anytls",
 }
 
 func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uint, inboundType string) ([]byte, error) {
