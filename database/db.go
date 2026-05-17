@@ -152,6 +152,8 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_stats_lookup ON stats(date_time, resource, tag)",
 		"CREATE INDEX IF NOT EXISTS idx_changes_lookup ON changes(date_time, actor, key)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_lookup ON audit_events(date_time, actor, event)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_events_event_dt ON audit_events(event, date_time DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_events_severity_dt ON audit_events(severity, date_time DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
