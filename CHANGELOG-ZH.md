@@ -81,6 +81,8 @@
   prebuilt `libcronet` 资产。
 - Docker 镜像默认 `TZ` 现在与面板默认值 `Europe/Moscow` 保持一致。
 - 手动 release workflow 现在默认使用 tag `v1.5.1-beta`。
+- 容器 entrypoint 不再在启动前重复执行自动迁移；需要手动只迁移运行时可使用
+  `SUI_MIGRATE_ONLY=1`。
 
 ### 测试
 

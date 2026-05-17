@@ -24,3 +24,5 @@ and the dated fallback to upstream's latest prebuilt `libcronet` asset.
 The Docker image default timezone now matches the panel default
 `Europe/Moscow`.
 The manual release workflow now defaults to tag `v1.5.1-beta`.
+The container entrypoint no longer runs a duplicate automatic migration before
+startup; use `SUI_MIGRATE_ONLY=1` for a manual migration-only run.

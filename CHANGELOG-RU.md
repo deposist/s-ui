@@ -92,6 +92,9 @@
   `Europe/Moscow`.
 - Ручной release workflow теперь по умолчанию использует tag
   `v1.5.1-beta`.
+- Container entrypoint больше не запускает дублирующую автоматическую
+  миграцию перед стартом; для ручного migration-only запуска используйте
+  `SUI_MIGRATE_ONLY=1`.
 
 ### Тесты
 

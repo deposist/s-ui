@@ -1,8 +1,7 @@
 #!/bin/sh
 
-DB_PATH="${SUI_DB_FOLDER:-/app/db}/s-ui.db"
-if [ -f "$DB_PATH" ]; then
-	./sui migrate
+if [ "${SUI_MIGRATE_ONLY:-0}" = "1" ]; then
+	exec ./sui migrate
 fi
 
 exec ./sui
