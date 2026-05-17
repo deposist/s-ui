@@ -16,3 +16,6 @@ owner-only permissions, plus hiding stored password hashes from
 rotation. The installer now verifies release tarballs with published SHA256
 checksums before extraction. Pull requests now run backend and frontend CI
 checks automatically.
+Admin web sessions now use a SQLite-backed server-side store, so the browser
+cookie contains only a signed session ID while session data is stored in the
+local `sessions` table.

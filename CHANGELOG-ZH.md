@@ -34,6 +34,8 @@
   `sha256sum -c` 校验 Linux tarball。
 - 新增 PR CI workflow，会运行 Go vet/race tests 以及前端 lint/unit/build
   检查。
+- 管理员 Web session 现在使用 SQLite 后端的服务端存储；浏览器 cookie
+  只包含已签名的 session ID，session 数据保存在本地 `sessions` 表中。
 
 ### 隐私与订阅
 

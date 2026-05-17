@@ -37,6 +37,9 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   Linux tarball with `sha256sum -c` before extraction.
 - Added a pull-request CI workflow for Go vet/race tests and frontend
   lint/unit/build checks.
+- Admin web sessions now use a SQLite-backed server-side store; the browser
+  cookie contains only a signed session ID and session data lives in the local
+  `sessions` table.
 
 ### Privacy and subscriptions
 

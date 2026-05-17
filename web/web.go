@@ -15,6 +15,7 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/api"
 	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/middleware"
 	"github.com/deposist/s-ui-rus-inst/network"
@@ -22,7 +23,6 @@ import (
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -87,7 +87,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
 	assetsBasePath := base_url + "assets/"
 
-	store := cookie.NewStore(secret)
+	store, err := NewSQLiteSessionStore(database.GetDB(), secret)
+	if err != nil {
+		return nil, err
+	}
 	engine.Use(sessions.Sessions("s-ui", store))
 
 	engine.Use(func(c *gin.Context) {

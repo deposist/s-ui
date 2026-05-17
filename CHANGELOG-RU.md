@@ -38,6 +38,9 @@
   через `sha256sum -c` перед распаковкой.
 - Добавлен PR CI workflow для Go vet/race tests и frontend lint/unit/build
   проверок.
+- Админские web-сессии переведены на server-side SQLite-store: cookie в
+  браузере содержит только подписанный session ID, а данные сессии хранятся
+  локально в таблице `sessions`.
 
 ### Privacy и подписки
 
