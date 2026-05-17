@@ -19,6 +19,13 @@ var sensitiveKeyFragments = []string{
 	"subscription",
 }
 
+var sensitiveExactKeys = []string{
+	"otp",
+	"totp",
+	"mfa",
+	"2fa",
+}
+
 var sensitiveValuePatterns = []struct {
 	pattern     *regexp.Regexp
 	replacement string
@@ -36,8 +43,8 @@ var sensitiveValuePatterns = []struct {
 		replacement: `${1}` + Marker,
 	},
 	{
-		pattern:     regexp.MustCompile(`(?i)\b[A-Z2-7]{32,64}\b`),
-		replacement: Marker,
+		pattern:     regexp.MustCompile(`(?i)(\b(?:totp|otp|mfa|2fa|secret|otp[_-]?secret|totp[_-]?secret|two[_-]?factor(?:[_-]?secret)?)\b["']?\s*[:=]\s*["']?)\b[A-Z2-7]{32}\b(["']?)`),
+		replacement: `${1}` + Marker + `${2}`,
 	},
 }
 
@@ -91,6 +98,11 @@ func String(value string) string {
 
 func IsSensitiveKey(key string) bool {
 	normalized := strings.ToLower(strings.ReplaceAll(key, "-", "_"))
+	for _, exact := range sensitiveExactKeys {
+		if normalized == exact {
+			return true
+		}
+	}
 	for _, fragment := range sensitiveKeyFragments {
 		if strings.Contains(normalized, fragment) {
 			return true
