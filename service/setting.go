@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -338,14 +337,10 @@ func (s *SettingService) GetTimeLocation() (*time.Location, error) {
 	if err != nil {
 		return nil, err
 	}
-	if runtime.GOOS == "windows" {
-		l = "Local"
-	}
 	location, err := time.LoadLocation(l)
 	if err != nil {
-		defaultLocation := defaultValueMap["timeLocation"]
-		logger.Errorf("location <%v> not exist, using default location: %v", l, defaultLocation)
-		return time.LoadLocation(defaultLocation)
+		logger.Warningf("location <%v> not exist, using local location", l)
+		return time.Local, nil
 	}
 	return location, nil
 }

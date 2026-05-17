@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
@@ -427,5 +428,41 @@ func TestSaveValidatesTelegramCPUSettings(t *testing.T) {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected invalid CPU threshold to be rejected")
+	}
+}
+
+func TestGetTimeLocationRespectsConfiguredLocation(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "timeLocation").Update("value", "UTC").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	location, err := settingService.GetTimeLocation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if location.String() != "UTC" {
+		t.Fatalf("expected configured timeLocation to be respected, got %q", location.String())
+	}
+}
+
+func TestGetTimeLocationFallsBackToLocalForInvalidLocation(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "timeLocation").Update("value", "Invalid/Nowhere").Error; err != nil {
+		t.Fatal(err)
+	}
+
+	location, err := settingService.GetTimeLocation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if location != time.Local {
+		t.Fatalf("expected invalid timeLocation to fall back to time.Local, got %q", location.String())
 	}
 }
