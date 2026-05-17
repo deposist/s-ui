@@ -36,6 +36,8 @@
   токен.
 - `install.sh` скачивает release-файл `*.sha256` и проверяет Linux-тарбол
   через `sha256sum -c` перед распаковкой.
+- Добавлен PR CI workflow для Go vet/race tests и frontend lint/unit/build
+  проверок.
 
 ### Privacy и подписки
 

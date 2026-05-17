@@ -6,6 +6,7 @@
     "dev": "vite --host",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "test:unit": "vitest run",
     "lint": "eslint ."
   },

@@ -32,6 +32,8 @@
   缓存的 CSRF token，下一次变更请求会重新获取 token。
 - `install.sh` 现在会下载 release 中的 `*.sha256` 文件，并在解压前通过
   `sha256sum -c` 校验 Linux tarball。
+- 新增 PR CI workflow，会运行 Go vet/race tests 以及前端 lint/unit/build
+  检查。
 
 ### 隐私与订阅
 

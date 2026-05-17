@@ -14,4 +14,5 @@ password disclosure out of logs and into `<dataDir>/initial-admin.txt` with
 owner-only permissions, plus hiding stored password hashes from
 `s-ui admin -show` and clearing stale CSRF tokens after logout/session
 rotation. The installer now verifies release tarballs with published SHA256
-checksums before extraction.
+checksums before extraction. Pull requests now run backend and frontend CI
+checks automatically.
