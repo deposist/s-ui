@@ -1,8 +1,12 @@
 package network
 
 import (
+	"fmt"
 	"net"
+	"os"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -41,8 +45,38 @@ func TestListenWithFallbackHandlesUnbindableAddress(t *testing.T) {
 }
 
 func TestShouldFallbackRecognisesEADDRNOTAVAIL(t *testing.T) {
-	if !shouldFallback(&net.OpError{Op: "listen", Err: &errString{"cannot assign requested address"}}) {
-		t.Fatal("expected fallback for 'cannot assign requested address'")
+	err := &net.OpError{
+		Op:  "listen",
+		Net: "tcp",
+		Err: &os.SyscallError{Syscall: "bind", Err: syscall.EADDRNOTAVAIL},
+	}
+
+	if !shouldFallback(err) {
+		t.Fatal("expected fallback for EADDRNOTAVAIL")
+	}
+	if !shouldFallback(fmt.Errorf("wrapped: %w", err)) {
+		t.Fatal("expected fallback for wrapped EADDRNOTAVAIL")
+	}
+}
+
+func TestShouldFallbackRecognisesWindowsEADDRNOTAVAIL(t *testing.T) {
+	err := &net.OpError{
+		Op:  "listen",
+		Net: "tcp",
+		Err: &os.SyscallError{Syscall: "bind", Err: syscall.Errno(10049)},
+	}
+
+	if runtime.GOOS == "windows" && !shouldFallback(err) {
+		t.Fatal("expected fallback for Windows WSAEADDRNOTAVAIL")
+	}
+	if runtime.GOOS != "windows" && shouldFallback(err) {
+		t.Fatal("did not expect Windows WSAEADDRNOTAVAIL fallback on non-Windows")
+	}
+}
+
+func TestShouldFallbackRejectsStringOnlyErrors(t *testing.T) {
+	if shouldFallback(&net.OpError{Op: "listen", Err: &errString{"cannot assign requested address"}}) {
+		t.Fatal("did not expect fallback for string-only address error")
 	}
 	if shouldFallback(&net.OpError{Op: "listen", Err: &errString{"some unrelated error"}}) {
 		t.Fatal("did not expect fallback for unrelated error")

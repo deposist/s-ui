@@ -1,10 +1,7 @@
 package network
 
 import (
-	"errors"
 	"net"
-	"strings"
-	"syscall"
 
 	"github.com/deposist/s-ui-rus-inst/logger"
 )
@@ -38,17 +35,5 @@ func ListenWithFallback(addr, host string, port string) (net.Listener, error) {
 // at a stale listen address inherited from another machine (the address is
 // syntactically valid but the kernel does not own it).
 func shouldFallback(err error) bool {
-	if errors.Is(err, syscall.EADDRNOTAVAIL) {
-		return true
-	}
-	// Cross-platform fallback: error strings vary between Linux and Windows
-	// but the substrings below are stable enough.
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "cannot assign requested address"):
-		return true
-	case strings.Contains(msg, "address not available"):
-		return true
-	}
-	return false
+	return isAddrNotAvailable(err)
 }
