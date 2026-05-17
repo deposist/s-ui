@@ -145,7 +145,7 @@ func parseAuditUnixSecondsFilter(name string, raw string) (int64, error) {
 
 func (a *ApiService) requireAuditAdminScope(c *gin.Context) bool {
 	scope, hasScope := requestTokenScope(c)
-	if !hasScope || scope == "admin" {
+	if auditAdminScopeAllowed(scope, hasScope) {
 		return true
 	}
 	a.recordAudit(c, requestActor(c), "audit_scope_denied", "audit", service.AuditSeverityWarn, map[string]any{
@@ -153,6 +153,10 @@ func (a *ApiService) requireAuditAdminScope(c *gin.Context) bool {
 	})
 	c.JSON(http.StatusForbidden, Msg{Success: false, Msg: "audit: insufficient scope"})
 	return false
+}
+
+func auditAdminScopeAllowed(scope string, hasScope bool) bool {
+	return !hasScope || scope == "admin"
 }
 
 func (a *ApiService) requireTokenScopeAny(c *gin.Context, resource string, allowed ...string) bool {

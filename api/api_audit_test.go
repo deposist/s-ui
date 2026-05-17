@@ -223,22 +223,68 @@ func TestParseAuditUnixSecondsFilter(t *testing.T) {
 	}
 }
 
-func TestGetSecurityAuditRejectsNonAdminTokenScope(t *testing.T) {
-	resetRateLimitState()
-	settingService := initSessionTestDB(t)
-	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", withTestTokenScope("api-user", "read", (&ApiService{}).GetSecurityAudit))
-	})
-	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit", nil), cookies...)
-	if recorder.Code != http.StatusForbidden {
-		t.Fatalf("unexpected status: %d", recorder.Code)
+func TestGetSecurityAuditScopeMatrix(t *testing.T) {
+	tests := []struct {
+		name       string
+		scope      string
+		hasScope   bool
+		wantStatus int
+	}{
+		{name: "cookie session without scope", wantStatus: http.StatusOK},
+		{name: "admin bearer scope", scope: "admin", hasScope: true, wantStatus: http.StatusOK},
+		{name: "read bearer scope", scope: "read", hasScope: true, wantStatus: http.StatusForbidden},
+		{name: "write bearer scope", scope: "write", hasScope: true, wantStatus: http.StatusForbidden},
+		{name: "observability bearer scope", scope: "observability", hasScope: true, wantStatus: http.StatusForbidden},
+		{name: "unknown bearer scope", scope: "unknown", hasScope: true, wantStatus: http.StatusForbidden},
 	}
-	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "audit_scope_denied").First(&event).Error; err != nil {
-		t.Fatal(err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resetRateLimitState()
+			settingService := initSessionTestDB(t)
+			handler := (&ApiService{}).GetSecurityAudit
+			if tt.hasScope {
+				handler = withTestTokenScope("api-user", tt.scope, handler)
+			}
+			router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+				router.GET("/api/security/audit", handler)
+			})
+			recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit", nil), cookies...)
+			if recorder.Code != tt.wantStatus {
+				t.Fatalf("unexpected status: %d", recorder.Code)
+			}
+			if tt.wantStatus != http.StatusForbidden {
+				return
+			}
+			var event model.AuditEvent
+			if err := database.GetDB().Where("event = ?", "audit_scope_denied").First(&event).Error; err != nil {
+				t.Fatal(err)
+			}
+			if event.Actor != "api-user" {
+				t.Fatalf("unexpected actor: %q", event.Actor)
+			}
+		})
 	}
-	if event.Actor != "api-user" {
-		t.Fatalf("unexpected actor: %q", event.Actor)
+}
+
+func TestAuditAdminScopeAllowed(t *testing.T) {
+	tests := []struct {
+		name     string
+		scope    string
+		hasScope bool
+		want     bool
+	}{
+		{name: "cookie session", want: true},
+		{name: "admin bearer", scope: "admin", hasScope: true, want: true},
+		{name: "read bearer", scope: "read", hasScope: true, want: false},
+		{name: "write bearer", scope: "write", hasScope: true, want: false},
+		{name: "observability bearer", scope: "observability", hasScope: true, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := auditAdminScopeAllowed(tt.scope, tt.hasScope); got != tt.want {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
