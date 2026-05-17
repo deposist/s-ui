@@ -50,6 +50,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	})
 	g.GET("/security/audit", a.ApiService.GetSecurityAudit)
 	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
+	g.POST("/telegram/test", a.ApiService.TestTelegram)
 	g.POST("/telegram/backup", a.ApiService.BackupToTelegram)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)

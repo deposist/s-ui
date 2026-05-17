@@ -163,14 +163,16 @@ func realtimeScopeFromContext(c *gin.Context) realtime.Scope {
 
 func startWSHeartbeat(ctx context.Context, conn *websocket.Conn) <-chan struct{} {
 	done := make(chan struct{})
+	pingInterval := wsPingInterval
+	pingTimeout := wsPingTimeout
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(wsPingInterval)
+		ticker := time.NewTicker(pingInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				pingCtx, cancel := context.WithTimeout(ctx, wsPingTimeout)
+				pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
 				err := conn.Ping(pingCtx)
 				cancel()
 				if err != nil {

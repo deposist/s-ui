@@ -137,7 +137,7 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 		t.Fatalf("unexpected filtered event: %#v", got)
 	}
 
-	recorder = performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram test", nil), cookies...)
+	recorder = performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram%20test", nil), cookies...)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("invalid event filter should fail, got %d", recorder.Code)
 	}

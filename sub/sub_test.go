@@ -13,26 +13,35 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 var subUUIDV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func initSubTestDB(t *testing.T) {
 	t.Helper()
-	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	tempDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", tempDir)
+	closeSubTestDB(database.GetDB())
+	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
+	testDB := database.GetDB()
 	t.Cleanup(func() {
-		if d := database.GetDB(); d != nil {
-			if sqlDB, err := d.DB(); err == nil {
-				_ = sqlDB.Close()
-			}
-		}
+		closeSubTestDB(testDB)
 	})
+}
+
+func closeSubTestDB(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
 }
 
 func TestGetClientBySubIdPrefersSecretAndSupportsLegacyName(t *testing.T) {

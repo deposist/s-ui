@@ -12,6 +12,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/realtime"
+	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
 
@@ -34,20 +35,29 @@ func initIPMonitorTestDB(t *testing.T) {
 	ipPrivacySettings.expiresAt = time.Time{}
 	ipPrivacySettings.Unlock()
 	realtime.CloseAll("test_reset")
-	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	tempDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", tempDir)
+	closeIPMonitorTestDB(database.GetDB())
+	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
+	testDB := database.GetDB()
 	t.Cleanup(func() {
-		if d := database.GetDB(); d != nil {
-			if sqlDB, err := d.DB(); err == nil {
-				_ = sqlDB.Close()
-			}
-		}
+		closeIPMonitorTestDB(testDB)
+		realtime.CloseAll("test_done")
 	})
+}
+
+func closeIPMonitorTestDB(db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
 }
 
 func TestRecordFlushAndClear(t *testing.T) {
