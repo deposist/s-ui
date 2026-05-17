@@ -1,11 +1,14 @@
 package service
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/realtime"
+	"gorm.io/gorm"
 )
 
 func TestTrafficDeltasAggregatesByResourceAndTag(t *testing.T) {
@@ -50,6 +53,55 @@ func TestPublishStatsRealtimePublishesOnlinesAndTrafficDelta(t *testing.T) {
 	deltas, ok := deltaEvent.Payload.([]trafficDelta)
 	if !ok || len(deltas) != 1 || deltas[0].Up != 10 {
 		t.Fatalf("unexpected delta payload: %#v", deltaEvent.Payload)
+	}
+}
+
+func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
+	initSettingTestDB(t)
+
+	clients := make([]model.Client, 0, 200)
+	deltas := make(map[string]clientTrafficDelta, 200)
+	expectedUp := make(map[string]int64, 200)
+	expectedDown := make(map[string]int64, 200)
+	for i := 0; i < 200; i++ {
+		name := fmt.Sprintf("client-%03d", i)
+		initialUp := int64(i)
+		initialDown := int64(i * 2)
+		upDelta := int64(i + 10)
+		downDelta := int64(i + 20)
+		clients = append(clients, model.Client{
+			Name: name,
+			Up:   initialUp,
+			Down: initialDown,
+		})
+		deltas[name] = clientTrafficDelta{
+			up:   upDelta,
+			down: downDelta,
+		}
+		expectedUp[name] = initialUp + upDelta
+		expectedDown[name] = initialDown + downDelta
+	}
+	if err := database.GetDB().Create(&clients).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return updateClientTrafficDeltas(tx, deltas)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var stored []model.Client
+	if err := database.GetDB().Order("name asc").Find(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 200 {
+		t.Fatalf("expected 200 clients, got %d", len(stored))
+	}
+	for _, client := range stored {
+		if client.Up != expectedUp[client.Name] || client.Down != expectedDown[client.Name] {
+			t.Fatalf("unexpected traffic for %s: up=%d down=%d", client.Name, client.Up, client.Down)
+		}
 	}
 }
 
