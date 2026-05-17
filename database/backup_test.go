@@ -97,3 +97,34 @@ func TestGetDbIncludesServicesAndTokens(t *testing.T) {
 		t.Fatalf("token was not included in backup")
 	}
 }
+
+func TestGetDbUsesRandomTempPathAndRemovesIt(t *testing.T) {
+	t.Setenv("SUI_DB_FOLDER", t.TempDir())
+	if err := InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeMainDB(t) })
+
+	var tempPath string
+	prevHook := backupTempPathHook
+	backupTempPathHook = func(path string) {
+		tempPath = path
+	}
+	t.Cleanup(func() { backupTempPathHook = prevHook })
+
+	if _, err := GetDb(""); err != nil {
+		t.Fatal(err)
+	}
+	if tempPath == "" {
+		t.Fatal("backup temp path hook was not called")
+	}
+	if base := filepath.Base(tempPath); !strings.HasPrefix(base, "s-ui-backup-") || !strings.HasSuffix(base, ".db") {
+		t.Fatalf("backup temp path %q does not use s-ui-backup-*.db pattern", tempPath)
+	}
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Fatalf("backup temp file was not removed after GetDb returned: %v", err)
+	}
+}

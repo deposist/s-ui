@@ -41,13 +41,29 @@ func GetDb(exclude string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	dbPath := filepath.Join(dir, config.GetName()+"_"+time.Now().Format("20060102-150405")+".db")
+	tmpFile, err := os.CreateTemp(dir, "s-ui-backup-*.db")
+	if err != nil {
+		return nil, err
+	}
+	dbPath := tmpFile.Name()
+	if err := tmpFile.Close(); err != nil {
+		cleanupBackupTempFiles(dbPath)
+		return nil, err
+	}
+	if backupTempPathHook != nil {
+		backupTempPathHook(dbPath)
+	}
+	defer cleanupBackupTempFiles(dbPath)
 
 	backupDb, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
 		return nil, err
 	}
-	defer os.Remove(dbPath)
+	backupSQLDB, err := backupDb.DB()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = backupSQLDB.Close() }()
 
 	err = backupDb.AutoMigrate(
 		&model.Setting{},
@@ -193,14 +209,10 @@ func GetDb(exclude string) ([]byte, error) {
 		return nil, err
 	}
 
-	bdb, _ := backupDb.DB()
-	bdb.Close()
-
-	// Best-effort: remove sidecar journals so the exported .db is the only
-	// file the user receives.
-	_ = os.Remove(dbPath + "-wal")
-	_ = os.Remove(dbPath + "-shm")
-	_ = os.Remove(dbPath + "-journal")
+	if err := backupSQLDB.Close(); err != nil {
+		return nil, err
+	}
+	cleanupBackupSidecars(dbPath)
 
 	// Open the file for reading
 	file, err := os.Open(dbPath)
@@ -216,6 +228,19 @@ func GetDb(exclude string) ([]byte, error) {
 	}
 
 	return fileContents, nil
+}
+
+var backupTempPathHook func(string)
+
+func cleanupBackupTempFiles(dbPath string) {
+	_ = os.Remove(dbPath)
+	cleanupBackupSidecars(dbPath)
+}
+
+func cleanupBackupSidecars(dbPath string) {
+	_ = os.Remove(dbPath + "-wal")
+	_ = os.Remove(dbPath + "-shm")
+	_ = os.Remove(dbPath + "-journal")
 }
 
 func ImportDB(file multipart.File) error {
