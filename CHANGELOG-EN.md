@@ -87,6 +87,7 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   `libcronet` asset until commit-addressable assets are available.
 - The Docker image default `TZ` now matches the panel default
   `Europe/Moscow`.
+- The manual release workflow now defaults to tag `v1.5.1-beta`.
 
 ### Tests
 

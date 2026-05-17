@@ -80,6 +80,7 @@
   记录在缺少按 commit 发布的上游资产时，临时回退到带日期说明的最新
   prebuilt `libcronet` 资产。
 - Docker 镜像默认 `TZ` 现在与面板默认值 `Europe/Moscow` 保持一致。
+- 手动 release workflow 现在默认使用 tag `v1.5.1-beta`。
 
 ### 测试
 

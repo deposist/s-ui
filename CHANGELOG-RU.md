@@ -90,6 +90,8 @@
   commit-addressable assets.
 - Дефолтный `TZ` Docker-образа теперь совпадает с дефолтом панели
   `Europe/Moscow`.
+- Ручной release workflow теперь по умолчанию использует tag
+  `v1.5.1-beta`.
 
 ### Тесты
 
