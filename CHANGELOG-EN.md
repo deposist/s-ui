@@ -33,6 +33,8 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - The frontend clears cached CSRF tokens after logout, logout-all, and
   realtime session-rotation closes so the next mutating request fetches a new
   token.
+- `install.sh` now downloads the release `*.sha256` file and verifies the
+  Linux tarball with `sha256sum -c` before extraction.
 
 ### Privacy and subscriptions
 

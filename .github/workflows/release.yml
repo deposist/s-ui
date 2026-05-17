@@ -164,11 +164,16 @@ jobs:
       - name: Package
         run: tar -zcvf s-ui-linux-${{ matrix.platform }}.tar.gz s-ui
 
+      - name: Generate SHA256 checksum
+        run: sha256sum s-ui-linux-${{ matrix.platform }}.tar.gz > s-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: s-ui-linux-${{ matrix.platform }}
-          path: ./s-ui-linux-${{ matrix.platform }}.tar.gz
+          path: |
+            ./s-ui-linux-${{ matrix.platform }}.tar.gz
+            ./s-ui-linux-${{ matrix.platform }}.tar.gz.sha256
           retention-days: 1
 
   publish-linux:

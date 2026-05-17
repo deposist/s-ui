@@ -76,6 +76,7 @@ t() {
             fetching_latest)    echo "已获取 s-ui 最新版本：$2，开始安装..."; return ;;
             rate_limited)       echo "获取 s-ui 版本失败，可能是 Github API 限制导致，请稍后重试"; return ;;
             download_failed)    echo "下载 s-ui 失败，请确认服务器可以访问 Github"; return ;;
+            checksum_failed)    echo "s-ui 校验和验证失败，请稍后重试或检查发布文件"; return ;;
             installing_specific) echo "开始安装 s-ui $2"; return ;;
             download_failed_specific) echo "下载 s-ui $2 失败，请检查该版本是否存在"; return ;;
             installed_running)  echo "s-ui $2 安装完成，现已启动并运行..."; return ;;
@@ -145,6 +146,8 @@ t() {
         ru:rate_limited)       echo "Не удалось получить версию s-ui. Возможно, сработало ограничение GitHub API. Повторите попытку позже.";;
         en:download_failed)    echo "Could not download s-ui. Verify the server has access to GitHub.";;
         ru:download_failed)    echo "Не удалось скачать s-ui. Убедитесь, что сервер имеет доступ к GitHub.";;
+        en:checksum_failed)    echo "s-ui checksum verification failed. Retry later or check the release files.";;
+        ru:checksum_failed)    echo "Проверка checksum s-ui не прошла. Повторите позже или проверьте файлы релиза.";;
         en:installing_specific) echo "Installing s-ui $2";;
         ru:installing_specific) echo "Начинается установка s-ui $2";;
         en:download_failed_specific) echo "Could not download s-ui $2. Make sure this version exists.";;
@@ -284,8 +287,25 @@ prepare_services() {
     systemctl daemon-reload
 }
 
+verify_download_checksum() {
+    local artifact_name="$1"
+    local checksum_url="$2"
+    local checksum_name="${artifact_name}.sha256"
+
+    wget -N --no-check-certificate -O "/tmp/${checksum_name}" "${checksum_url}"
+    if [[ $? -ne 0 ]]; then
+        echo -e "${red}$(t checksum_failed)${plain}"
+        exit 1
+    fi
+    if ! (cd /tmp/ && sha256sum -c "${checksum_name}"); then
+        echo -e "${red}$(t checksum_failed)${plain}"
+        exit 1
+    fi
+}
+
 install_s-ui() {
     cd /tmp/
+    artifact_name="s-ui-linux-$(arch).tar.gz"
 
     if [ $# == 0 ]; then
         last_version=$(curl -Ls "https://api.github.com/repos/deposist/s-ui-rus-inst/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
@@ -294,29 +314,32 @@ install_s-ui() {
             exit 1
         fi
         echo -e "$(t fetching_latest "${last_version}")"
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz
+        url="https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/${artifact_name}"
+        wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
         if [[ $? -ne 0 ]]; then
             echo -e "${red}$(t download_failed)${plain}"
             exit 1
         fi
+        verify_download_checksum "${artifact_name}" "${url}.sha256"
     else
         last_version=$1
         [[ "${last_version}" != v* ]] && last_version="v${last_version}"
-        url="https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/s-ui-linux-$(arch).tar.gz"
+        url="https://github.com/deposist/s-ui-rus-inst/releases/download/${last_version}/${artifact_name}"
         echo -e "$(t installing_specific "${last_version}")"
-        wget -N --no-check-certificate -O /tmp/s-ui-linux-$(arch).tar.gz "${url}"
+        wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
         if [[ $? -ne 0 ]]; then
             echo -e "${red}$(t download_failed_specific "${last_version}")${plain}"
             exit 1
         fi
+        verify_download_checksum "${artifact_name}" "${url}.sha256"
     fi
 
     if [[ -e /usr/local/s-ui/ ]]; then
         systemctl stop s-ui
     fi
 
-    tar zxvf s-ui-linux-$(arch).tar.gz
-    rm s-ui-linux-$(arch).tar.gz -f
+    tar zxvf "${artifact_name}"
+    rm "${artifact_name}" "${artifact_name}.sha256" -f
 
     chmod +x s-ui/sui s-ui/s-ui.sh
     cp s-ui/s-ui.sh /usr/bin/s-ui

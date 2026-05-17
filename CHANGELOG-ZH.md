@@ -30,6 +30,8 @@
   和重置密码的提示。
 - 前端会在 logout、logout-all 以及 realtime session-rotation close 后清除
   缓存的 CSRF token，下一次变更请求会重新获取 token。
+- `install.sh` 现在会下载 release 中的 `*.sha256` 文件，并在解压前通过
+  `sha256sum -c` 校验 Linux tarball。
 
 ### 隐私与订阅
 

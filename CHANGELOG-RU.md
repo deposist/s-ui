@@ -34,6 +34,8 @@
 - Фронтенд очищает cached CSRF-token после logout, logout-all и realtime
   session-rotation close, поэтому следующий mutating request получает новый
   токен.
+- `install.sh` скачивает release-файл `*.sha256` и проверяет Linux-тарбол
+  через `sha256sum -c` перед распаковкой.
 
 ### Privacy и подписки
 
