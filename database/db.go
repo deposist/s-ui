@@ -103,12 +103,8 @@ func InitDB(dbPath string) error {
 	}
 
 	// Default Outbounds
-	if !db.Migrator().HasTable(&model.Outbound{}) {
-		db.Migrator().CreateTable(&model.Outbound{})
-		defaultOutbound := []model.Outbound{
-			{Type: "direct", Tag: "direct", Options: json.RawMessage(`{}`)},
-		}
-		db.Create(&defaultOutbound)
+	if err := ensureDefaultOutbound(gormDefaultOutboundStore{db: db}); err != nil {
+		return err
 	}
 
 	err = db.AutoMigrate(
@@ -145,6 +141,41 @@ func InitDB(dbPath string) error {
 	}
 
 	return nil
+}
+
+type defaultOutboundStore interface {
+	HasTable(value any) bool
+	CreateTable(values ...any) error
+	Create(value any) error
+}
+
+type gormDefaultOutboundStore struct {
+	db *gorm.DB
+}
+
+func (s gormDefaultOutboundStore) HasTable(value any) bool {
+	return s.db.Migrator().HasTable(value)
+}
+
+func (s gormDefaultOutboundStore) CreateTable(values ...any) error {
+	return s.db.Migrator().CreateTable(values...)
+}
+
+func (s gormDefaultOutboundStore) Create(value any) error {
+	return s.db.Create(value).Error
+}
+
+func ensureDefaultOutbound(store defaultOutboundStore) error {
+	if store.HasTable(&model.Outbound{}) {
+		return nil
+	}
+	if err := store.CreateTable(&model.Outbound{}); err != nil {
+		return err
+	}
+	defaultOutbound := []model.Outbound{
+		{Type: "direct", Tag: "direct", Options: json.RawMessage(`{}`)},
+	}
+	return store.Create(&defaultOutbound)
 }
 
 func ensureIndexes() error {
