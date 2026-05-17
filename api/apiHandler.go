@@ -3,8 +3,6 @@ package api
 import (
 	"strings"
 
-	"github.com/deposist/s-ui-rus-inst/util/common"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,12 +29,41 @@ func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 	})
 	g.Use(a.csrfMiddleware)
 	a.registerGroupedRoutes(g)
-	g.POST("/:postAction", a.postHandler)
-	g.GET("/:getAction", a.getHandler)
 }
 
 func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
+	g.POST("/login", a.ApiService.Login)
+	g.POST("/changePass", a.ApiService.ChangePass)
+	g.POST("/save", a.save)
+	g.POST("/restartApp", a.ApiService.RestartApp)
+	g.POST("/restartSb", a.ApiService.RestartSb)
+	g.POST("/linkConvert", a.ApiService.LinkConvert)
+	g.POST("/subConvert", a.ApiService.SubConvert)
+	g.POST("/importdb", a.ApiService.ImportDb)
+	g.POST("/addToken", a.reloadTokensAfter(a.ApiService.AddToken))
+	g.POST("/deleteToken", a.reloadTokensAfter(a.ApiService.DeleteToken))
+	g.POST("/setTokenEnabled", a.reloadTokensAfter(a.ApiService.SetTokenEnabled))
+	g.POST("/logoutAllAdmins", a.ApiService.LogoutAllAdmins)
+
 	g.GET("/csrf", a.ApiService.GetCSRF)
+	g.GET("/logout", a.ApiService.Logout)
+	g.GET("/load", a.ApiService.LoadData)
+	for _, action := range []string{"inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config"} {
+		action := action
+		g.GET("/"+action, a.loadPartialData(action))
+	}
+	g.GET("/users", a.ApiService.GetUsers)
+	g.GET("/settings", a.ApiService.GetSettings)
+	g.GET("/stats", a.ApiService.GetStats)
+	g.GET("/status", a.ApiService.GetStatus)
+	g.GET("/onlines", a.ApiService.GetOnlines)
+	g.GET("/logs", a.ApiService.GetLogs)
+	g.GET("/changes", a.ApiService.CheckChanges)
+	g.GET("/keypairs", a.ApiService.GetKeypairs)
+	g.GET("/getdb", a.ApiService.GetDb)
+	g.GET("/tokens", a.ApiService.GetTokens)
+	g.GET("/singbox-config", a.ApiService.GetSingboxConfig)
+	g.GET("/checkOutbound", a.ApiService.GetCheckOutbound)
 	g.GET("/version", a.ApiService.GetVersionInfo)
 	g.POST("/checkOutbounds", a.ApiService.CheckOutbounds)
 	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
@@ -61,82 +88,24 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	observability.GET("/core-history", a.ApiService.GetCoreHistory)
 }
 
-func (a *APIHandler) postHandler(c *gin.Context) {
-	loginUser := GetLoginUser(c)
-	action := c.Param("postAction")
-
-	switch action {
-	case "login":
-		a.ApiService.Login(c)
-	case "changePass":
-		a.ApiService.ChangePass(c)
-	case "save":
-		a.ApiService.Save(c, loginUser)
-	case "restartApp":
-		a.ApiService.RestartApp(c)
-	case "restartSb":
-		a.ApiService.RestartSb(c)
-	case "linkConvert":
-		a.ApiService.LinkConvert(c)
-	case "subConvert":
-		a.ApiService.SubConvert(c)
-	case "importdb":
-		a.ApiService.ImportDb(c)
-	case "addToken":
-		a.ApiService.AddToken(c)
-		a.apiv2.ReloadTokens()
-	case "deleteToken":
-		a.ApiService.DeleteToken(c)
-		a.apiv2.ReloadTokens()
-	case "setTokenEnabled":
-		a.ApiService.SetTokenEnabled(c)
-		a.apiv2.ReloadTokens()
-	case "logoutAllAdmins":
-		a.ApiService.LogoutAllAdmins(c)
-	default:
-		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
-	}
+func (a *APIHandler) save(c *gin.Context) {
+	a.ApiService.Save(c, GetLoginUser(c))
 }
 
-func (a *APIHandler) getHandler(c *gin.Context) {
-	action := c.Param("getAction")
-
-	switch action {
-	case "logout":
-		a.ApiService.Logout(c)
-	case "load":
-		a.ApiService.LoadData(c)
-	case "inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config":
+func (a *APIHandler) loadPartialData(action string) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		err := a.ApiService.LoadPartialData(c, []string{action})
 		if err != nil {
 			jsonMsg(c, action, err)
 		}
-		return
-	case "users":
-		a.ApiService.GetUsers(c)
-	case "settings":
-		a.ApiService.GetSettings(c)
-	case "stats":
-		a.ApiService.GetStats(c)
-	case "status":
-		a.ApiService.GetStatus(c)
-	case "onlines":
-		a.ApiService.GetOnlines(c)
-	case "logs":
-		a.ApiService.GetLogs(c)
-	case "changes":
-		a.ApiService.CheckChanges(c)
-	case "keypairs":
-		a.ApiService.GetKeypairs(c)
-	case "getdb":
-		a.ApiService.GetDb(c)
-	case "tokens":
-		a.ApiService.GetTokens(c)
-	case "singbox-config":
-		a.ApiService.GetSingboxConfig(c)
-	case "checkOutbound":
-		a.ApiService.GetCheckOutbound(c)
-	default:
-		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
+	}
+}
+
+func (a *APIHandler) reloadTokensAfter(handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		handler(c)
+		if a.apiv2 != nil {
+			a.apiv2.ReloadTokens()
+		}
 	}
 }

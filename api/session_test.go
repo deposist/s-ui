@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/service"
@@ -27,10 +28,12 @@ func initSessionTestDB(t *testing.T) *service.SettingService {
 		}
 		t.Fatal(err)
 	}
+	testDB := database.GetDB()
 	t.Cleanup(func() {
-		if d := database.GetDB(); d != nil {
-			if sqlDB, err := d.DB(); err == nil {
+		if testDB != nil {
+			if sqlDB, err := testDB.DB(); err == nil {
 				_ = sqlDB.Close()
+				time.Sleep(25 * time.Millisecond)
 			}
 		}
 	})
