@@ -14,6 +14,7 @@ const api = axios.create({
 })
 
 const pendingRequests = new Map<string, AbortController>()
+const DUPLICATE_ABORT_REASON = 'Duplicate request cancelled'
 
 const isDedupeMethod = (method?: string) => {
     const m = (method ?? 'get').toLowerCase()
@@ -43,7 +44,7 @@ api.interceptors.request.use(
         if (isDedupeMethod(config.method)) {
             const key = requestKey(config)
             if (pendingRequests.has(key)) {
-                pendingRequests.get(key)?.abort('Duplicate request cancelled')
+                pendingRequests.get(key)?.abort(DUPLICATE_ABORT_REASON)
             }
             const controller = new AbortController()
             config.signal = controller.signal
