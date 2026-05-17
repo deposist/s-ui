@@ -61,7 +61,10 @@ func (a *APP) Init() error {
 	a.core = core.NewCore()
 
 	a.cronJob = cronjob.NewCronJob()
-	a.webServer = web.NewServer()
+	a.webServer, err = web.NewServer()
+	if err != nil {
+		return err
+	}
 	a.subServer = sub.NewServer()
 
 	a.configService = service.NewConfigService(a.core)

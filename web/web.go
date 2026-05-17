@@ -35,14 +35,20 @@ type Server struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	settingService service.SettingService
+	assetsFS       fs.FS
 }
 
-func NewServer() *Server {
+func NewServer() (*Server, error) {
+	assetsFS, err := fs.Sub(content, "html/assets")
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		ctx:    ctx,
-		cancel: cancel,
-	}
+		ctx:      ctx,
+		cancel:   cancel,
+		assetsFS: assetsFS,
+	}, nil
 }
 
 func (s *Server) initRouter() (*gin.Engine, error) {
@@ -101,12 +107,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	})
 
 	// Serve the assets folder
-	assetsFS, err := fs.Sub(content, "html/assets")
-	if err != nil {
-		panic(err)
-	}
-
-	engine.StaticFS(assetsBasePath, http.FS(assetsFS))
+	engine.StaticFS(assetsBasePath, http.FS(s.assetsFS))
 
 	group_apiv2 := engine.Group(base_url + "apiv2")
 	apiv2 := api.NewAPIv2Handler(group_apiv2)
