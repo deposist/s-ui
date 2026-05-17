@@ -607,6 +607,11 @@ func (s *SettingService) validateAll(settings map[string]string) error {
 		if err := validateSubscriptionSettingInput(key, obj); err != nil {
 			return err
 		}
+		if isDomainSetting(key) {
+			if err := util.ValidateHostname(obj); err != nil {
+				return common.NewErrorf("%s: %v", key, err)
+			}
+		}
 		if obj != "" && isCertificatePathSetting(key) {
 			if err := s.fileExists(obj); err != nil {
 				return common.NewError(" -> ", obj, " is not exists")
@@ -642,6 +647,15 @@ func isCertificatePathSetting(key string) bool {
 func isPathSetting(key string) bool {
 	switch key {
 	case "webPath", "subPath", "subJsonPath", "subClashPath":
+		return true
+	default:
+		return false
+	}
+}
+
+func isDomainSetting(key string) bool {
+	switch key {
+	case "webDomain", "subDomain":
 		return true
 	default:
 		return false

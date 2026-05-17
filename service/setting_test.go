@@ -466,3 +466,35 @@ func TestGetTimeLocationFallsBackToLocalForInvalidLocation(t *testing.T) {
 		t.Fatalf("expected invalid timeLocation to fall back to time.Local, got %q", location.String())
 	}
 }
+
+func TestSaveValidatesDomainSettings(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	validPayload, err := json.Marshal(map[string]string{
+		"webDomain": "example.com",
+		"subDomain": "пример.рф",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, validPayload)
+	}); err != nil {
+		t.Fatalf("valid domains rejected: %v", err)
+	}
+
+	invalidPayload, err := json.Marshal(map[string]string{
+		"webDomain": "example.com:443",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidPayload)
+	}); err == nil {
+		t.Fatal("expected domain with port to be rejected")
+	}
+}
