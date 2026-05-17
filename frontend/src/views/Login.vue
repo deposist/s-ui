@@ -49,7 +49,7 @@
 <script lang="ts" setup>
 import { ref } from "vue"
 import { useLocale,useTheme } from 'vuetify'
-import { i18n, languages } from '@/locales'
+import { i18n, languages, setI18nLocale } from '@/locales'
 import { useRouter } from 'vue-router'
 import HttpUtil from '@/plugins/httputil'
 
@@ -95,9 +95,9 @@ const login = async () => {
     loading.value=false
   }
 }
-const changeLocale = (l: any) => {
-  locale.current.value = l ?? 'en'
-  localStorage.setItem('locale', locale.current.value)
+const changeLocale = async (l: string | null) => {
+  const selectedLocale = await setI18nLocale(l ?? 'en')
+  locale.current.value = selectedLocale
 }
 const changeTheme = (th: string) => {
   theme.change(th)

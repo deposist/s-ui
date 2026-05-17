@@ -45,7 +45,7 @@
 import { useLocale, useTheme } from 'vuetify'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { languages } from '@/locales'
+import { languages, setI18nLocale } from '@/locales'
 
 defineProps(['isMobile'])
 
@@ -54,10 +54,10 @@ const { locale: i18nLocale } = useI18n()
 const vuetifyLocale = useLocale()
 const theme = useTheme()
 
-const changeLocale = (l: string) => {
-  i18nLocale.value = l
-  vuetifyLocale.current.value = l
-  localStorage.setItem('locale', l)
+const changeLocale = async (l: string) => {
+  const selectedLocale = await setI18nLocale(l)
+  i18nLocale.value = selectedLocale
+  vuetifyLocale.current.value = selectedLocale
   window.location.reload()
 }
 const isActiveLocale = (l: string) => i18nLocale.value === l
