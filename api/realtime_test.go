@@ -293,6 +293,72 @@ func TestRealtimeWSSendsPublishedEvents(t *testing.T) {
 	}
 }
 
+func TestRealtimeWSUsesTokenScopeForSecurityEvents(t *testing.T) {
+	tests := []struct {
+		name         string
+		scope        string
+		wantSecurity bool
+	}{
+		{name: "admin scope receives security event", scope: "admin", wantSecurity: true},
+		{name: "read scope filters security event", scope: "read", wantSecurity: false},
+		{name: "write scope filters security event", scope: "write", wantSecurity: false},
+		{name: "observability scope filters security event", scope: "observability", wantSecurity: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router, cookies := newRealtimeWSTestRouterWithScope(t, tt.scope)
+			server := httptest.NewServer(router)
+			t.Cleanup(server.Close)
+
+			resetRealtimeForTest()
+			setWSTokenForTest("ws-token", "admin")
+
+			conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+				return true
+			})
+			t.Cleanup(func() { conn.CloseNow() })
+
+			connected := readRealtimeEventForTest(t, conn)
+			if connected.Type != realtime.Topic("connected") {
+				t.Fatalf("expected connected event, got %s", connected.Type)
+			}
+
+			realtime.Publish(realtime.TopicSecurityEvent, map[string]any{"kind": "scope"})
+			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+			defer cancel()
+			event, err := readRealtimeEvent(ctx, conn)
+			if tt.wantSecurity {
+				if err != nil {
+					t.Fatalf("expected security event for scope %q: %v", tt.scope, err)
+				}
+				if event.Type != realtime.TopicSecurityEvent {
+					t.Fatalf("expected security event, got %s", event.Type)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("scope %q received filtered event: %#v", tt.scope, event)
+			}
+		})
+	}
+}
+
+func TestRealtimeScopeFromContextDefaultsSessionToAdmin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	if got := realtimeScopeFromContext(ctx); got != realtime.ScopeAdmin {
+		t.Fatalf("session flow should default to admin scope, got %q", got)
+	}
+	ctx.Set(apiTokenScopeKey, "observability")
+	if got := realtimeScopeFromContext(ctx); got != realtime.ScopeObservability {
+		t.Fatalf("unexpected bearer scope: %q", got)
+	}
+	ctx.Set(apiTokenScopeKey, "unknown")
+	if got := realtimeScopeFromContext(ctx); got != realtime.ScopeRead {
+		t.Fatalf("unknown scope should fall back to least privilege, got %q", got)
+	}
+}
+
 func TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong(t *testing.T) {
 	setWSHeartbeatForTest(t, 10*time.Millisecond, 200*time.Millisecond)
 	router, cookies := newRealtimeWSTestRouter(t)
@@ -421,6 +487,10 @@ func setWSHeartbeatForTest(t *testing.T, pingInterval time.Duration, pingTimeout
 }
 
 func newRealtimeWSTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
+	return newRealtimeWSTestRouterWithScope(t, "")
+}
+
+func newRealtimeWSTestRouterWithScope(t *testing.T, scope string) (*gin.Engine, []*http.Cookie) {
 	t.Helper()
 	settingService := initSessionTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
@@ -429,6 +499,12 @@ func newRealtimeWSTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	if scope != "" {
+		router.Use(func(c *gin.Context) {
+			c.Set(apiTokenScopeKey, scope)
+			c.Next()
+		})
+	}
 	router.GET("/login", func(c *gin.Context) {
 		generation, err := settingService.GetSessionGeneration()
 		if err != nil {
