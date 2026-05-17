@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"syscall"
@@ -23,19 +24,31 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-func GetDb(exclude string) ([]byte, error) {
-	exclude_audit, exclude_changes, exclude_client_ips, exclude_stats := false, false, false, false
-	for _, table := range strings.Split(exclude, ",") {
-		if table == "audit" || table == "audit_events" {
-			exclude_audit = true
-		} else if table == "client_ips" {
-			exclude_client_ips = true
-		} else if table == "changes" {
-			exclude_changes = true
-		} else if table == "stats" {
-			exclude_stats = true
-		}
+type backupTable struct {
+	name  string
+	model any
+}
+
+func backupTables() []backupTable {
+	return []backupTable{
+		{name: "settings", model: &model.Setting{}},
+		{name: "tls", model: &model.Tls{}},
+		{name: "inbounds", model: &model.Inbound{}},
+		{name: "outbounds", model: &model.Outbound{}},
+		{name: "services", model: &model.Service{}},
+		{name: "endpoints", model: &model.Endpoint{}},
+		{name: "users", model: &model.User{}},
+		{name: "tokens", model: &model.Tokens{}},
+		{name: "stats", model: &model.Stats{}},
+		{name: "client_ips", model: &model.ClientIP{}},
+		{name: "clients", model: &model.Client{}},
+		{name: "changes", model: &model.Changes{}},
+		{name: "audit_events", model: &model.AuditEvent{}},
 	}
+}
+
+func GetDb(exclude string) ([]byte, error) {
+	excludedTables := parseBackupExcludes(exclude)
 
 	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
@@ -65,141 +78,21 @@ func GetDb(exclude string) ([]byte, error) {
 	}
 	defer func() { _ = backupSQLDB.Close() }()
 
-	err = backupDb.AutoMigrate(
-		&model.Setting{},
-		&model.Tls{},
-		&model.Inbound{},
-		&model.Outbound{},
-		&model.Service{},
-		&model.Endpoint{},
-		&model.User{},
-		&model.Tokens{},
-		&model.Stats{},
-		&model.ClientIP{},
-		&model.Client{},
-		&model.Changes{},
-		&model.AuditEvent{},
-	)
-	if err != nil {
+	tables := backupTables()
+	models := make([]any, 0, len(tables))
+	for _, table := range tables {
+		models = append(models, table.model)
+	}
+	if err = backupDb.AutoMigrate(models...); err != nil {
 		return nil, err
 	}
 
-	var settings []model.Setting
-	var tls []model.Tls
-	var inbound []model.Inbound
-	var outbound []model.Outbound
-	var services []model.Service
-	var endpoint []model.Endpoint
-	var users []model.User
-	var tokens []model.Tokens
-	var clients []model.Client
-	var clientIPs []model.ClientIP
-	var stats []model.Stats
-	var changes []model.Changes
-	var auditEvents []model.AuditEvent
-
-	// Perform scans and handle errors
-	if err := db.Model(&model.Setting{}).Scan(&settings).Error; err != nil {
-		return nil, err
-	} else if len(settings) > 0 {
-		if err := backupDb.Save(settings).Error; err != nil {
+	for _, table := range tables {
+		if excludedTables[table.name] {
+			continue
+		}
+		if err := copyBackupTable(db, backupDb, table.model); err != nil {
 			return nil, err
-		}
-	}
-	if err := db.Model(&model.Tls{}).Scan(&tls).Error; err != nil {
-		return nil, err
-	} else if len(tls) > 0 {
-		if err := backupDb.Save(tls).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := db.Model(&model.Inbound{}).Scan(&inbound).Error; err != nil {
-		return nil, err
-	} else if len(inbound) > 0 {
-		if err := backupDb.Save(inbound).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := db.Model(&model.Outbound{}).Scan(&outbound).Error; err != nil {
-		return nil, err
-	} else if len(outbound) > 0 {
-		if err := backupDb.Save(outbound).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := db.Model(&model.Service{}).Scan(&services).Error; err != nil {
-		return nil, err
-	} else if len(services) > 0 {
-		if err := backupDb.Save(services).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := db.Model(&model.Endpoint{}).Scan(&endpoint).Error; err != nil {
-		return nil, err
-	} else if len(endpoint) > 0 {
-		if err := backupDb.Save(endpoint).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := db.Model(&model.User{}).Scan(&users).Error; err != nil {
-		return nil, err
-	} else if len(users) > 0 {
-		if err := backupDb.Save(users).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := db.Model(&model.Tokens{}).Scan(&tokens).Error; err != nil {
-		return nil, err
-	} else if len(tokens) > 0 {
-		if err := backupDb.Save(tokens).Error; err != nil {
-			return nil, err
-		}
-	}
-	if err := db.Model(&model.Client{}).Scan(&clients).Error; err != nil {
-		return nil, err
-	} else if len(clients) > 0 {
-		if err := backupDb.Save(clients).Error; err != nil {
-			return nil, err
-		}
-	}
-	if !exclude_client_ips {
-		if err := db.Model(&model.ClientIP{}).Scan(&clientIPs).Error; err != nil {
-			return nil, err
-		} else if len(clientIPs) > 0 {
-			if err := backupDb.Save(clientIPs).Error; err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if !exclude_stats {
-		if err := db.Model(&model.Stats{}).Scan(&stats).Error; err != nil {
-			return nil, err
-		}
-		if len(stats) > 0 {
-			if err := backupDb.Save(stats).Error; err != nil {
-				return nil, err
-			}
-		}
-	}
-	if !exclude_changes {
-		if err := db.Model(&model.Changes{}).Scan(&changes).Error; err != nil {
-			return nil, err
-		}
-		if len(changes) > 0 {
-			if err := backupDb.Save(changes).Error; err != nil {
-				return nil, err
-			}
-		}
-	}
-	if !exclude_audit {
-		if err := db.Model(&model.AuditEvent{}).Scan(&auditEvents).Error; err != nil {
-			return nil, err
-		}
-		if len(auditEvents) > 0 {
-			if err := backupDb.Save(auditEvents).Error; err != nil {
-				return nil, err
-			}
 		}
 	}
 
@@ -228,6 +121,35 @@ func GetDb(exclude string) ([]byte, error) {
 	}
 
 	return fileContents, nil
+}
+
+func parseBackupExcludes(exclude string) map[string]bool {
+	excluded := map[string]bool{}
+	for _, table := range strings.Split(exclude, ",") {
+		table = strings.TrimSpace(table)
+		switch table {
+		case "audit":
+			excluded["audit_events"] = true
+		case "audit_events", "client_ips", "changes", "stats":
+			excluded[table] = true
+		}
+	}
+	return excluded
+}
+
+func copyBackupTable(sourceDB *gorm.DB, backupDB *gorm.DB, modelValue any) error {
+	modelType := reflect.TypeOf(modelValue)
+	if modelType.Kind() != reflect.Ptr {
+		return common.NewError("backup model must be a pointer")
+	}
+	slicePtr := reflect.New(reflect.SliceOf(modelType.Elem()))
+	if err := sourceDB.Model(modelValue).Scan(slicePtr.Interface()).Error; err != nil {
+		return err
+	}
+	if slicePtr.Elem().Len() == 0 {
+		return nil
+	}
+	return backupDB.Save(slicePtr.Elem().Interface()).Error
 }
 
 var backupTempPathHook func(string)

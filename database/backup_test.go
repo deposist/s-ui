@@ -128,3 +128,80 @@ func TestGetDbUsesRandomTempPathAndRemovesIt(t *testing.T) {
 		t.Fatalf("backup temp file was not removed after GetDb returned: %v", err)
 	}
 }
+
+func TestGetDbExcludeSkipsSelectedTables(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	mainDB := GetDB()
+	if err := mainDB.Create(&model.Client{Name: "include-client", Inbounds: []byte("[]")}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := mainDB.Create(&model.Stats{DateTime: 1, Resource: "client", Tag: "include-client", Traffic: 10}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := mainDB.Create(&model.ClientIP{ClientName: "include-client", IPHash: "hash-1", FirstSeen: 1, LastSeen: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := mainDB.Create(&model.Changes{DateTime: 1, Actor: "test", Key: "clients", Action: "set", Obj: []byte(`"include-client"`)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := mainDB.Create(&model.AuditEvent{DateTime: 1, Actor: "test", Event: "login", Resource: "auth", Severity: "info"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	backup, err := GetDb("audit,client_ips,stats,changes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, backup, 0600); err != nil {
+		t.Fatal(err)
+	}
+	backupDB, err := gorm.Open(sqlite.Open(backupPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := backupDB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		cleanupBackupSidecars(backupPath)
+	})
+
+	var clientsCount int64
+	if err := backupDB.Model(&model.Client{}).Where("name = ?", "include-client").Count(&clientsCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if clientsCount != 1 {
+		t.Fatalf("client table should be included, got %d rows", clientsCount)
+	}
+
+	for tableName, modelValue := range map[string]any{
+		"stats":        &model.Stats{},
+		"client_ips":   &model.ClientIP{},
+		"changes":      &model.Changes{},
+		"audit_events": &model.AuditEvent{},
+	} {
+		t.Run(tableName, func(t *testing.T) {
+			var count int64
+			if err := backupDB.Model(modelValue).Count(&count).Error; err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Fatalf("expected %s to be excluded, got %d rows", tableName, count)
+			}
+		})
+	}
+}
