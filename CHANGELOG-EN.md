@@ -28,6 +28,8 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - Fresh-install admin passwords are no longer written to application logs; the
   generated password is saved once to `<dataDir>/initial-admin.txt` with
   owner-only permissions, and startup only prints the file path.
+- `s-ui admin -show` no longer prints the stored password hash; it shows the
+  username and reset guidance instead.
 
 ### Privacy and subscriptions
 
