@@ -7,6 +7,41 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.2-beta-hotfix] - 2026-05-18 - backup chunking and SPA upgrade safety
+
+### Fixed
+
+- `too many SQL variables` during database backup and 3x-ui migration on
+  installs with large `stats`, `client_ips`, `audit_events`, `changes` or
+  `clients` tables. The backup routine in `database/backup.go` no longer
+  emits a single multi-row `INSERT VALUES (...)` that exceeded SQLite's
+  compile-time variable limit (`SQLITE_MAX_VARIABLE_NUMBER = 999` in
+  `mattn/go-sqlite3`). This unblocks `WritePreImportBackup` and the
+  3x-ui migration on production-sized databases (≈40k+ rows in `stats`).
+- Stale `index.html` after upgrade no longer breaks the Clients tab.
+  `/<base>/assets/*` now returns a real 404 for missing files instead of
+  falling through to the SPA fallback, so browsers stop receiving
+  `text/html` for JS module requests
+  (`Failed to load module script` / `Failed to fetch dynamically imported
+  module`). `index.html` is served with `Cache-Control: no-cache, no-store,
+  must-revalidate`; hashed assets keep `public, max-age=31536000, immutable`.
+- The Vue Router now listens for `vite:preloadError` and triggers one
+  guarded `window.location.reload()` (a `sessionStorage` flag prevents
+  reload loops), so tabs left over from the previous build pick up the
+  new bundle automatically.
+- `service/client.go` (`addbulk`, `editbulk`, `ResetClients`,
+  `DepleteClients`) and `database/importxui/history_routing.go` (historical
+  traffic import) now chunk their bulk `Save`/`Create` calls through new
+  `database/bulk.go` helpers (`SafeSQLiteBatchSize`, `CreateInBatchesSafe`,
+  `SaveInBatchesSafe`). Reset/deplete jobs and historical-stats imports
+  no longer fail on installs with thousands of clients.
+
+### Notes
+
+- No schema migrations, new endpoints, scopes or environment variables.
+- A regression test (`database/backup_test.go`) now creates ≈43k `stats`
+  rows plus 5k `client_ips` and verifies `GetDb("")` round-trips them.
+
 ## [1.5.2-beta] - 2026-05-18 - 3x-ui migration suite
 
 ### Added

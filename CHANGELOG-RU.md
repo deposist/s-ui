@@ -7,6 +7,41 @@
 
 ## Unreleased
 
+## [1.5.2-beta-hotfix] — 2026-05-18 — чанки в бэкапе и безопасность SPA при апгрейде
+
+### Исправлено
+
+- Ошибка `too many SQL variables` при бэкапе БД и миграции с 3x-ui на
+  инсталлах с большими таблицами `stats`, `client_ips`, `audit_events`,
+  `changes` или `clients`. Функция бэкапа в `database/backup.go` больше
+  не генерирует один многострочный `INSERT VALUES (...)`, превышающий
+  compile-time лимит SQLite (`SQLITE_MAX_VARIABLE_NUMBER = 999` в
+  `mattn/go-sqlite3`). Это разблокирует `WritePreImportBackup` и миграцию
+  с 3x-ui на боевых базах (≈40k+ строк в `stats`).
+- Протухший `index.html` после апгрейда больше не ломает вкладку Clients.
+  `/<base>/assets/*` теперь возвращает честный 404 для отсутствующих
+  файлов вместо SPA-fallback'а, и браузеры не получают `text/html`
+  на запрос JS-модуля (`Failed to load module script` /
+  `Failed to fetch dynamically imported module`). `index.html` отдаётся
+  с `Cache-Control: no-cache, no-store, must-revalidate`, хэшированные
+  ассеты остаются `public, max-age=31536000, immutable`.
+- Vue Router слушает `vite:preloadError` и делает один защищённый
+  `window.location.reload()` (флаг в `sessionStorage` исключает петлю),
+  поэтому вкладки с прошлым билдом сами подхватывают новый бандл.
+- `service/client.go` (`addbulk`, `editbulk`, `ResetClients`,
+  `DepleteClients`) и `database/importxui/history_routing.go` (импорт
+  исторического трафика) нарезают bulk-`Save`/`Create` через новые
+  helper'ы из `database/bulk.go` (`SafeSQLiteBatchSize`,
+  `CreateInBatchesSafe`, `SaveInBatchesSafe`). Reset/deplete-задачи и
+  импорт исторических `stats` больше не падают на инсталлах с тысячами
+  клиентов.
+
+### Замечания
+
+- Миграций схемы, новых endpoint'ов, scope'ов и переменных окружения нет.
+- Регресс в `database/backup_test.go` создаёт ≈43k строк `stats` плюс
+  5k `client_ips` и проверяет, что `GetDb("")` сохраняет количество строк.
+
 ## [1.5.2-beta] — 2026-05-18 — пакет миграции из 3x-ui
 
 ### Добавлено

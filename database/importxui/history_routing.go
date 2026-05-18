@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 
 	"gorm.io/gorm"
@@ -111,7 +112,7 @@ func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *sour
 		}
 	}
 	if len(stats) > 0 {
-		if err := tx.Create(&stats).Error; err != nil {
+		if err := database.CreateInBatchesSafe(tx, &stats); err != nil {
 			return err
 		}
 	}

@@ -120,7 +120,7 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
-		err = tx.Save(clients).Error
+		err = database.SaveInBatchesSafe(tx, clients)
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +149,7 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 				return nil, err
 			}
 		}
-		err = tx.Save(clients).Error
+		err = database.SaveInBatchesSafe(tx, clients)
 		if err != nil {
 			return nil, err
 		}
@@ -469,7 +469,7 @@ func (s *ClientService) DepleteClients() (inboundIds []uint, err error) {
 		if err != nil {
 			return nil, err
 		}
-		err = tx.Model(model.Changes{}).Create(&changes).Error
+		err = database.CreateInBatchesSafe(tx.Model(model.Changes{}), &changes)
 		if err != nil {
 			return nil, err
 		}
@@ -549,7 +549,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 
 	// Save clients
 	if len(allClients) > 0 {
-		err = tx.Save(allClients).Error
+		err = database.SaveInBatchesSafe(tx, allClients)
 		if err != nil {
 			return nil, err
 		}
@@ -557,7 +557,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 
 	// Save changes
 	if len(changes) > 0 {
-		err = tx.Model(model.Changes{}).Create(&changes).Error
+		err = database.CreateInBatchesSafe(tx.Model(model.Changes{}), &changes)
 		if err != nil {
 			return nil, err
 		}

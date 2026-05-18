@@ -142,14 +142,25 @@ func copyBackupTable(sourceDB *gorm.DB, backupDB *gorm.DB, modelValue any) error
 	if modelType.Kind() != reflect.Ptr {
 		return common.NewError("backup model must be a pointer")
 	}
-	slicePtr := reflect.New(reflect.SliceOf(modelType.Elem()))
-	if err := sourceDB.Model(modelValue).Scan(slicePtr.Interface()).Error; err != nil {
-		return err
-	}
-	if slicePtr.Elem().Len() == 0 {
-		return nil
-	}
-	return backupDB.Save(slicePtr.Elem().Interface()).Error
+	// Source-side paging keeps memory bounded for large stats / client_ips
+	// tables, and the destination CreateInBatches keeps each generated
+	// INSERT below SQLite's compile-time SQLITE_MAX_VARIABLE_NUMBER (=999
+	// in mattn/go-sqlite3). Without paging on the destination, GORM tries
+	// to emit one INSERT VALUES (...),(...) for the whole result set and
+	// fails with "too many SQL variables" the moment row_count*column_count
+	// exceeds the budget — the historical 1.5.x backup / xui-import bug.
+	batch := SafeSQLiteBatchSize(backupDB, modelValue)
+	return backupDB.Transaction(func(tx *gorm.DB) error {
+		slicePtr := reflect.New(reflect.SliceOf(modelType.Elem()))
+		findResult := sourceDB.Model(modelValue).
+			FindInBatches(slicePtr.Interface(), batch, func(_ *gorm.DB, _ int) error {
+				if slicePtr.Elem().Len() == 0 {
+					return nil
+				}
+				return tx.CreateInBatches(slicePtr.Elem().Interface(), batch).Error
+			})
+		return findResult.Error
+	})
 }
 
 var backupTempPathHook func(string)

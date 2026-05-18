@@ -1,6 +1,7 @@
 package database
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -203,5 +204,115 @@ func TestGetDbExcludeSkipsSelectedTables(t *testing.T) {
 				t.Fatalf("expected %s to be excluded, got %d rows", tableName, count)
 			}
 		})
+	}
+}
+
+
+func TestGetDbHandlesLargeTablesWithoutVariableLimit(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	// Reproduce the production "too many SQL variables" error reported
+	// against database/backup.go: backup of a real s-ui DB with ~43k rows
+	// in the stats table failed because copyBackupTable issued a single
+	// multi-row INSERT VALUES (...) that blew past
+	// SQLITE_MAX_VARIABLE_NUMBER (=999 in mattn/go-sqlite3). The chunked
+	// CreateInBatches path must absorb a 43k-row stats table plus a
+	// secondary client_ips table without exceeding the variable budget.
+	const statsRows = 42974
+	const ipRows = 5000
+	mainDB := GetDB()
+
+	if err := mainDB.Transaction(func(tx *gorm.DB) error {
+		stats := make([]model.Stats, 0, 1000)
+		for i := 0; i < statsRows; i++ {
+			stats = append(stats, model.Stats{
+				DateTime:  int64(i),
+				Resource:  "client",
+				Tag:       "alice",
+				Direction: i%2 == 0,
+				Traffic:   int64(i),
+			})
+			if len(stats) == cap(stats) {
+				if err := tx.CreateInBatches(stats, 500).Error; err != nil {
+					return err
+				}
+				stats = stats[:0]
+			}
+		}
+		if len(stats) > 0 {
+			if err := tx.CreateInBatches(stats, 500).Error; err != nil {
+				return err
+			}
+		}
+		ips := make([]model.ClientIP, 0, 1000)
+		for i := 0; i < ipRows; i++ {
+			ips = append(ips, model.ClientIP{
+				ClientName: "alice",
+				IP:         fmt.Sprintf("198.51.100.%d.%d", i/256, i%256),
+				IPHash:     fmt.Sprintf("hash-%d", i),
+				FirstSeen:  1,
+				LastSeen:   1,
+			})
+			if len(ips) == cap(ips) {
+				if err := tx.CreateInBatches(ips, 500).Error; err != nil {
+					return err
+				}
+				ips = ips[:0]
+			}
+		}
+		if len(ips) > 0 {
+			if err := tx.CreateInBatches(ips, 500).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	backup, err := GetDb("")
+	if err != nil {
+		t.Fatalf("GetDb failed on large dataset: %v", err)
+	}
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, backup, 0600); err != nil {
+		t.Fatal(err)
+	}
+	backupDB, err := gorm.Open(sqlite.Open(backupPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := backupDB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		cleanupBackupSidecars(backupPath)
+	})
+
+	var statsCount int64
+	if err := backupDB.Model(&model.Stats{}).Count(&statsCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if statsCount != statsRows {
+		t.Fatalf("expected %d stats rows in backup, got %d", statsRows, statsCount)
+	}
+	var ipCount int64
+	if err := backupDB.Model(&model.ClientIP{}).Count(&ipCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ipCount != ipRows {
+		t.Fatalf("expected %d client_ips rows in backup, got %d", ipRows, ipCount)
 	}
 }

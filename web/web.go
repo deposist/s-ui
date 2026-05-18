@@ -102,12 +102,24 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.Use(func(c *gin.Context) {
 		uri := c.Request.RequestURI
 		if strings.HasPrefix(uri, assetsBasePath) {
-			c.Header("Cache-Control", "max-age=31536000")
+			// Hashed assets are immutable: file name changes whenever
+			// content changes.
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
 		}
 	})
 
-	// Serve the assets folder
-	engine.StaticFS(assetsBasePath, http.FS(s.assetsFS))
+	// Serve the assets folder. We use a custom handler instead of
+	// engine.StaticFS so that a missing file responds with 404 directly
+	// instead of falling through to NoRoute -> index.html, which made the
+	// browser receive HTML for a JS module request after an upgrade and
+	// fail with "Failed to load module script: Expected a JavaScript-or-
+	// Wasm module script but the server responded with a MIME type of
+	// text/html". This was the root cause of the broken Clients tab in
+	// upgraded panels: the cached index.html still referenced an old
+	// chunk hash that no longer existed in the embedded FS.
+	assetsHandler := serveAssetsFS(s.assetsFS, assetsBasePath)
+	engine.GET(assetsBasePath+"*filepath", assetsHandler)
+	engine.HEAD(assetsBasePath+"*filepath", assetsHandler)
 
 	group_apiv2 := engine.Group(base_url + "apiv2")
 	apiv2 := api.NewAPIv2Handler(group_apiv2)
@@ -134,6 +146,16 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 			c.Redirect(http.StatusTemporaryRedirect, base_url)
 			return
 		}
+		// index.html must not be cached: it embeds hashed asset URLs
+		// and an upgrade rewrites those hashes. A cached index.html
+		// after an upgrade would point at chunks that were removed
+		// from the embed FS, which is exactly the failure mode that
+		// broke the Clients tab in 1.5.x ("Failed to fetch dynamically
+		// imported module"). The hashed assets themselves stay
+		// immutable; only this entry document needs revalidation.
+		c.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		c.HTML(http.StatusOK, "index.html", gin.H{"BASE_URL": base_url})
 	})
 

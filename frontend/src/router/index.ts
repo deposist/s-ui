@@ -105,6 +105,43 @@ const router = createRouter({
   routes,
 })
 
+// After a panel upgrade, the browser tab still holds the previous
+// index.html with hashed chunk names. The first dynamic import (e.g.
+// navigating to /clients) requests a chunk that no longer exists in the
+// embedded FS and the request fails. Without this guard the page just
+// stops navigating and shows the broken Clients tab. Reloading once
+// fetches the new index.html with the new hashes. We use sessionStorage
+// to make sure we never enter an infinite reload loop.
+const reloadKey = 'sui:preload-error-reload'
+const reloadOnce = () => {
+  try {
+    if (sessionStorage.getItem(reloadKey) === '1') return
+    sessionStorage.setItem(reloadKey, '1')
+  } catch {
+    // sessionStorage may be disabled (private mode); fall through.
+  }
+  window.location.reload()
+}
+const isPreloadError = (err: any): boolean => {
+  if (!err) return false
+  const msg: string = err?.message ?? String(err)
+  return /Failed to fetch dynamically imported module/i.test(msg) ||
+    /Importing a module script failed/i.test(msg) ||
+    /Failed to load module script/i.test(msg) ||
+    err?.name === 'ChunkLoadError'
+}
+window.addEventListener('vite:preloadError', () => reloadOnce())
+router.onError((err) => {
+  if (isPreloadError(err)) reloadOnce()
+})
+router.afterEach(() => {
+  try {
+    sessionStorage.removeItem(reloadKey)
+  } catch {
+    // ignore
+  }
+})
+
 let intervalId: any
 
 // The session cookie is HttpOnly (set by api/session.go) so it cannot be

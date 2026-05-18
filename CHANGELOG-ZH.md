@@ -6,6 +6,40 @@
 
 ## 未发布
 
+## [1.5.2-beta-hotfix] - 2026-05-18 - 备份分块与 SPA 升级安全
+
+### 修复
+
+- 在 `stats`、`client_ips`、`audit_events`、`changes` 或 `clients`
+  表较大的部署上执行数据库备份与 3x-ui 迁移时出现的
+  `too many SQL variables` 错误。`database/backup.go` 的备份不再产生
+  单条超过 SQLite 编译期限制（`mattn/go-sqlite3` 中的
+  `SQLITE_MAX_VARIABLE_NUMBER = 999`）的多行
+  `INSERT VALUES (...)`。这同时解除了 `WritePreImportBackup` 与
+  3x-ui 迁移在真实生产规模数据库（`stats` 行数 ≈ 40k+）上的阻塞。
+- 升级后浏览器残留的旧 `index.html` 不再使「Clients」页面卡住。
+  `/<base>/assets/*` 对缺失文件返回真实的 404，不再回退到 SPA
+  fallback，因此浏览器不会再对 JS 模块请求收到 `text/html`，避免出现
+  `Failed to load module script` / `Failed to fetch dynamically imported
+  module`。`index.html` 现在以 `Cache-Control: no-cache, no-store,
+  must-revalidate` 提供；带哈希文件名的资源仍为
+  `public, max-age=31536000, immutable`。
+- Vue Router 监听 `vite:preloadError`，在动态导入因旧 chunk 哈希而失败
+  时执行一次受保护的 `window.location.reload()`（`sessionStorage`
+  标记防止循环刷新），让仍打开旧版本的页签自动加载新构建。
+- `service/client.go`（`addbulk`、`editbulk`、`ResetClients`、
+  `DepleteClients`）以及 `database/importxui/history_routing.go`
+  （历史流量导入）通过新的 `database/bulk.go`
+  helper（`SafeSQLiteBatchSize`、`CreateInBatchesSafe`、
+  `SaveInBatchesSafe`）将批量 `Save`/`Create` 切成小批。Reset/deplete
+  任务和历史 `stats` 导入在拥有数千客户端的部署上不再失败。
+
+### 备注
+
+- 没有架构迁移、新增接口、scope 或环境变量。
+- `database/backup_test.go` 新增回归用例：约 43k 行 `stats` 加 5k
+  `client_ips`，验证 `GetDb("")` 能完整往返迁移所有行。
+
 ## [1.5.2-beta] - 2026-05-18 - 3x-ui 迁移套件
 
 ### 新增
