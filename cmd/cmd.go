@@ -43,6 +43,8 @@ func ParseCmd() {
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("    admin          set/reset/show first admin credentials")
+		fmt.Println("    import-xui     import configuration from a 3x-ui database")
+		fmt.Println("    sync-xui       run or list saved 3x-ui sync profiles")
 		fmt.Println("    uri            Show panel URI")
 		fmt.Println("    migrate        migrate form older version")
 		fmt.Println("    setting        set/reset/show settings")
@@ -92,6 +94,12 @@ func ParseCmd() {
 			fmt.Println("migrate failed:", err)
 			os.Exit(1)
 		}
+
+	case "import-xui":
+		os.Exit(runImportXui(os.Args[2:], os.Stdout))
+
+	case "sync-xui":
+		runSyncXuiFromMain()
 
 	case "setting":
 		err := settingCmd.Parse(os.Args[2:])

@@ -82,6 +82,16 @@ const routes = [
         component: () => import('@/views/Audit.vue'),
       },
       {
+        path: '/migrate-xui',
+        name: 'pages.migrateXui',
+        component: () => import('@/views/MigrateXui.vue'),
+      },
+      {
+        path: '/migrate-xui/schedule',
+        name: 'pages.migrateXuiSchedule',
+        component: () => import('@/views/MigrateXuiSchedule.vue'),
+      },
+      {
         path: '/settings',
         name: 'pages.settings',
         component: () => import('@/views/Settings.vue'),

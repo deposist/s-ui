@@ -33,3 +33,6 @@ windows/sui-*.exe
 
 # Kiro local specs (not for public repo)
 .kiro/
+
+# Local 3x-ui import fixtures with real production data
+test-db/

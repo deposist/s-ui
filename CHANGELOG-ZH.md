@@ -4,6 +4,42 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## 未发布
+
+## [1.5.2-beta] - 2026-05-18 - 3x-ui 迁移套件
+
+### 新增
+
+- 3x-ui 配置导入：`s-ui import-xui` 命令行、`POST /api/import-xui`
+  HTTP 接口，以及备份与恢复（Backup & Restore）弹窗中独立的
+  「Migrate from 3x-ui」部分。导入在单一事务中执行，自动备份，支持
+  `merge`/`replace`/`skip` 三种策略，并写入 `xui_import` 审计事件。
+- 位于 `/migrate-xui` 的完整迁移向导：按对象 plan/apply，校验
+  `Source.Hash`，通过 WebSocket 推送 `xui_import_progress` 事件，
+  JSON 预览，回滚到自动备份，并支持 JSON/Markdown 报告下载。报告
+  仅保存在 `audit_events.details`。
+- 远程 3x-ui 数据源：`--remote ssh://...` 与 `--remote http://...`
+  （xuihttp），以及用于增量定时同步的 `s-ui sync-xui` 子命令。SSH
+  使用 host-key TOFU 与 `xui_known_hosts` 表；HTTP 支持 3x-ui 的
+  登录流程。
+- 加密的 `xui_sync_profiles`（AES-GCM，密钥来自基于
+  `config.GetSecret()` 的 HKDF-SHA256，可通过 `XUI_PROFILE_KEY_FILE`
+  覆盖），架构迁移 `cmd/migration/1_7.go`，cron 任务 `xuiSyncJob`
+  以及用于管理同步配置的 `/migrate-xui/schedule` 页面。
+- 历史流量的尽力而为导入（`client_traffics`/`outbound_traffics`
+  → `stats` 聚合）以及 Xray routing 规则导入（`geosite:*`/`geoip:*`、
+  block、direct）转换为 sing-box `route.rules`/`dns.servers`。
+  Balancers 仅作为警告输出。
+- 新增 `xui_remote` token scope，所有远程/同步接口都要求该 scope；
+  本地 `/api/import-xui*` 接口保持 `database`/`admin`。
+  `XUI_DISABLE_REMOTE=1` 可关闭远程数据源与 cron 模式。
+
+### 注意
+
+- `test-db/` 包含本地 3x-ui 导入用的真实生产数据，已不再纳入仓库
+  （见 `.gitignore`）。依赖该目录的测试会在 CI 上自动跳过；本地运行时
+  请确保 `test-db/` 中存在所需 fixture。
+
 ## [1.5.1-beta] - 2026-05-17 - 修复加固与 UI 完善
 
 ### 安全性

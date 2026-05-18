@@ -180,9 +180,13 @@ export class WsRuntime {
 
 const applyRealtimeEvent = (event: any) => {
   const data = Data()
+  const ws = Ws()
   switch (event?.type) {
     case 'onlines':
       if (event.payload) data.onlines = event.payload
+      break
+    case 'xui_import_progress':
+      ws.xuiImportProgress = event.payload ?? null
       break
     case 'config_invalidated':
     case 'reload':
@@ -197,6 +201,7 @@ const Ws = defineStore('Ws', {
   state: () => ({
     state: <WsConnectionState>'degraded',
     runtime: <WsRuntime | null>null,
+    xuiImportProgress: <any>null,
   }),
   actions: {
     ensureRuntime() {

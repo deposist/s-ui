@@ -66,3 +66,10 @@ func GetDBFolderPath() string {
 func GetDBPath() string {
 	return filepath.Join(GetDBFolderPath(), fmt.Sprintf("%s.db", GetName()))
 }
+
+func GetSecret() string {
+	if secret := os.Getenv("SUI_SECRET"); secret != "" {
+		return secret
+	}
+	return GetName() + ":" + GetDBFolderPath()
+}

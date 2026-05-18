@@ -15,7 +15,7 @@ func TestCronJobStartRegistersJobsSynchronously(t *testing.T) {
 	t.Cleanup(c.Stop)
 
 	entries := c.cron.Entries()
-	if len(entries) != 9 {
-		t.Fatalf("expected 9 registered cron entries immediately after Start, got %d", len(entries))
+	if len(entries) != 10 {
+		t.Fatalf("expected 10 registered cron entries immediately after Start, got %d", len(entries))
 	}
 }

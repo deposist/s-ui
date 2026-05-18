@@ -9,12 +9,8 @@ preferred language:
 
 All three files cover the same set of releases and are kept in sync.
 
-Current `1.5.1-beta` remediation notes include moving fresh-install admin
-password disclosure out of logs and into `<dataDir>/initial-admin.txt` with
-owner-only permissions, plus hiding stored password hashes from
-`s-ui admin -show` and clearing stale CSRF tokens after logout/session
-rotation. The installer now verifies release tarballs with published SHA256
-checksums before extraction. Pull requests now run backend and frontend CI
+For the full per-language changelog (including the latest `Unreleased`
+entries), open one of the language-specific files above.
 checks automatically.
 Admin web sessions now use a SQLite-backed server-side store, so the browser
 cookie contains only a signed session ID while session data is stored in the

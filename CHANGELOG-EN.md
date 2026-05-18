@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## Unreleased
+
+## [1.5.2-beta] - 2026-05-18 - 3x-ui migration suite
+
+### Added
+
+- 3x-ui configuration import: `s-ui import-xui` CLI, `POST /api/import-xui`
+  HTTP endpoint, and a "Migrate from 3x-ui" section in the Backup & Restore
+  modal. Import runs in one transaction with auto-backup, supports
+  `merge`/`replace`/`skip` strategies, and writes `xui_import` audit events.
+- Full migration wizard at `/migrate-xui`: per-object plan/apply with
+  `Source.Hash` validation, WebSocket `xui_import_progress` events, JSON
+  preview, rollback to the auto-backup, and downloadable JSON/Markdown
+  reports. Reports live in `audit_events.details`.
+- Remote 3x-ui sources via `--remote ssh://...` and `--remote http://...`
+  (xuihttp), plus `s-ui sync-xui` for scheduled incremental syncs. SSH uses
+  host-key TOFU with a `xui_known_hosts` table; HTTP supports the 3x-ui
+  login flow.
+- Encrypted `xui_sync_profiles` (AES-GCM with HKDF-SHA256 from
+  `config.GetSecret()`, override via `XUI_PROFILE_KEY_FILE`),
+  `cmd/migration/1_7.go` schema migration, `xuiSyncJob` cron job, and the
+  `/migrate-xui/schedule` UI for managing profiles.
+- Best-effort historical traffic import (`client_traffics`/`outbound_traffics`
+  → `stats` aggregates) and Xray routing rules import (`geosite:*`/`geoip:*`,
+  block, direct) into sing-box `route.rules`/`dns.servers`. Balancers are
+  reported as warnings.
+- New `xui_remote` token scope required for all remote/sync endpoints;
+  local `/api/import-xui*` endpoints stay under `database`/`admin`.
+  `XUI_DISABLE_REMOTE=1` disables remote sources and the cron mode.
+
+### Notes
+
+- `test-db/` holds local 3x-ui import fixtures with real production data
+  and is no longer tracked in the repository (see `.gitignore`). Tests that
+  need those fixtures are skipped automatically on CI; run them locally
+  with the fixtures present in `test-db/`.
+
 ## [1.5.1-beta] - 2026-05-17 - remediation hardening and UI completion
 
 ### Security

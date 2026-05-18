@@ -52,6 +52,10 @@ func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
 	if _, err := c.cron.AddJob("@every 10m", NewWALCheckpointJob()); err != nil {
 		return err
 	}
+	// 3x-ui scheduled sync profiles
+	if _, err := c.cron.AddJob("@every 1m", NewXUISyncJob()); err != nil {
+		return err
+	}
 	// retention cleanup
 	if _, err := c.cron.AddJob("@every 1h", NewAuditGCJob()); err != nil {
 		return err

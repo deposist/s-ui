@@ -167,9 +167,9 @@ export default {
         desc: '',
         token: '',
         expiry: 0,
-        scope: 'full',
+        scope: 'admin',
       },
-      tokenScopes: ['full'],
+      tokenScopes: ['admin', 'database', 'xui_remote', 'write', 'read', 'observability', 'telegram'],
       delOverlay: new Array<boolean>(0),
     }
   },
@@ -201,7 +201,7 @@ export default {
           desc: '',
           token: '',
           expiry: 30,
-          scope: 'full',
+          scope: 'admin',
         }
     },
     showAddToken() {

@@ -107,3 +107,37 @@ type Tokens struct {
 	UserId      uint   `json:"userId" form:"userId"`
 	User        *User  `json:"user" gorm:"foreignKey:UserId;references:Id"`
 }
+
+type XUISyncProfile struct {
+	Id             uint            `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name           string          `json:"name" gorm:"uniqueIndex"`
+	SourceType     string          `json:"sourceType" gorm:"index"`
+	SourceJSON     []byte          `json:"-" gorm:"column:source_json"`
+	SourceSalt     []byte          `json:"-" gorm:"column:source_salt"`
+	Strategy       string          `json:"strategy"`
+	OnlyNew        bool            `json:"onlyNew" gorm:"default:true;not null"`
+	Enabled        bool            `json:"enabled" gorm:"default:true;not null"`
+	Schedule       string          `json:"schedule"`
+	LastRunAt      int64           `json:"lastRunAt"`
+	LastRunStatus  string          `json:"lastRunStatus"`
+	LastRunSummary json.RawMessage `json:"lastRunSummary"`
+	CreatedAt      int64           `json:"createdAt"`
+	UpdatedAt      int64           `json:"updatedAt"`
+}
+
+func (XUISyncProfile) TableName() string {
+	return "xui_sync_profiles"
+}
+
+type XUIKnownHost struct {
+	Id          uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	Host        string `json:"host" gorm:"uniqueIndex"`
+	Fingerprint string `json:"fingerprint"`
+	PublicKey   string `json:"publicKey"`
+	CreatedAt   int64  `json:"createdAt"`
+	UpdatedAt   int64  `json:"updatedAt"`
+}
+
+func (XUIKnownHost) TableName() string {
+	return "xui_known_hosts"
+}

@@ -121,6 +121,8 @@ func InitDB(dbPath string) error {
 		&model.Client{},
 		&model.Changes{},
 		&model.AuditEvent{},
+		&model.XUISyncProfile{},
+		&model.XUIKnownHost{},
 	)
 	if err != nil {
 		return err
@@ -188,6 +190,7 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
+		"CREATE INDEX IF NOT EXISTS idx_xui_sync_profiles_enabled ON xui_sync_profiles(enabled, last_run_at)",
 	}
 	for _, query := range indexes {
 		if err := db.Exec(query).Error; err != nil {

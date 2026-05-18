@@ -321,9 +321,13 @@ func validateSQLiteBackup(path string) error {
 }
 
 func sqliteReadOnlyDSN(path string) string {
+	urlPath := filepath.ToSlash(path)
+	if runtime.GOOS == "windows" && !strings.HasPrefix(urlPath, "/") {
+		urlPath = "/" + urlPath
+	}
 	u := url.URL{
 		Scheme: "file",
-		Path:   filepath.ToSlash(path),
+		Path:   urlPath,
 	}
 	values := url.Values{}
 	values.Set("mode", "ro")

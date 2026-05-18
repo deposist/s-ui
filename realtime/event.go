@@ -10,6 +10,7 @@ const (
 	TopicRestartStatus     Topic = "restart_status"
 	TopicNotification      Topic = "notification"
 	TopicSecurityEvent     Topic = "security_event"
+	TopicXUIImportProgress Topic = "xui_import_progress"
 )
 
 type Scope string
@@ -28,7 +29,7 @@ type Event struct {
 }
 
 func topicAllowed(topic Topic, scope Scope) bool {
-	if topic == TopicSecurityEvent {
+	if topic == TopicSecurityEvent || topic == TopicXUIImportProgress {
 		return scope == ScopeAdmin
 	}
 	return true

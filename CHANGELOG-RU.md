@@ -5,6 +5,44 @@
 Это русскоязычный changelog. Английская версия — в `CHANGELOG-EN.md`,
 китайская — в `CHANGELOG-ZH.md`.
 
+## Unreleased
+
+## [1.5.2-beta] — 2026-05-18 — пакет миграции из 3x-ui
+
+### Добавлено
+
+- Импорт конфигурации 3x-ui: CLI `s-ui import-xui`, HTTP-endpoint
+  `POST /api/import-xui` и отдельная секция «Migrate from 3x-ui» в модале
+  Backup & Restore. Импорт выполняется одной транзакцией с автобэкапом,
+  поддерживает стратегии `merge`/`replace`/`skip` и пишет audit-события
+  `xui_import`.
+- Полный мастер миграции на странице `/migrate-xui`: per-object plan/apply
+  с валидацией `Source.Hash`, WebSocket-события `xui_import_progress`,
+  предпросмотр JSON, откат к автобэкапу и выгрузка отчёта в JSON/Markdown.
+  Отчёты лежат в `audit_events.details`.
+- Удалённые источники 3x-ui через `--remote ssh://...` и `--remote http://...`
+  (xuihttp) и команда `s-ui sync-xui` для периодической инкрементальной
+  синхронизации. SSH использует host-key TOFU и таблицу `xui_known_hosts`;
+  HTTP поддерживает login-flow 3x-ui.
+- Зашифрованные `xui_sync_profiles` (AES-GCM с HKDF-SHA256 от
+  `config.GetSecret()`, override через `XUI_PROFILE_KEY_FILE`), миграция
+  схемы `cmd/migration/1_7.go`, cron-job `xuiSyncJob` и UI
+  `/migrate-xui/schedule` для управления профилями.
+- Best-effort импорт исторического трафика (`client_traffics`/
+  `outbound_traffics` → агрегаты в `stats`) и routing-правил Xray
+  (`geosite:*`/`geoip:*`, block, direct) в sing-box `route.rules`/
+  `dns.servers`. Balancers попадают в warning'и.
+- Новый scope токена `xui_remote`, обязательный для всех удалённых/sync
+  endpoint'ов; локальные `/api/import-xui*` остаются под `database`/`admin`.
+  `XUI_DISABLE_REMOTE=1` отключает удалённые источники и cron-режим.
+
+### Замечания
+
+- `test-db/` содержит локальные фикстуры импорта 3x-ui с реальными боевыми
+  данными и больше не трекается в репозитории (см. `.gitignore`). Тесты,
+  которым нужны эти фикстуры, на CI скипаются автоматически; запускайте их
+  локально, когда `test-db/` положены рядом.
+
 ## [1.5.1-beta] — 2026-05-17 — закрытие технического долга и UI
 
 ### Безопасность
