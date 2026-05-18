@@ -20,7 +20,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** the original `alireza0/s-ui` project was blocked and removed by GitHub. This repository is a complete backup based on the last original version, `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.1-beta`).
+**Note:** the original `alireza0/s-ui` project was blocked and removed by GitHub. This repository is a complete backup based on the last original version, `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.2-beta`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -38,6 +38,7 @@ Short summary of recent versions:
 
 | Version | One-line summary |
 | --- | --- |
+| `1.5.2-beta` | 3x-ui migration suite: `s-ui import-xui` CLI, `POST /api/import-xui` HTTP API, "Migrate from 3x-ui" section in Backup & Restore, full wizard at `/migrate-xui` (plan/apply/rollback, WS progress, JSON/Markdown report), remote SSH and `xuihttp` sources, `xuiSyncJob` cron with encrypted `xui_sync_profiles`, `/migrate-xui/schedule` UI, best-effort historical traffic and Xray routing rules import, new `xui_remote` token scope. |
 | `1.5.1-beta` | Remediation hardening: async Telegram queue, redacted payloads, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram proxy egress with normalized error classes, bucketed observability, frontend completion. |
 | `1.5.0` | Security foundation and realtime platform: secretbox for sensitive settings, `audit_events` + `/api/security/audit`, CSRF for browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` header deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only by default). |
 | `1.4.3` | sing-box runtime update from `v1.13.4` to `v1.13.11`. No DB or UI changes. |
@@ -121,10 +122,18 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.1-beta (current beta)
+## Install v1.5.2-beta (current beta)
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.1-beta
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.2-beta
+```
+
+Or from a local clone:
+
+```sh
+git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
+cd s-ui-rus-inst
+sudo bash install.sh v1.5.2-beta
 ```
 
 Or from a local clone:
@@ -356,7 +365,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** оригинальный проект `alireza0/s-ui` был заблокирован и удалён GitHub. Этот репозиторий — полная резервная копия последней оригинальной версии `v1.4.1` с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.1-beta`).
+**Примечание:** оригинальный проект `alireza0/s-ui` был заблокирован и удалён GitHub. Этот репозиторий — полная резервная копия последней оригинальной версии `v1.4.1` с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.2-beta`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -374,6 +383,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 | Версия | Однострочное описание |
 | --- | --- |
+| `1.5.2-beta` | Пакет миграции из 3x-ui: CLI `s-ui import-xui`, HTTP-API `POST /api/import-xui`, секция «Migrate from 3x-ui» в Backup & Restore, полный мастер на `/migrate-xui` (plan/apply/rollback, прогресс по WS, отчёт JSON/Markdown), удалённые источники SSH и `xuihttp`, cron-job `xuiSyncJob` с зашифрованными `xui_sync_profiles`, страница `/migrate-xui/schedule`, best-effort импорт исторического трафика и Xray routing-правил, новый scope токена `xui_remote`. |
 | `1.5.1-beta` | Закрытие техдолга и UI: асинхронная очередь Telegram, redaction payload'ов, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram через прокси с нормализованными errorClass, бакетированная observability, готовый фронт. |
 | `1.5.0` | Фундамент безопасности и realtime: secretbox для секретов, `audit_events` + `/api/security/audit`, CSRF для browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only по умолчанию). |
 | `1.4.3` | Обновление sing-box runtime с `v1.13.4` до `v1.13.11`. БД и UI без изменений. |
@@ -457,10 +467,18 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/in
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.1-beta (текущая бета)
+## Установка v1.5.2-beta (текущая бета)
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.1-beta
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-rus-inst/beta/install.sh) v1.5.2-beta
+```
+
+Или из локального клона:
+
+```sh
+git clone -b beta https://github.com/deposist/s-ui-rus-inst.git
+cd s-ui-rus-inst
+sudo bash install.sh v1.5.2-beta
 ```
 
 Либо из локального клона:
