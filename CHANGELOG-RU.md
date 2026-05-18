@@ -7,6 +7,56 @@
 
 ## Unreleased
 
+## [1.5.2-beta-hotfix2] — 2026-05-18 — снятие legacy unique-индекса client_ips
+
+### Исправлено
+
+- Ошибка `UNIQUE constraint failed: client_ips.client_name, client_ips.ip`
+  при автобэкапе перед миграцией с 3x-ui. С 1.5.x колонка
+  `client_ips.ip` — legacy-поле только для backfill, для новых строк
+  пустое; настоящий уникальный ключ — `(client_name, ip_hash)`. В
+  модели оставался устаревший `gorm:"index:idx_client_ips_client_ip,unique"`
+  на `(client_name, ip)`, и `database/backup.go` через `AutoMigrate`
+  пересоздавал плохой индекс во временной backup-БД, после чего
+  чанковая копия `client_ips` падала, как только у клиента было больше
+  одной строки с пустым `ip`. После этого hotfix'а единственный
+  unique-индекс модели — `(client_name, ip_hash)`.
+
+### Изменено
+
+- `database/model/model.go` — убран тег
+  `idx_client_ips_client_ip,unique` с `ClientIP.ClientName` и
+  `ClientIP.IP`.
+- `cmd/migration/1_5.go` — миграция ветки `1.5` теперь дропает
+  устаревший `idx_client_ips_client_ip` и создаёт partial non-unique
+  `idx_client_ips_client_legacy_ip ON client_ips(client_name, ip)
+  WHERE ip IS NOT NULL AND ip != ''` для быстрых legacy-lookup.
+  Миграция полностью идемпотентна (`DROP INDEX IF EXISTS` /
+  `CREATE INDEX IF NOT EXISTS`), поэтому уже обновлённые до
+  `1.5.2-beta` инсталлы чисто прогонят её повторно, когда runner
+  снова войдёт в ветку `1.5` при следующем старте.
+- `database/db.go: ensureIndexes` — дропает устаревший unique-индекс
+  на каждом `InitDB`. Это рантайм-страховка для случаев, когда
+  `MigrateDb` обходится (например, восстановление старого бэкапа мимо
+  панели), и одновременно гарантирует, что временная backup-БД из
+  `GetDb("")` не получит плохой индекс.
+
+### Замечания
+
+- Новых колонок, таблиц, настроек, endpoint'ов, scope'ов и переменных
+  окружения нет. Совмещается с чанковыми helper'ами из предыдущего
+  hotfix'а.
+- Регресс:
+  - `cmd/migration/migration_1_5_test.go` — падает, если устаревший
+    индекс снова создаётся, и принимает несколько строк с пустым `ip`
+    для одного клиента.
+  - `database/db_test.go: TestInitDBDropsObsoleteClientIPUniqueIndex` —
+    поднимает БД старой формы с уже созданным legacy-индексом и
+    проверяет, что `InitDB` его убирает.
+  - `database/backup_test.go: TestGetDbHandlesHashedClientIPsWithEmptyLegacyIP` —
+    переносит несколько строк `ip_hash` с пустым `ip` для одного
+    клиента через `GetDb("")`.
+
 ## [1.5.2-beta-hotfix] — 2026-05-18 — чанки в бэкапе и безопасность SPA при апгрейде
 
 ### Исправлено

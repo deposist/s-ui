@@ -57,17 +57,27 @@ CREATE TABLE clients (
 			t.Fatalf("client_ips.%s was not added", column)
 		}
 	}
-	if err := db.Exec(`
-INSERT INTO client_ips(client_name, ip, first_seen, last_seen)
-VALUES('alice', '198.51.100.10', 1, 1)
-`).Error; err != nil {
+	if hasIndex, err := sqliteHasIndex(db, "client_ips", "idx_client_ips_client_ip"); err != nil {
 		t.Fatal(err)
+	} else if hasIndex {
+		t.Fatal("obsolete unique client/ip index should not be created")
+	}
+	if hasIndex, err := sqliteHasIndex(db, "client_ips", "idx_client_ips_client_legacy_ip"); err != nil {
+		t.Fatal(err)
+	} else if !hasIndex {
+		t.Fatal("client_ips legacy client/ip lookup index was not created")
 	}
 	if err := db.Exec(`
-INSERT INTO client_ips(client_name, ip, first_seen, last_seen)
-VALUES('alice', '198.51.100.10', 1, 1)
+INSERT INTO client_ips(client_name, ip, ip_hash, first_seen, last_seen)
+VALUES('alice', '', 'hash-1', 1, 1), ('alice', '', 'hash-2', 1, 1)
+`).Error; err != nil {
+		t.Fatalf("client_ips should allow multiple empty legacy ip values for one client: %v", err)
+	}
+	if err := db.Exec(`
+INSERT INTO client_ips(client_name, ip, ip_hash, first_seen, last_seen)
+VALUES('alice', '', 'hash-1', 1, 1)
 `).Error; err == nil {
-		t.Fatal("client_ips unique client/ip index was not created")
+		t.Fatal("client_ips unique client/hash index was not created")
 	}
 
 	var clients []struct {

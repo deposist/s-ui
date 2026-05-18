@@ -52,9 +52,9 @@ type Client struct {
 
 type ClientIP struct {
 	Id         uint64 `json:"id" gorm:"primaryKey;autoIncrement"`
-	ClientName string `json:"clientName" gorm:"index:idx_client_ips_client_ip,unique;index:idx_client_ips_client_hash,unique"`
+	ClientName string `json:"clientName" gorm:"index:idx_client_ips_client_hash,unique"`
 	// IP column kept empty for new rows; populated only on legacy backfill. ip_hash is the canonical lookup key.
-	IP        string  `json:"ip" gorm:"index:idx_client_ips_client_ip,unique"`
+	IP        string  `json:"ip"`
 	IPHash    string  `json:"ipHash,omitempty" gorm:"index:idx_client_ips_client_hash,unique"`
 	IPDisplay *string `json:"ipDisplay,omitempty"`
 	FirstSeen int64   `json:"firstSeen"`

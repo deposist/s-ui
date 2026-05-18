@@ -56,10 +56,13 @@ CREATE TABLE IF NOT EXISTS client_ips (
 	if err := addColumnIfMissing(db, "client_ips", "ip_display", "TEXT"); err != nil {
 		return err
 	}
-	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_client_ips_client_ip ON client_ips(client_name, ip)").Error; err != nil {
+	if err := db.Exec("DROP INDEX IF EXISTS idx_client_ips_client_ip").Error; err != nil {
 		return err
 	}
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_client_ips_client_hash ON client_ips(client_name, ip_hash)").Error; err != nil {
+		return err
+	}
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_client_ips_client_legacy_ip ON client_ips(client_name, ip) WHERE ip IS NOT NULL AND ip != ''").Error; err != nil {
 		return err
 	}
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)").Error; err != nil {

@@ -7,6 +7,55 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.2-beta-hotfix2] - 2026-05-18 - drop legacy client_ips unique index
+
+### Fixed
+
+- `UNIQUE constraint failed: client_ips.client_name, client_ips.ip` during
+  the 3x-ui pre-import auto-backup. `client_ips.ip` is a legacy column
+  kept only for backfill since 1.5.x and is empty for new rows; the
+  canonical unique key is `(client_name, ip_hash)`. The model still
+  carried an obsolete `gorm:"index:idx_client_ips_client_ip,unique"`
+  on `(client_name, ip)`, so `database/backup.go` re-created the bad
+  index in the temporary backup DB via `AutoMigrate` and the chunked
+  copy of `client_ips` failed as soon as one client owned more than
+  one row with empty `ip`. After this hotfix the only unique index on
+  the model is `(client_name, ip_hash)`.
+
+### Changed
+
+- `database/model/model.go` — removed the legacy
+  `idx_client_ips_client_ip,unique` tag from `ClientIP.ClientName` and
+  `ClientIP.IP`.
+- `cmd/migration/1_5.go` — the `1.5` schema migration drops the legacy
+  `idx_client_ips_client_ip` and creates a partial non-unique
+  `idx_client_ips_client_legacy_ip ON client_ips(client_name, ip)
+  WHERE ip IS NOT NULL AND ip != ''` for fast legacy lookups. The
+  migration is fully idempotent (`DROP INDEX IF EXISTS` /
+  `CREATE INDEX IF NOT EXISTS`), so installs already on
+  `1.5.2-beta` re-run it cleanly when the runner re-enters the `1.5`
+  branch on the next start.
+- `database/db.go: ensureIndexes` — drops the obsolete unique index at
+  every `InitDB`. This is a runtime safety net for installs that
+  bypass `MigrateDb` (for example, restoring an older backup outside
+  the panel) and ensures the temporary backup DB built by `GetDb("")`
+  no longer carries the bad index either.
+
+### Notes
+
+- No new columns, tables, settings, endpoints, scopes or environment
+  variables. Combine with the previous hotfix's chunked-backup helpers.
+- Regression coverage:
+  - `cmd/migration/migration_1_5_test.go` proves the obsolete index is
+    no longer created and accepts multiple empty-`ip` rows for one
+    client.
+  - `database/db_test.go: TestInitDBDropsObsoleteClientIPUniqueIndex`
+    boots an old-shape DB with the legacy unique index already in
+    place and verifies `InitDB` removes it.
+  - `database/backup_test.go: TestGetDbHandlesHashedClientIPsWithEmptyLegacyIP`
+    rounds-trips multiple `ip_hash` rows with empty `ip` for the same
+    client through `GetDb("")`.
+
 ## [1.5.2-beta-hotfix] - 2026-05-18 - backup chunking and SPA upgrade safety
 
 ### Fixed

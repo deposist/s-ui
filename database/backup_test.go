@@ -207,6 +207,65 @@ func TestGetDbExcludeSkipsSelectedTables(t *testing.T) {
 	}
 }
 
+func TestGetDbHandlesHashedClientIPsWithEmptyLegacyIP(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Same Windows-specific TempDir cleanup race documented in
+		// backup_import_test.go: SQLite/WAL leftovers occasionally hold the
+		// temp directory open past closeMainDB. The behaviour exercised
+		// here is verified on Linux CI.
+		t.Skip("skipping Windows-specific TempDir cleanup race; logic is exercised on Linux CI")
+	}
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	mainDB := GetDB()
+	if err := mainDB.Exec(`
+INSERT INTO client_ips(client_name, ip_hash, first_seen, last_seen)
+VALUES
+	('alice', 'hash-1', 1, 1),
+	('alice', 'hash-2', 2, 2)
+`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	backup, err := GetDb("")
+	if err != nil {
+		t.Fatalf("GetDb failed on hashed client_ips with empty legacy ip: %v", err)
+	}
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, backup, 0600); err != nil {
+		t.Fatal(err)
+	}
+	backupDB, err := gorm.Open(sqlite.Open(backupPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := backupDB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		cleanupBackupSidecars(backupPath)
+	})
+
+	var ipCount int64
+	if err := backupDB.Model(&model.ClientIP{}).Where("client_name = ?", "alice").Count(&ipCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if ipCount != 2 {
+		t.Fatalf("expected two client_ips rows in backup, got %d", ipCount)
+	}
+}
 
 func TestGetDbHandlesLargeTablesWithoutVariableLimit(t *testing.T) {
 	dbDir := t.TempDir()

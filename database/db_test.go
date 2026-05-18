@@ -2,7 +2,12 @@ package database
 
 import (
 	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type mockDefaultOutboundStore struct {
@@ -62,4 +67,80 @@ func TestEnsureDefaultOutboundSkipsExistingTable(t *testing.T) {
 	if store.createTable != 0 || store.create != 0 {
 		t.Fatalf("existing table should skip writes: createTable=%d create=%d", store.createTable, store.create)
 	}
+}
+
+func TestInitDBDropsObsoleteClientIPUniqueIndex(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	legacy, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	if err := legacy.Exec(`
+CREATE TABLE client_ips (
+	id integer PRIMARY KEY AUTOINCREMENT,
+	client_name text,
+	ip text,
+	ip_hash text,
+	ip_display text,
+	first_seen integer,
+	last_seen integer
+)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Exec("CREATE UNIQUE INDEX idx_client_ips_client_ip ON client_ips(client_name, ip)").Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := legacy.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	if err := InitDB(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	hasIndex, err := dbTestHasIndex(GetDB(), "client_ips", "idx_client_ips_client_ip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasIndex {
+		t.Fatal("obsolete client/ip unique index was not dropped")
+	}
+	if err := GetDB().Exec(`
+INSERT INTO client_ips(client_name, ip, ip_hash, first_seen, last_seen)
+VALUES('alice', '', 'hash-1', 1, 1), ('alice', '', 'hash-2', 2, 2)
+`).Error; err != nil {
+		t.Fatalf("multiple empty legacy ip rows should be allowed after InitDB: %v", err)
+	}
+}
+
+func dbTestHasIndex(tx *gorm.DB, table string, indexName string) (bool, error) {
+	rows, err := tx.Raw("PRAGMA index_list(" + table + ")").Rows()
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			seq     int
+			name    string
+			unique  int
+			origin  string
+			partial int
+		)
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return false, err
+		}
+		if name == indexName {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }

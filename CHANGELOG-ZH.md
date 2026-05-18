@@ -6,6 +6,51 @@
 
 ## 未发布
 
+## [1.5.2-beta-hotfix2] - 2026-05-18 - 移除 client_ips 旧版唯一索引
+
+### 修复
+
+- 在 3x-ui 迁移前的自动备份过程中出现的
+  `UNIQUE constraint failed: client_ips.client_name, client_ips.ip`。
+  自 1.5.x 起 `client_ips.ip` 仅作为旧版 backfill 字段，新行为空；真正
+  的唯一键是 `(client_name, ip_hash)`。模型上仍保留着过期的
+  `gorm:"index:idx_client_ips_client_ip,unique"`，导致
+  `database/backup.go` 通过 `AutoMigrate` 在临时备份库中重建了这个坏
+  索引，于是当某个客户端在 `client_ips` 中存在多行 `ip` 为空的记录时，
+  分块复制就会失败。该 hotfix 之后，模型上唯一的唯一索引为
+  `(client_name, ip_hash)`。
+
+### 变更
+
+- `database/model/model.go` — 从 `ClientIP.ClientName` 与
+  `ClientIP.IP` 上移除了
+  `idx_client_ips_client_ip,unique` 标签。
+- `cmd/migration/1_5.go` — `1.5` 分支的 schema 迁移会删除过期的
+  `idx_client_ips_client_ip`，并创建部分非唯一索引
+  `idx_client_ips_client_legacy_ip ON client_ips(client_name, ip)
+  WHERE ip IS NOT NULL AND ip != ''` 以便保持旧版查询性能。该迁移
+  完全幂等（`DROP INDEX IF EXISTS` / `CREATE INDEX IF NOT EXISTS`）：
+  已经升级到 `1.5.2-beta` 的部署在下次启动、迁移 runner 重新进入
+  `1.5` 分支时会再次干净地运行它。
+- `database/db.go: ensureIndexes` — 在每次 `InitDB` 时也会删除该旧版
+  唯一索引。这为绕过 `MigrateDb` 的场景（例如在面板外恢复旧版备份）
+  提供运行时兜底，并确保 `GetDb("")` 构建的临时备份库不会再带上这
+  个坏索引。
+
+### 备注
+
+- 没有新增列、表、设置、接口、scope 或环境变量。与上一 hotfix 中的
+  分块备份 helper 一并生效。
+- 回归测试：
+  - `cmd/migration/migration_1_5_test.go` 在 `to1_5` 重新创建过期索引
+    时失败，并验证一个客户端可以拥有多行空 `ip`。
+  - `database/db_test.go: TestInitDBDropsObsoleteClientIPUniqueIndex`
+    在已存在旧版唯一索引的旧形式数据库上启动 `InitDB`，并验证它将
+    其移除。
+  - `database/backup_test.go: TestGetDbHandlesHashedClientIPsWithEmptyLegacyIP`
+    通过 `GetDb("")` 完整转移同一客户端下多行 `ip_hash` 且 `ip` 为空
+    的记录。
+
 ## [1.5.2-beta-hotfix] - 2026-05-18 - 备份分块与 SPA 升级安全
 
 ### 修复

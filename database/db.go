@@ -181,6 +181,14 @@ func ensureDefaultOutbound(store defaultOutboundStore) error {
 }
 
 func ensureIndexes() error {
+	obsoleteIndexes := []string{
+		"DROP INDEX IF EXISTS idx_client_ips_client_ip",
+	}
+	for _, query := range obsoleteIndexes {
+		if err := db.Exec(query).Error; err != nil {
+			return err
+		}
+	}
 	indexes := []string{
 		"CREATE INDEX IF NOT EXISTS idx_stats_lookup ON stats(date_time, resource, tag)",
 		"CREATE INDEX IF NOT EXISTS idx_changes_lookup ON changes(date_time, actor, key)",
@@ -189,6 +197,7 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_severity_dt ON audit_events(severity, date_time DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
+		"CREATE INDEX IF NOT EXISTS idx_client_ips_client_legacy_ip ON client_ips(client_name, ip) WHERE ip IS NOT NULL AND ip != ''",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
 		"CREATE INDEX IF NOT EXISTS idx_xui_sync_profiles_enabled ON xui_sync_profiles(enabled, last_run_at)",
 	}
