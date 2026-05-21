@@ -68,6 +68,23 @@ export default {
     report: "Отчёт",
     reportCron: "Cron отчёта",
     securityWarning: "Telegram выключен по умолчанию. Proxy URL валидируется на сервере; токены и proxy-credentials хранятся как secret-поля.",
+    backup: {
+      title: "Резервная копия БД в Telegram",
+      enabled: "Бэкап в Telegram",
+      passphrase: "Парольная фраза Backup",
+      passphraseHint: "Этот пароль шифрует все бэкапы, отправляемые в Telegram, и опционально ручные бэкапы из Backup & Restore. Запомните его: без него файлы из Telegram нельзя восстановить ни через панель, ни локально. Восстановление через панель: загрузите файл в Backup & Restore и введите этот пароль. Локальная расшифровка: подкоманда основного бинарника s-ui decrypt-backup.",
+      cron: "Cron бэкапа",
+      cronInvalid: "Используйте cron из 5 полей; шаг должен быть не меньше 1 минуты.",
+      excludeTables: "Исключаемые таблицы",
+      maxSize: "Максимальный размер",
+      sendNow: "Отправить сейчас",
+      tables: {
+        stats: "Статистика",
+        client_ips: "IP клиентов",
+        audit_events: "События аудита",
+        changes: "Изменения",
+      },
+    },
   },
   audit: {
     title: "Аудит",
@@ -116,6 +133,9 @@ export default {
       restore: "Восстановить резервную копию",
       exclStats: "Исключить графики",
       exclChanges: "Исключить изменения",
+      encryptTelegram: "Шифровать паролем Telegram backup",
+      encryptDisabledHint: "Задайте Backup passphrase во вкладке Telegram",
+      restorePassphrase: "Парольная фраза Backup",
       sbConfig: "Скачать конфигурацию Sing-Box",
       xui: {
         title: "Миграция из 3x-ui",

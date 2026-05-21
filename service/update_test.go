@@ -59,6 +59,9 @@ func TestVersionIsNewer(t *testing.T) {
 	if versionIsNewer("v1.4.9", "1.5.0") {
 		t.Fatal("older version detected as newer")
 	}
+	if versionIsNewer("v1.5.2-beta.1", "1.5.2") {
+		t.Fatal("prerelease detected as newer than final release")
+	}
 }
 
 func resetVersionCheckForTest(t *testing.T, client *http.Client, url string) {

@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -55,6 +56,35 @@ func TestLogRingBufferConcurrentReadWrite(t *testing.T) {
 
 	if logs := GetLogsFiltered(logBufferCapacity, "DEBUG", "panel", "writer-"); len(logs) == 0 {
 		t.Fatal("expected concurrent writes to be visible")
+	}
+}
+
+func TestSlogAdapterWritesRingBuffer(t *testing.T) {
+	resetLogBufferForTest(t)
+
+	Slog("p3").Warn("adapter ready", slog.String("component", "logger"))
+
+	logs := GetLogsFiltered(10, "DEBUG", "p3", "adapter ready")
+	if len(logs) != 1 {
+		t.Fatalf("expected one slog-backed entry, got %#v", logs)
+	}
+	if !strings.Contains(logs[0], "component=logger") {
+		t.Fatalf("slog attrs were not formatted: %q", logs[0])
+	}
+}
+
+func TestInitInstallsSlogDefault(t *testing.T) {
+	resetLogBufferForTest(t)
+
+	Init(LevelDebug)
+	slog.Default().Info("default slog ready", slog.String("phase", "p4"))
+
+	logs := GetLogsFiltered(10, "DEBUG", "panel", "default slog ready")
+	if len(logs) != 1 {
+		t.Fatalf("expected default slog entry, got %#v", logs)
+	}
+	if !strings.Contains(logs[0], "phase=p4") {
+		t.Fatalf("default slog attrs were not formatted: %q", logs[0])
 	}
 }
 

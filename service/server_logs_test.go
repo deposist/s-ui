@@ -7,11 +7,10 @@ import (
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/logger"
-	"github.com/op/go-logging"
 )
 
 func TestGetLogsFilteredValidatesAndFilters(t *testing.T) {
-	logger.InitLogger(logging.DEBUG)
+	logger.Init(logger.LevelDebug)
 	marker := fmt.Sprintf("f32-%d", time.Now().UnixNano())
 	logger.Info(marker, " panel")
 	logger.CoreInfo(marker, " core")

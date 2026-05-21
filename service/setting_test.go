@@ -7,10 +7,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deposist/s-ui-rus-inst/config"
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"gorm.io/gorm"
 )
+
+func TestDefaultSettingValueReadsCurrentVersion(t *testing.T) {
+	if defaultValueMap["version"] != "" {
+		t.Fatal("version default should be computed, not stored in defaultValueMap")
+	}
+	got, ok := defaultSettingValue("version")
+	if !ok {
+		t.Fatal("version key is missing")
+	}
+	if got != config.GetVersion() {
+		t.Fatalf("default version = %q, want %q", got, config.GetVersion())
+	}
+}
 
 func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
@@ -361,7 +375,7 @@ func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 }
 
 func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
-	t.Setenv("SUI_SECRETBOX_KEY", "test-secretbox-key")
+	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	settingService := initSettingTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -496,5 +510,262 @@ func TestSaveValidatesDomainSettings(t *testing.T) {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected domain with port to be rejected")
+	}
+}
+
+func TestSaveValidatesForceCookieSecureSetting(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	invalidPayload, err := json.Marshal(map[string]string{
+		"forceCookieSecure": "maybe",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidPayload)
+	}); err == nil {
+		t.Fatal("expected invalid forceCookieSecure to be rejected")
+	}
+}
+
+func TestGetForceCookieSecureReadsSettingAndEnvOverride(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	enabled, err := settingService.GetForceCookieSecure()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled {
+		t.Fatal("expected default forceCookieSecure=false")
+	}
+
+	payload, err := json.Marshal(map[string]string{
+		"forceCookieSecure": "true",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, payload)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	enabled, err = settingService.GetForceCookieSecure()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !enabled {
+		t.Fatal("expected persisted forceCookieSecure=true")
+	}
+
+	t.Setenv("SUI_FORCE_COOKIE_SECURE", "false")
+	enabled, err = settingService.GetForceCookieSecure()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled {
+		t.Fatal("expected env override to force false")
+	}
+}
+
+func TestGetForceCookieSecureRejectsInvalidEnv(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	t.Setenv("SUI_FORCE_COOKIE_SECURE", "invalid")
+	if _, err := settingService.GetForceCookieSecure(); err == nil {
+		t.Fatal("expected invalid SUI_FORCE_COOKIE_SECURE to return error")
+	}
+}
+
+func TestSaveRejectsUnknownSettingKey(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"unexpectedKey": "value",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, payload)
+	})
+	if err == nil {
+		t.Fatal("expected unknown setting key to be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid setting key") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSaveRejectsProtectedSettingKey(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"secret": "override-not-allowed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, payload)
+	})
+	if err == nil {
+		t.Fatal("expected protected setting key to be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid setting key") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSaveRejectsUnknownHasSecretMarker(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"unexpectedHasSecret": "true",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, payload)
+	})
+	if err == nil {
+		t.Fatal("expected unknown HasSecret marker to be rejected")
+	}
+	if !strings.Contains(err.Error(), "invalid setting key") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestGetSecretCreatesSettingWhenMissing(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	db := database.GetDB()
+
+	if err := db.Where("key = ?", "secret").Delete(&model.Setting{}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	secret, err := settingService.GetSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secret) == 0 {
+		t.Fatal("expected non-empty secret")
+	}
+
+	var stored model.Setting
+	if err := db.Where("key = ?", "secret").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Value != string(secret) {
+		t.Fatalf("stored secret mismatch: got %q want %q", stored.Value, string(secret))
+	}
+
+	secret2, err := settingService.GetSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(secret2) != string(secret) {
+		t.Fatalf("secret changed between reads: got %q want %q", string(secret2), string(secret))
+	}
+
+	var count int64
+	if err := db.Model(&model.Setting{}).Where("key = ?", "secret").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected single secret row, got %d", count)
+	}
+}
+
+func TestGetInstallSaltCreatesSettingWhenMissing(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	db := database.GetDB()
+
+	if err := db.Where("key = ?", "installSalt").Delete(&model.Setting{}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	salt, err := settingService.GetInstallSalt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(salt) == 0 {
+		t.Fatal("expected non-empty install salt")
+	}
+
+	var stored model.Setting
+	if err := db.Where("key = ?", "installSalt").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Value != string(salt) {
+		t.Fatalf("stored installSalt mismatch: got %q want %q", stored.Value, string(salt))
+	}
+
+	salt2, err := settingService.GetInstallSalt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(salt2) != string(salt) {
+		t.Fatalf("installSalt changed between reads: got %q want %q", string(salt2), string(salt))
+	}
+
+	var count int64
+	if err := db.Model(&model.Setting{}).Where("key = ?", "installSalt").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("expected single installSalt row, got %d", count)
+	}
+}
+
+func TestGetSecretReturnsErrorWhenDBClosed(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	liveDB := database.GetDB()
+	sqlDB, err := liveDB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := settingService.GetSecret(); err == nil {
+		t.Fatal("expected error when database is closed")
+	}
+}
+
+func TestGetInstallSaltReturnsErrorWhenDBClosed(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	liveDB := database.GetDB()
+	sqlDB, err := liveDB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := settingService.GetInstallSalt(); err == nil {
+		t.Fatal("expected error when database is closed")
 	}
 }

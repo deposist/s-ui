@@ -50,7 +50,7 @@ const emit = defineEmits<{
 const editing = ref(false)
 
 const showStoredPlaceholder = computed(() => {
-  return hasStoredSecret(props.hasSecret) && !editing.value && !(props.modelValue ?? '')
+  return hasStoredSecret(props.hasSecret) && !editing.value && (!(props.modelValue ?? '') || props.modelValue === STORED_SECRET_PLACEHOLDER)
 })
 
 const startEditing = () => {

@@ -24,7 +24,7 @@ func init() {
 func SetLoginUser(c *gin.Context, userName string, maxAge int, sessionGeneration string) error {
 	options := sessions.Options{
 		Path:     "/",
-		Secure:   requestIsHTTPS(c),
+		Secure:   resolveCookieSecure(c, &service.SettingService{}),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
@@ -37,6 +37,7 @@ func SetLoginUser(c *gin.Context, userName string, maxAge int, sessionGeneration
 	if sessionGeneration != "" {
 		s.Set(loginSessionGeneration, sessionGeneration)
 	}
+	ResetSessionCSRF(s)
 	s.Options(options)
 
 	return s.Save()
@@ -82,7 +83,7 @@ func ClearSession(c *gin.Context) {
 	s.Options(sessions.Options{
 		Path:     "/",
 		MaxAge:   -1,
-		Secure:   requestIsHTTPS(c),
+		Secure:   resolveCookieSecure(c, &service.SettingService{}),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})

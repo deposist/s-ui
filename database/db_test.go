@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/deposist/s-ui-rus-inst/database/model"
+
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -118,6 +120,84 @@ INSERT INTO client_ips(client_name, ip, ip_hash, first_seen, last_seen)
 VALUES('alice', '', 'hash-1', 1, 1), ('alice', '', 'hash-2', 2, 2)
 `).Error; err != nil {
 		t.Fatalf("multiple empty legacy ip rows should be allowed after InitDB: %v", err)
+	}
+}
+
+func TestOpenDBEnablesSQLiteForeignKeys(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	if err := OpenDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	var enabled int
+	if err := GetDB().Raw("PRAGMA foreign_keys").Scan(&enabled).Error; err != nil {
+		t.Fatal(err)
+	}
+	if enabled != 1 {
+		t.Fatalf("PRAGMA foreign_keys=%d, want 1", enabled)
+	}
+}
+
+func TestOpenDBUsesNormalSynchronousMode(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	if err := OpenDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	var synchronous int
+	if err := GetDB().Raw("PRAGMA synchronous").Scan(&synchronous).Error; err != nil {
+		t.Fatal(err)
+	}
+	if synchronous != 1 {
+		t.Fatalf("PRAGMA synchronous=%d, want NORMAL(1)", synchronous)
+	}
+}
+
+func TestInitDBAllowsNoTLSInboundWithForeignKeys(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	if err := GetDB().Create(&model.Inbound{
+		Type:    "http",
+		Tag:     "no-tls",
+		Addrs:   []byte("[]"),
+		OutJson: []byte("{}"),
+		Options: []byte("{}"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	var violations int
+	if err := GetDB().Raw("SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&violations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if violations != 0 {
+		t.Fatalf("foreign key violations=%d, want 0", violations)
 	}
 }
 

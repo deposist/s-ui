@@ -1,7 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -10,8 +13,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	stdatomic "sync/atomic"
 	"time"
 
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util/common"
@@ -27,15 +32,44 @@ const (
 	maxWSPerIP    = 20
 	wsQueueSize   = 16
 	wsSubprotocol = "sui.realtime"
+	wsTokenPrefix = "sui.token."
+
+	defaultWSPingInterval = 25 * time.Second
+	defaultWSPingTimeout  = 5 * time.Second
 
 	wsTokenSweepInterval = time.Minute
 	maxWSTokens          = 4096
 )
 
-var (
-	wsPingInterval = 25 * time.Second
-	wsPingTimeout  = 5 * time.Second
-)
+type realtimeConfig struct {
+	pingInterval time.Duration
+	pingTimeout  time.Duration
+}
+
+type realtimeOption func(*realtimeConfig)
+
+func defaultRealtimeConfig() realtimeConfig {
+	return realtimeConfig{
+		pingInterval: defaultWSPingInterval,
+		pingTimeout:  defaultWSPingTimeout,
+	}
+}
+
+func WithPingInterval(interval time.Duration) realtimeOption {
+	return func(config *realtimeConfig) {
+		if interval > 0 {
+			config.pingInterval = interval
+		}
+	}
+}
+
+func WithPingTimeout(timeout time.Duration) realtimeOption {
+	return func(config *realtimeConfig) {
+		if timeout > 0 {
+			config.pingTimeout = timeout
+		}
+	}
+}
 
 type realtimeToken struct {
 	user      string
@@ -44,12 +78,21 @@ type realtimeToken struct {
 
 var wsTokens = struct {
 	sync.Mutex
-	tokens          map[string]realtimeToken
+	tokens          map[[sha256.Size]byte]realtimeToken
 	lastSweep       time.Time
 	sweepTimer      *time.Timer
 	sweepGeneration uint64
 }{
-	tokens: map[string]realtimeToken{},
+	tokens: map[[sha256.Size]byte]realtimeToken{},
+}
+
+var legacyWSProtocolAuditWarned stdatomic.Bool
+
+func init() {
+	database.RegisterResetHook("api.ws_tokens", func() {
+		_ = sweepAllWSTokens()
+	})
+	service.RegisterWSTokenInvalidationHook("api.ws_tokens", sweepAllWSTokens)
 }
 
 func (a *ApiService) IssueWSToken(c *gin.Context) {
@@ -69,7 +112,7 @@ func (a *ApiService) IssueWSToken(c *gin.Context) {
 	token := common.Random(32)
 	wsTokens.Lock()
 	maybeSweepWSTokensLocked(now)
-	wsTokens.tokens[token] = realtimeToken{user: user, expiresAt: expiresAt}
+	wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: user, expiresAt: expiresAt}
 	enforceWSTokenCapLocked()
 	scheduleWSTokenSweepLocked()
 	wsTokens.Unlock()
@@ -80,6 +123,22 @@ func (a *ApiService) IssueWSToken(c *gin.Context) {
 }
 
 func (a *ApiService) RealtimeWS(c *gin.Context) {
+	a.realtimeWS(c, defaultRealtimeConfig())
+}
+
+func (a *ApiService) RealtimeWSWithOptions(options ...realtimeOption) gin.HandlerFunc {
+	config := defaultRealtimeConfig()
+	for _, option := range options {
+		if option != nil {
+			option(&config)
+		}
+	}
+	return func(c *gin.Context) {
+		a.realtimeWS(c, config)
+	}
+}
+
+func (a *ApiService) realtimeWS(c *gin.Context, config realtimeConfig) {
 	if !a.enforceWSHandshakeRateLimit(c, "ws") {
 		return
 	}
@@ -87,7 +146,11 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 	if !a.validateWSOrigin(c, user) {
 		return
 	}
-	tokenUser, ok := consumeWSToken(wsTokenFromRequest(c))
+	token, legacyProtocol := wsTokenFromRequest(c)
+	if legacyProtocol {
+		a.recordLegacyWSProtocolAuditOnce(c, user)
+	}
+	tokenUser, ok := consumeWSToken(token)
 	if !ok || tokenUser == "" || tokenUser != user {
 		c.Status(http.StatusUnauthorized)
 		return
@@ -128,7 +191,7 @@ func (a *ApiService) RealtimeWS(c *gin.Context) {
 
 	wsCtx := conn.CloseRead(c.Request.Context())
 	heartbeatCtx, stopHeartbeat := context.WithCancel(wsCtx)
-	heartbeatDone := startWSHeartbeat(heartbeatCtx, conn)
+	heartbeatDone := startWSHeartbeat(heartbeatCtx, conn, config)
 	defer func() {
 		stopHeartbeat()
 		<-heartbeatDone
@@ -173,10 +236,10 @@ func realtimeScopeFromContext(c *gin.Context) realtime.Scope {
 	}
 }
 
-func startWSHeartbeat(ctx context.Context, conn *websocket.Conn) <-chan struct{} {
+func startWSHeartbeat(ctx context.Context, conn *websocket.Conn, config realtimeConfig) <-chan struct{} {
 	done := make(chan struct{})
-	pingInterval := wsPingInterval
-	pingTimeout := wsPingTimeout
+	pingInterval := config.pingInterval
+	pingTimeout := config.pingTimeout
 	go func() {
 		defer close(done)
 		ticker := time.NewTicker(pingInterval)
@@ -216,17 +279,37 @@ func (a *ApiService) enforceWSHandshakeRateLimit(c *gin.Context, endpoint string
 	return false
 }
 
-func wsTokenFromRequest(c *gin.Context) string {
+func wsTokenFromRequest(c *gin.Context) (string, bool) {
 	if token := strings.TrimSpace(c.Query("token")); token != "" {
-		return token
+		return token, false
 	}
+	var legacy string
 	for _, part := range strings.Split(c.GetHeader("Sec-WebSocket-Protocol"), ",") {
 		part = strings.TrimSpace(part)
-		if part != "" && part != wsSubprotocol {
-			return part
+		if token, ok := strings.CutPrefix(part, wsTokenPrefix); ok && token != "" {
+			return token, false
+		}
+		if part != "" && part != wsSubprotocol && legacy == "" {
+			legacy = part
 		}
 	}
-	return ""
+	if legacy != "" {
+		return legacy, true
+	}
+	return "", false
+}
+
+func (a *ApiService) recordLegacyWSProtocolAuditOnce(c *gin.Context, user string) {
+	if !legacyWSProtocolAuditWarned.CompareAndSwap(false, true) {
+		return
+	}
+	a.recordAudit(c, user, "ws_protocol_deprecated", "realtime", service.AuditSeverityWarn, map[string]any{
+		"format": "legacy_token_subprotocol",
+	})
+}
+
+func wsTokenDigest(token string) [sha256.Size]byte {
+	return sha256.Sum256([]byte(token))
 }
 
 func (a *ApiService) validateWSOrigin(c *gin.Context, user string) bool {
@@ -319,14 +402,31 @@ func canonicalHostname(value string) string {
 }
 
 func consumeWSToken(token string) (string, bool) {
-	wsTokens.Lock()
-	defer wsTokens.Unlock()
-	data, ok := wsTokens.tokens[token]
-	delete(wsTokens.tokens, token)
-	if !ok || time.Now().After(data.expiresAt) {
+	if token == "" {
 		return "", false
 	}
-	return data.user, true
+	wsTokens.Lock()
+	defer wsTokens.Unlock()
+
+	candidate := wsTokenDigest(token)
+	matched := 0
+	var matchedKey [sha256.Size]byte
+	var matchedData realtimeToken
+	for key, data := range wsTokens.tokens {
+		eq := subtle.ConstantTimeCompare(candidate[:], key[:])
+		if eq == 1 {
+			matchedKey = key
+			matchedData = data
+		}
+		matched |= eq
+	}
+	if matched == 1 {
+		delete(wsTokens.tokens, matchedKey)
+	}
+	if matched != 1 || time.Now().After(matchedData.expiresAt) {
+		return "", false
+	}
+	return matchedData.user, true
 }
 
 func maybeSweepWSTokensLocked(now time.Time) {
@@ -366,24 +466,42 @@ func sweepWSTokensLocked(now time.Time) {
 	enforceWSTokenCapLocked()
 }
 
+func sweepAllWSTokens() int {
+	wsTokens.Lock()
+	defer wsTokens.Unlock()
+	return sweepAllWSTokensLocked()
+}
+
+func sweepAllWSTokensLocked() int {
+	count := len(wsTokens.tokens)
+	wsTokens.tokens = map[[sha256.Size]byte]realtimeToken{}
+	wsTokens.lastSweep = time.Time{}
+	if wsTokens.sweepTimer != nil {
+		wsTokens.sweepTimer.Stop()
+		wsTokens.sweepTimer = nil
+	}
+	wsTokens.sweepGeneration++
+	return count
+}
+
 func enforceWSTokenCapLocked() {
 	overflow := len(wsTokens.tokens) - maxWSTokens
 	if overflow <= 0 {
 		return
 	}
 	entries := make([]struct {
-		token     string
+		token     [sha256.Size]byte
 		expiresAt time.Time
 	}, 0, len(wsTokens.tokens))
 	for token, data := range wsTokens.tokens {
 		entries = append(entries, struct {
-			token     string
+			token     [sha256.Size]byte
 			expiresAt time.Time
 		}{token: token, expiresAt: data.expiresAt})
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].expiresAt.Equal(entries[j].expiresAt) {
-			return entries[i].token < entries[j].token
+			return bytes.Compare(entries[i].token[:], entries[j].token[:]) < 0
 		}
 		return entries[i].expiresAt.Before(entries[j].expiresAt)
 	})

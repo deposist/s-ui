@@ -73,3 +73,28 @@ func TestInboundGetAllLoadsUsersForManyInboundsInBatch(t *testing.T) {
 		t.Fatalf("expected 50 tested inbounds, got %d", seen)
 	}
 }
+
+func TestFetchUsersByConditionRejectsUnsupportedInboundTypeBeforeSQL(t *testing.T) {
+	_, err := (&InboundService{}).fetchUsersByCondition(nil, "vmess'); DROP TABLE clients; --", "1=1", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("unsupported inbound type should be rejected before SQL execution")
+	}
+}
+
+func TestFetchUsersByConditionRejectsUnexpectedJSONFieldBeforeSQL(t *testing.T) {
+	const inboundType = "test-malicious-field"
+	old, existed := userJSONField[inboundType]
+	userJSONField[inboundType] = "vmess') FROM clients; --"
+	t.Cleanup(func() {
+		if existed {
+			userJSONField[inboundType] = old
+		} else {
+			delete(userJSONField, inboundType)
+		}
+	})
+
+	_, err := (&InboundService{}).fetchUsersByCondition(nil, inboundType, "1=1", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("unexpected JSON field should be rejected before SQL execution")
+	}
+}

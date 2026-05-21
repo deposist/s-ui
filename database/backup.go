@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime/multipart"
 	"net/url"
@@ -135,6 +136,17 @@ func parseBackupExcludes(exclude string) map[string]bool {
 		}
 	}
 	return excluded
+}
+
+func ParseBackupExcludes(exclude string) []string {
+	excluded := parseBackupExcludes(exclude)
+	ordered := make([]string, 0, len(excluded))
+	for _, table := range []string{"stats", "client_ips", "audit_events", "changes"} {
+		if excluded[table] {
+			ordered = append(ordered, table)
+		}
+	}
+	return ordered
 }
 
 func copyBackupTable(sourceDB *gorm.DB, backupDB *gorm.DB, modelValue any) error {
@@ -271,6 +283,9 @@ func ImportDB(file multipart.File) error {
 	if err := InitDB(dbPath); err != nil {
 		return rollback("opening imported db", err)
 	}
+	if err := ResetCaches(context.Background()); err != nil {
+		return rollback("resetting in-memory caches", err)
+	}
 
 	// Imported db is healthy and live; drop the on-disk fallback.
 	_ = os.Remove(fallbackPath)
@@ -377,13 +392,14 @@ func SendSighup() error {
 
 	// Send SIGHUP to the current process
 	time.AfterFunc(3*time.Second, func() {
+		var signalErr error
 		if runtime.GOOS == "windows" {
-			err = process.Kill()
+			signalErr = process.Kill()
 		} else {
-			err = process.Signal(syscall.SIGHUP)
+			signalErr = process.Signal(syscall.SIGHUP)
 		}
-		if err != nil {
-			logger.Error("send signal SIGHUP failed:", err)
+		if signalErr != nil {
+			logger.Error("send signal SIGHUP failed:", signalErr)
 		}
 	})
 	return nil

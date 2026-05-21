@@ -36,3 +36,6 @@ windows/sui-*.exe
 
 # Local 3x-ui import fixtures with real production data
 test-db/
+
+# Local recovery snapshots (corrupt backups from rename-module incident)
+.tools-recovery/

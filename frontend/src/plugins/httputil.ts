@@ -58,6 +58,13 @@ function _respToMsg(resp: any): Msg {
   }
 }
 
+function _errorToMsg(error: any): Msg {
+  if (error?.response?.data) {
+    return _respToMsg(error.response)
+  }
+  return { success: false, msg: error.toString(), obj: null }
+}
+
 function isMsg(obj: any): obj is Msg {
   return Object.hasOwn(obj,'success') && Object.hasOwn(obj,'msg') && Object.hasOwn(obj, 'obj')
 }
@@ -69,7 +76,7 @@ const HttpUtils = {
         const resp = await api.get(url, { params: data, ...options })
         msg = _respToMsg(resp)
     } catch (e: any) {
-        msg = { success: false, msg: e.toString(), obj: null }
+        msg = _errorToMsg(e)
     }
     _handleMsg(msg)
     return msg
@@ -80,7 +87,7 @@ const HttpUtils = {
         const resp = await api.post(url, data, options)
         msg = _respToMsg(resp)
     } catch (e: any) {
-        msg = { success: false, msg: e.toString(), obj: null }
+        msg = _errorToMsg(e)
     }
     _handleMsg(msg)
     return msg

@@ -35,20 +35,35 @@ type Server struct {
 	ctx            context.Context
 	cancel         context.CancelFunc
 	settingService service.SettingService
+	runtime        *service.Runtime
 	assetsFS       fs.FS
 }
 
-func NewServer() (*Server, error) {
+type Option func(*Server)
+
+func WithRuntime(runtime *service.Runtime) Option {
+	return func(s *Server) {
+		s.runtime = runtime
+	}
+}
+
+func NewServer(options ...Option) (*Server, error) {
 	assetsFS, err := fs.Sub(content, "html/assets")
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Server{
+	server := &Server{
 		ctx:      ctx,
 		cancel:   cancel,
 		assetsFS: assetsFS,
-	}, nil
+	}
+	for _, option := range options {
+		if option != nil {
+			option(server)
+		}
+	}
+	return server, nil
 }
 
 func (s *Server) initRouter() (*gin.Engine, error) {
@@ -85,7 +100,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 	engine.Use(middleware.AdminSecurityHeaders())
 
-	secret, err := s.settingService.GetSecret()
+	cookieKeys, err := s.settingService.GetCookieKeys()
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +108,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
 	assetsBasePath := base_url + "assets/"
 
-	store, err := NewSQLiteSessionStore(database.GetDB(), secret)
+	store, err := NewSQLiteSessionStore(database.GetDB(), cookieKeys...)
 	if err != nil {
 		return nil, err
 	}
@@ -122,10 +137,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.HEAD(assetsBasePath+"*filepath", assetsHandler)
 
 	group_apiv2 := engine.Group(base_url + "apiv2")
-	apiv2 := api.NewAPIv2Handler(group_apiv2)
+	apiv2 := api.NewAPIv2Handler(group_apiv2, api.WithRuntime(s.runtime))
 
 	group_api := engine.Group(base_url + "api")
-	api.NewAPIHandler(group_api, apiv2)
+	api.NewAPIHandler(group_api, apiv2, api.WithRuntime(s.runtime))
 
 	// Serve index.html as the entry point
 	// Handle all other routes by serving index.html
@@ -192,9 +207,13 @@ func (s *Server) Start() (err error) {
 		return err
 	}
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
-	listener, err := network.ListenWithFallback(listenAddr, listen, strconv.Itoa(port))
+	listenResult, err := network.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
 	if err != nil {
 		return err
+	}
+	listener := listenResult.Listener
+	if listenResult.Fallback {
+		_ = service.RecordListenFallbackAudit("web", listenResult.RequestedAddr, listenResult.FallbackAddr, listenResult.BindError)
 	}
 	if certFile != "" || keyFile != "" {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)

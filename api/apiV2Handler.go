@@ -35,9 +35,10 @@ const (
 	legacyTokenHeaderSunset = "Sat, 15 Aug 2026 00:00:00 GMT"
 )
 
-func NewAPIv2Handler(g *gin.RouterGroup) *APIv2Handler {
+func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
 	a := &APIv2Handler{
-		tokens: map[string]TokenInMemory{},
+		ApiService: NewApiService(options...),
+		tokens:     map[string]TokenInMemory{},
 	}
 	a.ReloadTokens()
 	a.initRouter(g)
@@ -52,6 +53,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
 	g.POST("/telegram/test", a.ApiService.TestTelegram)
 	g.POST("/telegram/backup", a.ApiService.BackupToTelegram)
+	g.POST("/telegram/backup/run", a.ApiService.RunTelegramBackup)
 	g.POST("/import-xui/plan", a.ApiService.ImportXuiPlan)
 	g.POST("/import-xui/apply", a.ApiService.ImportXuiApply)
 	g.POST("/import-xui/rollback", a.ApiService.ImportXuiRollback)

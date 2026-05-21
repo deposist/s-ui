@@ -10,13 +10,9 @@ import (
 )
 
 func TestConfigSaveRedactsSensitiveChangePayload(t *testing.T) {
-	t.Setenv("SUI_SECRETBOX_KEY", "test-secretbox-key")
+	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	initSettingTestDB(t)
-	oldCore := corePtr
-	corePtr = nil
-	t.Cleanup(func() {
-		corePtr = oldCore
-	})
+	t.Cleanup(ReplaceDefaultRuntimeForTest(NewRuntimeWithCoreProvider(nil)))
 	payload, err := json.Marshal(map[string]string{
 		"telegramBotToken": "1234567890:" + strings.Repeat("A", 35),
 		"telegramChatID":   "42",

@@ -77,6 +77,37 @@ var ipPrivacySettings = struct {
 	expiresAt time.Time
 }{}
 
+func init() {
+	database.RegisterResetHook("ipmonitor", ResetCaches)
+}
+
+func ResetCaches() {
+	pending.Lock()
+	pending.byClient = map[string]map[string]pendingIP{}
+	pending.Unlock()
+
+	allowCache.Lock()
+	allowCache.byClient = map[string]allowCacheEntry{}
+	allowCache.Unlock()
+
+	allowCacheRefresh.Lock()
+	allowCacheRefresh.inFlight = map[string]struct{}{}
+	allowCacheRefresh.Unlock()
+
+	securityEvents.Lock()
+	securityEvents.lastEmittedAt = map[string]time.Time{}
+	securityEvents.Unlock()
+
+	ipHashSalt.Lock()
+	ipHashSalt.value = nil
+	ipHashSalt.Unlock()
+
+	ipPrivacySettings.Lock()
+	ipPrivacySettings.showRaw = false
+	ipPrivacySettings.expiresAt = time.Time{}
+	ipPrivacySettings.Unlock()
+}
+
 func Record(clientName string, ip string) {
 	if clientName == "" || ip == "" {
 		return

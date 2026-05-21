@@ -7,6 +7,171 @@
 
 ## Unreleased
 
+## [1.5.3-beta] — 2026-05-20 — агрегированные исправления + upstream-парити (#1114)
+
+### Сводка multi-chat поставки (P0-P5)
+
+#### Безопасность
+
+- [P0] Усилена SSRF-фильтрация и повторная проверка адреса на этапе dial;
+  ужесточена валидация путей/симлинков при restore из бэкапа.
+- [P1] Усилен жизненный цикл CSRF/session, включая обновление токена после
+  logout/logout-all и более строгую обработку WS-токенов.
+- [P2] Расширены защитные проверки secret/settings и guardrails миграций.
+- [P3] Добавлен аудит listen-fallback и выровнена надёжность restart-пути.
+
+#### Надёжность / целостность данных
+
+- [P0] Закрыты race-сценарии в tracker/session options/audit writer.
+- [P1] Стабилизированы realtime fallback и frontend unit-test harness.
+- [P2] Добавлены reset hooks, tracker wait guards и проверки миграций с
+  foreign keys.
+- [P3] Унифицировано планирование рестартов и уменьшены глобальные
+  side-effects через начальный DI-срез.
+- [P4] Оставшиеся service runtime globals вынесены за DI-compatible runtime
+  при сохранении совместимости zero-value сервисов.
+- [P5] Завершён cleanup logging backend без изменения поведения API endpoint'ов.
+
+#### API и runtime-поведение
+
+- [P0] Усилена обработка trusted proxies и безопасная классификация ошибок
+  импорта.
+- [P1] Ужесточены потоки realtime/session/CSRF и taxonomy ошибок Telegram.
+- [P2] Нормализованы batching и timeout-поведение на тяжёлых data-path.
+- [P3] Добавлен начальный `slog` adapter-path для поэтапной миграции с
+  `op/go-logging`.
+- [P4] `slog` стал основным logger facade; `op/go-logging` изолирован за
+  deprecated compatibility API.
+- [P5] Удалены deprecated `logger.InitLogger`/`logger.GetLogger`; вывод logger
+  facade полностью переведён на стандартный `log/slog` с сохранением panel/core
+  log-buffer.
+- [P5] Legacy-модуль `github.com/op/go-logging` удалён из `go.mod` и `go.sum`.
+- [P4] Добавлена проверяемая policy revalidation для sing-box tracker под
+  `github.com/sagernet/sing-box v1.13.11`.
+- [P4] Добавлена проверяемая SemVer release/version policy; migration code
+  больше не даунгрейдит future `settings.version`.
+
+#### Frontend
+
+- [P1] Исправлен Vitest harness в `frontend/vitest.config.ts`.
+- [P1/P2] Согласованы очистка CSRF-кэша, границы request dedupe и поведение
+  realtime degraded-mode.
+
+#### Тесты и верификация
+
+- Baseline и фазовые отчёты:
+  - `plans/lint-baseline.txt`
+  - `plans/lint-baseline-normalized.txt`
+  - `plans/fix-validation.txt` (P0)
+  - `plans/p1-validation.txt` (P1)
+  - `plans/p2-validation.txt` (P2)
+  - `plans/p3-architecture-validation.txt` (P3)
+  - `plans/p4-architecture-debt-validation.txt` (P4)
+  - `plans/p5-logging-cleanup-validation.txt` (P5)
+- Для каждой фазы есть точечные проверки и финальный pass-набор команд в
+  соответствующем validation-артефакте.
+
+### Трассируемость (multi-chat policy)
+
+- Каждый завершённый пункт помечается фазовым тэгом: `[P0]`, `[P1]`, `[P2]`,
+  `[P3]`, `[P4]`, `[P5]`.
+- Добавляйте ссылки в формате: `(ref: <commit|PR|chat-id>)`.
+- Для сквозных изменений используйте объединённые тэги, например `[P1/P2]`.
+- Отложенный архитектурный долг держите отдельным блоком, не смешивая с
+  завершёнными изменениями.
+
+### Замечания по обновлению (агрегированное окно)
+
+- Рассматривайте P0->P5 как единое релизное окно; перед апгрейдом делайте
+  полный SQLite-бэкап.
+- До production rollout проверьте в staging изменения в session/CSRF/realtime
+  и listen fallback.
+- Используйте фазовые validation-файлы выше как доказательство верификации
+  апгрейда.
+- Внешним Go-интеграциям, импортировавшим `logger.InitLogger` или
+  `logger.GetLogger`, нужно перейти на `logger.Init(logger.Level*)`,
+  `logger.Slog(source)` или `slog.Default()`.
+
+### Откат (агрегированное окно)
+
+- Для отката восстановите pre-window SQLite snapshot и предыдущий binary/image.
+- Если откат пересекает изменения поведения session/token, после downgrade
+  инвалидируйте активные сессии и ротируйте admin credentials.
+
+### Отложенный архитектурный долг
+
+- [P5] В рамках P5 deferred-пунктов нет. Legacy-зависимость `op/go-logging` и
+  deprecated logger compatibility API удалены.
+
+### Шаблон для следующих multi-chat релизов
+
+- Используйте доменные секции: Security, Reliability/Data integrity,
+  API/Runtime, Frontend, Tests.
+- Маркируйте каждый пункт фазовыми тэгами и добавляйте traceability refs.
+- Явно добавляйте `Upgrade notes` и `Rollback` для всего агрегированного окна.
+
+### Исправлено
+
+- TUIC subscription/share links и Clash export теперь включают
+  `udp_relay_mode`, сохраняя заданное значение и используя `quic` по умолчанию
+  для generated links, если режим не задан.
+
+### Добавлено
+
+- Scheduled и manual encrypted backup SQLite-БД в Telegram. Backup passphrase
+  задаётся только во вкладке Telegram, фича выключена по умолчанию. Новые
+  settings и дефолты: `telegramBackupEnabled="false"`,
+  `telegramBackupPassphrase=""`, `telegramBackupCron=""`,
+  `telegramBackupExcludeTables="stats,client_ips,audit_events,changes"` и
+  `telegramBackupMaxSizeMB="45"`. Новые manual trigger маршруты:
+  `POST /api/telegram/backup/run` и `POST /apiv2/telegram/backup/run`.
+- Restore теперь автоматически распознаёт загружаемые backup envelope с magic
+  `SUI-TGBKP\x00` и показывает поле Backup passphrase в Backup & Restore.
+  Plaintext `.db` по-прежнему принимается без этого поля.
+- Существующая кнопка Backup может опционально скачать тот же encrypted
+  envelope через чекбокс «Encrypt with Telegram backup passphrase». Чекбокс
+  по умолчанию снят, plaintext-поведение сохранено, а существующий endpoint
+  `getdb` использует новый non-breaking query-параметр
+  `encryptTelegramBackup=true`.
+- Основной бинарник релиза теперь включает `s-ui decrypt-backup` для offline
+  расшифровки envelope. Отдельный артефакт не нужен.
+- `docs/scope-matrix.md` документирует операцию `tg_backup_run`.
+
+### Изменено
+
+- BREAKING: legacy `POST /api/telegram/backup` и
+  `POST /apiv2/telegram/backup` теперь делегируют в новый Telegram backup
+  service. `backupKey` удалён из всех ответов, требуется
+  `telegramBackupEnabled=true`, успешный ответ дополнен `trigger="manual"`.
+  Периода обратной совместимости нет. Строгий миграционный шаг: после апгрейда
+  включить `telegramBackupEnabled` во вкладке Telegram, иначе legacy-вызов
+  вернёт HTTP 503 с `errorClass=disabled`.
+- В `util/secretbox` добавлены `EncryptBytes` и `DecryptBytes` для работы с
+  секретами как с байтами.
+- В `api/rateLimit.go` добавлен общий manual Telegram backup bucket для всех
+  четырёх manual trigger маршрутов: 3 попытки за 60 секунд с `Retry-After`.
+- Новые типы audit-events: `tg_backup_sent`, `tg_backup_failed`,
+  `tg_backup_passphrase_changed`, `tg_backup_manual_encrypted` и
+  `tg_backup_restore_failed`.
+
+### Замечания по обновлению
+
+- Сделайте бэкап SQLite-БД перед апгрейдом. При работе через systemd
+  остановите `s-ui`, скопируйте `s-ui.db` плюс `-wal`/`-shm`-сайдкары и
+  затем запустите сервис снова.
+- Telegram database backup остаётся выключенным, пока во вкладке Telegram не
+  включён `telegramBackupEnabled` и не задан Backup passphrase.
+- Интеграции, вызывающие legacy Telegram backup endpoints, должны учесть
+  удаление поля `backupKey` и новый HTTP 503 `disabled`, пока настройка не
+  включена.
+
+### Откат
+
+- Для отката восстановите SQLite-бэкап, сделанный перед апгрейдом, и прежний
+  бинарник/image.
+- Зашифрованные `.db.aes` файлы остаются расшифровываемыми тем passphrase,
+  которым были созданы, через любой бинарник с `s-ui decrypt-backup`.
+
 ## [1.5.2-beta-hotfix2] — 2026-05-18 — снятие legacy unique-индекса client_ips
 
 ### Исправлено

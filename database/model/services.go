@@ -1,8 +1,6 @@
 package model
 
-import (
-	"encoding/json"
-)
+import "encoding/json"
 
 type Service struct {
 	Id   uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`

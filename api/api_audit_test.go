@@ -291,15 +291,18 @@ func TestAuditAdminScopeAllowed(t *testing.T) {
 func TestGetSecurityAuditRateLimitReturns429AndAudits(t *testing.T) {
 	resetRateLimitState()
 	settingService := initSessionTestDB(t)
+	const ip = "198.51.100.10"
 	for i := 0; i < auditEndpointRateLimitMax; i++ {
-		if err := checkAuditEndpointRateLimit("admin"); err != nil {
+		if err := checkAuditEndpointRateLimit(auditEndpointRateLimitKey("admin", ip)); err != nil {
 			t.Fatalf("unexpected prefill error: %v", err)
 		}
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).GetSecurityAudit))
 	})
-	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit", nil), cookies...)
+	req := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
+	req.RemoteAddr = ip + ":1234"
+	recorder := performAuthenticatedTestRequest(router, req, cookies...)
 	if recorder.Code != http.StatusTooManyRequests {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
@@ -312,6 +315,50 @@ func TestGetSecurityAuditRateLimitReturns429AndAudits(t *testing.T) {
 	}
 	if event.Actor != "admin" {
 		t.Fatalf("unexpected actor: %q", event.Actor)
+	}
+	var details map[string]any
+	if err := json.Unmarshal(event.Details, &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["ip"] != ip {
+		t.Fatalf("unexpected audit ip detail: %#v", details)
+	}
+}
+
+func TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP(t *testing.T) {
+	resetRateLimitState()
+	settingService := initSessionTestDB(t)
+	for i := 0; i < auditEndpointRateLimitMax; i++ {
+		if err := checkAuditEndpointRateLimit(auditEndpointRateLimitKey("admin", "198.51.100.10")); err != nil {
+			t.Fatalf("unexpected prefill error: %v", err)
+		}
+	}
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).GetSecurityAudit))
+	})
+
+	blockedReq := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
+	blockedReq.RemoteAddr = "[::ffff:198.51.100.10]:1234"
+	blocked := performAuthenticatedTestRequest(router, blockedReq, cookies...)
+	if blocked.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected mapped-ip request to be blocked, got %d", blocked.Code)
+	}
+
+	allowedReq := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
+	allowedReq.RemoteAddr = "198.51.100.11:1234"
+	allowed := performAuthenticatedTestRequest(router, allowedReq, cookies...)
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("expected different ip bucket to pass, got %d", allowed.Code)
+	}
+
+	otherActorRouter, otherActorCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", withTestTokenScope("other-admin", "admin", (&ApiService{}).GetSecurityAudit))
+	})
+	otherActorReq := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
+	otherActorReq.RemoteAddr = "198.51.100.10:1234"
+	otherActor := performAuthenticatedTestRequest(otherActorRouter, otherActorReq, otherActorCookies...)
+	if otherActor.Code != http.StatusOK {
+		t.Fatalf("expected different actor bucket to pass, got %d", otherActor.Code)
 	}
 }
 

@@ -23,7 +23,16 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-type ServerService struct{}
+type ServerService struct {
+	Runtime *Runtime
+}
+
+func (s *ServerService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
+}
 
 func (s *ServerService) GetStatus(request string) *map[string]interface{} {
 	status := make(map[string]interface{}, 0)
@@ -138,10 +147,11 @@ func (s *ServerService) GetNetInfo() map[string]interface{} {
 func (s *ServerService) GetSingboxInfo() map[string]interface{} {
 	var rtm runtime.MemStats
 	runtime.ReadMemStats(&rtm)
-	isRunning := corePtr.IsRunning()
+	coreInstance := s.runtime().Core()
+	isRunning := coreInstance != nil && coreInstance.IsRunning()
 	uptime := uint32(0)
 	if isRunning {
-		if instance := corePtr.GetInstance(); instance != nil {
+		if instance := coreInstance.GetInstance(); instance != nil {
 			uptime = instance.Uptime()
 		}
 	}

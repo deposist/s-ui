@@ -31,11 +31,6 @@ type tokenUseDebouncer struct {
 	flush    func(map[uint]tokenUseUpdate) error
 }
 
-var (
-	tokenUseDebouncerMu sync.Mutex
-	defaultTokenUse     = newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates)
-)
-
 func newTokenUseDebouncer(interval time.Duration, flush func(map[uint]tokenUseUpdate) error) *tokenUseDebouncer {
 	if interval <= 0 {
 		interval = tokenUseFlushInterval
@@ -48,26 +43,19 @@ func newTokenUseDebouncer(interval time.Duration, flush func(map[uint]tokenUseUp
 }
 
 func getTokenUseDebouncer() *tokenUseDebouncer {
-	tokenUseDebouncerMu.Lock()
-	defer tokenUseDebouncerMu.Unlock()
-	return defaultTokenUse
+	return DefaultRuntime().tokenUseDebouncer()
 }
 
 func resetTokenUseDebouncerForTest() {
-	tokenUseDebouncerMu.Lock()
-	defer tokenUseDebouncerMu.Unlock()
-	defaultTokenUse.mu.Lock()
-	defaultTokenUse.epoch++
-	if defaultTokenUse.timer != nil {
-		defaultTokenUse.timer.Stop()
-		defaultTokenUse.timer = nil
-	}
-	defaultTokenUse.mu.Unlock()
-	defaultTokenUse = newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates)
+	DefaultRuntime().resetTokenUseDebouncer()
 }
 
 func StopTokenUseDebouncer(ctx context.Context) error {
-	return getTokenUseDebouncer().Flush(ctx)
+	debouncer := getTokenUseDebouncer()
+	if debouncer == nil {
+		return nil
+	}
+	return debouncer.Flush(ctx)
 }
 
 func (d *tokenUseDebouncer) Record(id uint, ip string, ts int64) {

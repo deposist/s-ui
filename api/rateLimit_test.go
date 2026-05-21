@@ -28,6 +28,10 @@ func resetRateLimitState() {
 	defer auditEndpointRateLimitMu.Unlock()
 	auditEndpointRateLimits = map[string]auditEndpointAttempt{}
 	auditEndpointRateLimitGC = time.Time{}
+	telegramBackupManualRateLimitMu.Lock()
+	defer telegramBackupManualRateLimitMu.Unlock()
+	telegramBackupManualRateLimits = map[string]telegramBackupManualAttempt{}
+	telegramBackupManualRateLimitGC = time.Time{}
 }
 
 func TestLoginRateLimitBlocksAfterMaxFailures(t *testing.T) {

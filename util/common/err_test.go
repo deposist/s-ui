@@ -2,9 +2,9 @@ package common
 
 import "testing"
 
-func TestNewErrorPreservesArgumentSpacingAndTrailingNewline(t *testing.T) {
+func TestNewErrorPreservesArgumentSpacingWithoutTrailingNewline(t *testing.T) {
 	err := NewError("unknown action: ", "set")
-	if err.Error() != "unknown action:  set\n" {
+	if err.Error() != "unknown action:  set" {
 		t.Fatalf("unexpected error message: %q", err.Error())
 	}
 }

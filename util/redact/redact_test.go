@@ -7,8 +7,9 @@ import (
 
 func TestValueRedactsSensitiveKeys(t *testing.T) {
 	input := map[string]any{
-		"user":  "admin",
-		"token": "secret-token",
+		"user":                     "admin",
+		"token":                    "secret-token",
+		"telegramBackupPassphrase": "secret-passphrase",
 		"nested": map[string]any{
 			"password": "secret-password",
 			"port":     2095,
@@ -20,6 +21,9 @@ func TestValueRedactsSensitiveKeys(t *testing.T) {
 	}
 	if redacted["token"] != Marker {
 		t.Fatalf("token was not redacted: %#v", redacted["token"])
+	}
+	if redacted["telegramBackupPassphrase"] != Marker {
+		t.Fatalf("passphrase was not redacted: %#v", redacted["telegramBackupPassphrase"])
 	}
 	nested := redacted["nested"].(map[string]any)
 	if nested["password"] != Marker {

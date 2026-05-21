@@ -11,7 +11,9 @@ import (
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
+	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
@@ -67,6 +69,92 @@ func TestGetDbAuditsExport(t *testing.T) {
 	}
 	if event.Actor != "admin" || event.Resource != "database" || !strings.Contains(string(event.Details), `"channel":"download"`) {
 		t.Fatalf("unexpected audit event: %#v details=%s", event, string(event.Details))
+	}
+}
+
+func TestGetDbEncryptedWithTelegramBackupPassphrase(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	passphrase := "correct horse battery staple"
+	saveTelegramBackupPassphrase(t, settingService, passphrase)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).GetDb))
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?encryptTelegramBackup=true&exclude=stats,audit,unknown", nil), cookies...)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	envelope := recorder.Body.Bytes()
+	if !service.IsTelegramBackupEnvelope(envelope) {
+		t.Fatalf("encrypted backup did not return Telegram backup envelope")
+	}
+	plaintext, err := service.OpenTelegramBackupEnvelope(envelope, []byte(passphrase))
+	if err != nil {
+		t.Fatal(err)
+	}
+	isDB, err := database.IsSQLiteDB(bytes.NewReader(plaintext))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isDB {
+		t.Fatal("decrypted encrypted backup is not SQLite")
+	}
+
+	var event model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "tg_backup_manual_encrypted").First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	var details map[string]any
+	if err := json.Unmarshal(event.Details, &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["channel"] != "local_download" {
+		t.Fatalf("unexpected audit details: %#v", details)
+	}
+	excluded, ok := details["excludedTables"].([]any)
+	if !ok || len(excluded) != 2 || excluded[0] != "stats" || excluded[1] != "audit_events" {
+		t.Fatalf("unexpected excludedTables audit details: %#v", details)
+	}
+	if strings.Contains(string(event.Details), passphrase) {
+		t.Fatalf("audit details leaked passphrase: %s", string(event.Details))
+	}
+}
+
+func TestGetDbEncryptedRejectsMissingTelegramBackupPassphrase(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).GetDb))
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?encryptTelegramBackup=true", nil), cookies...)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var msg Msg
+	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	obj, ok := msg.Obj.(map[string]any)
+	if !ok || obj["errorClass"] != "missing_passphrase" {
+		t.Fatalf("unexpected missing-passphrase response: %#v", msg.Obj)
+	}
+	var count int64
+	if err := database.GetDB().Model(&model.AuditEvent{}).Where("event = ?", "db_exported").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("missing passphrase should not export db, got %d export audit events", count)
+	}
+}
+
+func saveTelegramBackupPassphrase(t *testing.T, settingService *service.SettingService, passphrase string) {
+	t.Helper()
+	payload, err := json.Marshal(map[string]string{"telegramBackupPassphrase": passphrase})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, payload)
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

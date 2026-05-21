@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -36,11 +37,25 @@ func GetLogLevel() LogLevel {
 	if IsDebug() {
 		return Debug
 	}
-	logLevel := os.Getenv("SUI_LOG_LEVEL")
+	logLevel := strings.ToLower(strings.TrimSpace(os.Getenv("SUI_LOG_LEVEL")))
 	if logLevel == "" {
 		return Info
 	}
-	return LogLevel(logLevel)
+	level := LogLevel(logLevel)
+	if isValidLogLevel(level) {
+		return level
+	}
+	fmt.Fprintf(os.Stderr, "WARNING - invalid SUI_LOG_LEVEL %q; falling back to %q\n", logLevel, Info)
+	return Info
+}
+
+func isValidLogLevel(level LogLevel) bool {
+	switch level {
+	case Debug, Info, Warn, Error:
+		return true
+	default:
+		return false
+	}
 }
 
 func IsDebug() bool {
@@ -72,4 +87,16 @@ func GetSecret() string {
 		return secret
 	}
 	return GetName() + ":" + GetDBFolderPath()
+}
+
+func GetForceCookieSecureEnv() (bool, bool, error) {
+	raw := strings.TrimSpace(os.Getenv("SUI_FORCE_COOKIE_SECURE"))
+	if raw == "" {
+		return false, false, nil
+	}
+	enabled, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, true, err
+	}
+	return enabled, true, nil
 }

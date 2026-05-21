@@ -25,17 +25,19 @@ type ConnectionInfo struct {
 type ConnTracker struct {
 	access      sync.Mutex
 	connections map[string]*ConnectionInfo
+	inflight    *trackerWaitGroup
+	epoch       uint64
 }
 
 func NewConnTracker() *ConnTracker {
 	return &ConnTracker{
 		connections: make(map[string]*ConnectionInfo),
+		inflight:    newTrackerWaitGroup(),
 	}
 }
 
 func (c *ConnTracker) Reset() {
 	c.access.Lock()
-	defer c.access.Unlock()
 	for _, connInfo := range c.connections {
 		if connInfo.Conn != nil {
 			_ = connInfo.Conn.Close()
@@ -45,6 +47,11 @@ func (c *ConnTracker) Reset() {
 		}
 	}
 	c.connections = make(map[string]*ConnectionInfo)
+	c.epoch++
+	waitGroup := c.inflight
+	c.inflight = newTrackerWaitGroup()
+	c.access.Unlock()
+	waitForTrackerIdle("connection tracker", waitGroup, trackerResetWaitTimeout)
 }
 
 func (c *ConnTracker) generateConnectionID() string {
@@ -60,9 +67,9 @@ func (c *ConnTracker) RoutedConnection(ctx context.Context, conn net.Conn, metad
 		Type:    "tcp",
 	}
 
-	c.trackConnection(connID, connInfo)
+	epoch, waitGroup := c.trackConnection(connID, connInfo)
 
-	return c.createWrappedConn(conn, connID)
+	return c.createWrappedConn(conn, connID, epoch, waitGroup)
 }
 
 func (c *ConnTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) network.PacketConn {
@@ -74,9 +81,9 @@ func (c *ConnTracker) RoutedPacketConnection(ctx context.Context, conn network.P
 		Type:       "udp",
 	}
 
-	c.trackConnection(connID, connInfo)
+	epoch, waitGroup := c.trackConnection(connID, connInfo)
 
-	return c.createWrappedPacketConn(conn, connID)
+	return c.createWrappedPacketConn(conn, connID, epoch, waitGroup)
 }
 
 func (c *ConnTracker) CloseConnByInbound(inbound string) int {
@@ -99,15 +106,20 @@ func (c *ConnTracker) CloseConnByInbound(inbound string) int {
 	return closedCount
 }
 
-func (c *ConnTracker) trackConnection(connID string, connInfo *ConnectionInfo) {
+func (c *ConnTracker) trackConnection(connID string, connInfo *ConnectionInfo) (uint64, *trackerWaitGroup) {
 	c.access.Lock()
 	defer c.access.Unlock()
+	c.inflight.Add()
 	c.connections[connID] = connInfo
+	return c.epoch, c.inflight
 }
 
-func (c *ConnTracker) untrackConnection(connID string) {
+func (c *ConnTracker) untrackConnection(connID string, epoch uint64) {
 	c.access.Lock()
 	defer c.access.Unlock()
+	if epoch != c.epoch {
+		return
+	}
 	delete(c.connections, connID)
 }
 
@@ -126,19 +138,23 @@ func shouldUntrackIOErr(err error) bool {
 	return true
 }
 
-func (c *ConnTracker) createWrappedConn(conn net.Conn, connID string) *wrappedConn {
+func (c *ConnTracker) createWrappedConn(conn net.Conn, connID string, epoch uint64, waitGroup *trackerWaitGroup) *wrappedConn {
 	return &wrappedConn{
-		Conn:    conn,
-		tracker: c,
-		connID:  connID,
+		Conn:      conn,
+		tracker:   c,
+		connID:    connID,
+		epoch:     epoch,
+		waitGroup: waitGroup,
 	}
 }
 
-func (c *ConnTracker) createWrappedPacketConn(conn network.PacketConn, connID string) *wrappedPacketConn {
+func (c *ConnTracker) createWrappedPacketConn(conn network.PacketConn, connID string, epoch uint64, waitGroup *trackerWaitGroup) *wrappedPacketConn {
 	return &wrappedPacketConn{
 		PacketConn: conn,
 		tracker:    c,
 		connID:     connID,
+		epoch:      epoch,
+		waitGroup:  waitGroup,
 	}
 }
 
@@ -146,12 +162,15 @@ type wrappedConn struct {
 	net.Conn
 	tracker     *ConnTracker
 	connID      string
+	epoch       uint64
+	waitGroup   *trackerWaitGroup
 	untrackOnce sync.Once
 }
 
 func (w *wrappedConn) doUntrack() {
 	w.untrackOnce.Do(func() {
-		w.tracker.untrackConnection(w.connID)
+		w.tracker.untrackConnection(w.connID, w.epoch)
+		w.waitGroup.Done()
 	})
 }
 
@@ -184,12 +203,15 @@ type wrappedPacketConn struct {
 	network.PacketConn
 	tracker     *ConnTracker
 	connID      string
+	epoch       uint64
+	waitGroup   *trackerWaitGroup
 	untrackOnce sync.Once
 }
 
 func (w *wrappedPacketConn) doUntrack() {
 	w.untrackOnce.Do(func() {
-		w.tracker.untrackConnection(w.connID)
+		w.tracker.untrackConnection(w.connID, w.epoch)
+		w.waitGroup.Done()
 	})
 }
 

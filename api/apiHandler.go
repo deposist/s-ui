@@ -12,9 +12,10 @@ type APIHandler struct {
 	csrfLoginPath string
 }
 
-func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler) {
+func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler, options ...Option) {
 	a := &APIHandler{
-		apiv2: a2,
+		ApiService: NewApiService(options...),
+		apiv2:      a2,
 	}
 	a.initRouter(g)
 }
@@ -86,6 +87,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	telegram := g.Group("/telegram")
 	telegram.POST("/test", a.ApiService.TestTelegram)
 	telegram.POST("/backup", a.ApiService.BackupToTelegram)
+	telegram.POST("/backup/run", a.ApiService.RunTelegramBackup)
 
 	realtime := g.Group("/realtime")
 	realtime.GET("/ws-token", a.ApiService.IssueWSToken)

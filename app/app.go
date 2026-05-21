@@ -15,8 +15,6 @@ import (
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/sub"
 	"github.com/deposist/s-ui-rus-inst/web"
-
-	"github.com/op/go-logging"
 )
 
 type APP struct {
@@ -25,8 +23,8 @@ type APP struct {
 	webServer     *web.Server
 	subServer     *sub.Server
 	cronJob       *cronjob.CronJob
-	logger        *logging.Logger
 	core          *core.Core
+	runtime       *service.Runtime
 }
 
 func NewApp() *APP {
@@ -59,15 +57,17 @@ func (a *APP) Init() error {
 	}
 
 	a.core = core.NewCore()
+	a.runtime = service.NewRuntime(a.core)
+	service.SetDefaultRuntime(a.runtime)
 
 	a.cronJob = cronjob.NewCronJob()
-	a.webServer, err = web.NewServer()
+	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
 	if err != nil {
 		return err
 	}
 	a.subServer = sub.NewServer()
 
-	a.configService = service.NewConfigService(a.core)
+	a.configService = service.NewConfigServiceWithRuntime(a.runtime)
 
 	return nil
 }
@@ -126,6 +126,11 @@ func (a *APP) Stop() {
 	if err := service.StopTokenUseDebouncer(tokenCtx); err != nil {
 		logger.Warning("stop token use debouncer err:", err)
 	}
+	telegramCtx, telegramCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer telegramCancel()
+	if err := service.StopTelegramNotifier(telegramCtx); err != nil {
+		logger.Warning("stop telegram notifier err:", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := service.StopAuditWriter(ctx); err != nil {
@@ -136,15 +141,15 @@ func (a *APP) Stop() {
 func (a *APP) initLog() {
 	switch config.GetLogLevel() {
 	case config.Debug:
-		logger.InitLogger(logging.DEBUG)
+		logger.Init(logger.LevelDebug)
 	case config.Info:
-		logger.InitLogger(logging.INFO)
+		logger.Init(logger.LevelInfo)
 	case config.Warn:
-		logger.InitLogger(logging.WARNING)
+		logger.Init(logger.LevelWarning)
 	case config.Error:
-		logger.InitLogger(logging.ERROR)
+		logger.Init(logger.LevelError)
 	default:
-		log.Fatal("unknown log level:", config.GetLogLevel())
+		logger.Init(logger.LevelInfo)
 	}
 }
 

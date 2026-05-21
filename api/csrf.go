@@ -28,7 +28,7 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 	session.Set(csrfExpiresKey, expiresAt)
 	options := sessions.Options{
 		Path:     "/",
-		Secure:   requestIsHTTPS(c),
+		Secure:   resolveCookieSecure(c, &a.SettingService),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
@@ -44,6 +44,11 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 		"token":     token,
 		"expiresAt": expiresAt,
 	}, nil)
+}
+
+func ResetSessionCSRF(s sessions.Session) {
+	s.Delete(csrfTokenKey)
+	s.Delete(csrfExpiresKey)
 }
 
 func (a *APIHandler) csrfMiddleware(c *gin.Context) {

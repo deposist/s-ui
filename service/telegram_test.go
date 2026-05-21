@@ -2,11 +2,13 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"io"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -213,6 +215,47 @@ func TestNewTelegramHTTPClientAcceptsSOCKS5Proxy(t *testing.T) {
 	}
 	if client.Transport == nil {
 		t.Fatal("expected socks5 transport")
+	}
+}
+
+func TestTelegramSOCKS5DialReturnsOnContextCancel(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	stop := make(chan struct{})
+	acceptedDone := make(chan struct{})
+	go func() {
+		defer close(acceptedDone)
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		<-stop
+	}()
+
+	transport, err := newTelegramSOCKS5Transport(listener.Addr().String(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	conn, err := transport.DialContext(ctx, "tcp", "example.com:443")
+	if conn != nil {
+		_ = conn.Close()
+	}
+	close(stop)
+	waitForTestChannel(t, acceptedDone, time.Second, "slow SOCKS5 server goroutine did not exit")
+	if err == nil {
+		t.Fatal("slow SOCKS5 dial should fail on context timeout")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("SOCKS5 dial ignored context timeout; elapsed=%s err=%v", elapsed, err)
 	}
 }
 
@@ -499,12 +542,69 @@ func enableTelegramForTest(t *testing.T, settingService *SettingService) {
 	}
 }
 
+func TestTelegramNotifierStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
+	sent := make(chan string, 2)
+	notifier := newTelegramNotifier(10, func(text string) TelegramResult {
+		sent <- text
+		return TelegramResult{Success: true}
+	}, nil)
+	notifier.backoff = nil
+
+	notifier.Enqueue(telegramNotification{event: "before_stop", text: "before_stop"})
+	if got := receiveString(t, sent, "before stop send"); got != "before_stop" {
+		t.Fatalf("unexpected first send: %s", got)
+	}
+
+	if err := notifier.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := notifier.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !notifier.stopped {
+		t.Fatal("notifier should be stopped")
+	}
+
+	notifier.Enqueue(telegramNotification{event: "after_stop", text: "after_stop"})
+	select {
+	case got := <-sent:
+		t.Fatalf("late enqueue delivered after stop: %s", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestTelegramNotifierStopBeforeStartPreventsStart(t *testing.T) {
+	notifier := newTelegramNotifier(10, func(string) TelegramResult {
+		t.Fatal("stopped notifier delivered event")
+		return TelegramResult{Success: true}
+	}, nil)
+
+	if err := notifier.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	notifier.Enqueue(telegramNotification{event: "after_stop", text: "after_stop"})
+
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	if !notifier.stopped || notifier.started || len(notifier.queue) != 0 {
+		t.Fatalf("unexpected notifier state after stop-before-start: started=%v stopped=%v queue=%d", notifier.started, notifier.stopped, len(notifier.queue))
+	}
+}
+
 func replaceDefaultTelegramNotifierForTest(t *testing.T, notifier *telegramNotifier) {
 	t.Helper()
-	oldNotifier := defaultTelegramNotifier
-	defaultTelegramNotifier = notifier
+	runtime := DefaultRuntime()
+	runtime.mu.Lock()
+	oldNotifier := runtime.telegramNotifier
+	runtime.telegramNotifier = notifier
+	runtime.mu.Unlock()
 	t.Cleanup(func() {
-		defaultTelegramNotifier = oldNotifier
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), time.Second)
+		defer stopCancel()
+		_ = notifier.Stop(stopCtx)
+		runtime.mu.Lock()
+		runtime.telegramNotifier = oldNotifier
+		runtime.mu.Unlock()
 	})
 }
 
@@ -535,5 +635,14 @@ func receiveString(t *testing.T, ch <-chan string, label string) string {
 	case <-time.After(time.Second):
 		t.Fatalf("timeout waiting for %s", label)
 		return ""
+	}
+}
+
+func waitForTestChannel(t *testing.T, ch <-chan struct{}, timeout time.Duration, label string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(timeout):
+		t.Fatal(label)
 	}
 }

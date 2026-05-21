@@ -40,6 +40,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/rotateSubSecret",
 			"/api/telegram/test",
 			"/api/telegram/backup",
+			"/api/telegram/backup/run",
 			"/api/ip-monitor/:client/clear",
 		},
 		http.MethodGet: {

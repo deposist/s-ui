@@ -26,6 +26,14 @@ import (
 
 type TelegramService struct {
 	SettingService
+	Runtime *Runtime
+}
+
+func (s *TelegramService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
 }
 
 type TelegramResult struct {
@@ -37,6 +45,7 @@ type TelegramResult struct {
 const (
 	telegramQueueCapacity = 256
 	telegramMaxRetryAfter = 300 * time.Second
+	telegramProxyDialTime = 10 * time.Second
 )
 
 var (
@@ -45,14 +54,6 @@ var (
 	telegramHTTPOverride bool
 	telegramHTTPConfig   telegramProxyConfig
 	telegramSleep        = time.Sleep
-
-	defaultTelegramNotifier = newTelegramNotifier(
-		telegramQueueCapacity,
-		func(text string) TelegramResult {
-			return (&TelegramService{}).send(text)
-		},
-		recordTelegramNotifierAudit,
-	)
 )
 
 type telegramProxyConfig struct {
@@ -75,7 +76,9 @@ type telegramNotifier struct {
 	mu      sync.Mutex
 	cond    *sync.Cond
 	queue   []telegramNotification
+	done    chan struct{}
 	started bool
+	stopped bool
 }
 
 func newTelegramNotifier(capacity int, send func(string) TelegramResult, audit func(string, map[string]any)) *telegramNotifier {
@@ -91,9 +94,37 @@ func newTelegramNotifier(capacity int, send func(string) TelegramResult, audit f
 			2 * time.Second,
 		},
 		queue: make([]telegramNotification, 0, capacity),
+		done:  make(chan struct{}),
 	}
 	notifier.cond = sync.NewCond(&notifier.mu)
 	return notifier
+}
+
+func newDefaultTelegramNotifier() *telegramNotifier {
+	return newTelegramNotifier(
+		telegramQueueCapacity,
+		func(text string) TelegramResult {
+			return (&TelegramService{}).send(text)
+		},
+		recordTelegramNotifierAudit,
+	)
+}
+
+func getTelegramNotifier() *telegramNotifier {
+	return DefaultRuntime().telegram()
+}
+
+func StopTelegramNotifier(ctx context.Context) error {
+	runtime := DefaultRuntime()
+	notifier := runtime.telegram()
+	if notifier == nil {
+		return nil
+	}
+
+	err := notifier.Stop(ctx)
+
+	runtime.replaceTelegramNotifierIfCurrent(notifier)
+	return err
 }
 
 func (n *telegramNotifier) Enqueue(job telegramNotification) {
@@ -111,7 +142,7 @@ func (n *telegramNotifier) Enqueue(job telegramNotification) {
 func (n *telegramNotifier) start() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.started {
+	if n.stopped || n.started {
 		return
 	}
 	n.started = true
@@ -121,6 +152,9 @@ func (n *telegramNotifier) start() {
 func (n *telegramNotifier) push(job telegramNotification) *telegramNotification {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if n.stopped {
+		return nil
+	}
 	if len(n.queue) >= n.capacity {
 		dropped := n.queue[0]
 		copy(n.queue, n.queue[1:])
@@ -133,21 +167,29 @@ func (n *telegramNotifier) push(job telegramNotification) *telegramNotification 
 	return nil
 }
 
-func (n *telegramNotifier) next() telegramNotification {
+func (n *telegramNotifier) next() (telegramNotification, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	for len(n.queue) == 0 {
+	for len(n.queue) == 0 && !n.stopped {
 		n.cond.Wait()
+	}
+	if len(n.queue) == 0 {
+		return telegramNotification{}, false
 	}
 	job := n.queue[0]
 	copy(n.queue, n.queue[1:])
 	n.queue = n.queue[:len(n.queue)-1]
-	return job
+	return job, true
 }
 
 func (n *telegramNotifier) run() {
+	defer close(n.done)
 	for {
-		n.deliver(n.next())
+		job, ok := n.next()
+		if !ok {
+			return
+		}
+		n.deliver(job)
 	}
 }
 
@@ -184,6 +226,28 @@ func (n *telegramNotifier) recordAudit(event string, details map[string]any) {
 		return
 	}
 	n.audit(event, details)
+}
+
+func (n *telegramNotifier) Stop(ctx context.Context) error {
+	n.mu.Lock()
+	if !n.started {
+		n.stopped = true
+		n.mu.Unlock()
+		return nil
+	}
+	if !n.stopped {
+		n.stopped = true
+		n.cond.Broadcast()
+	}
+	done := n.done
+	n.mu.Unlock()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func getTelegramHTTPClient() *http.Client {
@@ -282,46 +346,67 @@ func (s *TelegramService) SendTelegramDocument(filename string, data []byte, cap
 		return TelegramResult{ErrorClass: "missing_chat"}
 	}
 
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-	if err := writer.WriteField("chat_id", chatID); err != nil {
-		return TelegramResult{ErrorClass: "payload"}
-	}
-	if caption = telegramCaption(caption); caption != "" {
-		if err := writer.WriteField("caption", caption); err != nil {
-			return TelegramResult{ErrorClass: "payload"}
+	bodyReader, bodyWriter := io.Pipe()
+	writer := multipart.NewWriter(bodyWriter)
+	writeErr := make(chan error, 1)
+	go func() {
+		err := writeTelegramDocumentMultipart(writer, chatID, filename, data, caption)
+		if err == nil {
+			err = writer.Close()
 		}
-	}
-	part, err := writer.CreateFormFile("document", filename)
-	if err != nil {
-		return TelegramResult{ErrorClass: "payload"}
-	}
-	if _, err := part.Write(data); err != nil {
-		return TelegramResult{ErrorClass: "payload"}
-	}
-	if err := writer.Close(); err != nil {
-		return TelegramResult{ErrorClass: "payload"}
-	}
+		if err != nil {
+			_ = bodyWriter.CloseWithError(err)
+			writeErr <- err
+			return
+		}
+		writeErr <- bodyWriter.Close()
+	}()
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendDocument", &body)
+	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendDocument", bodyReader)
 	if err != nil {
+		_ = bodyReader.CloseWithError(err)
+		<-writeErr
 		return TelegramResult{ErrorClass: "request"}
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	client, err := s.getTelegramHTTPClient()
 	if err != nil {
+		_ = bodyReader.CloseWithError(err)
+		<-writeErr
 		return TelegramResult{ErrorClass: "proxy"}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		_ = bodyReader.CloseWithError(err)
+		<-writeErr
 		return TelegramResult{ErrorClass: "network"}
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
+	if err := <-writeErr; err != nil {
+		return TelegramResult{ErrorClass: "payload"}
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return TelegramResult{ErrorClass: telegramStatusErrorClass(resp.StatusCode)}
 	}
 	return TelegramResult{Success: true}
+}
+
+func writeTelegramDocumentMultipart(writer *multipart.Writer, chatID string, filename string, data []byte, caption string) error {
+	if err := writer.WriteField("chat_id", chatID); err != nil {
+		return err
+	}
+	if caption = telegramCaption(caption); caption != "" {
+		if err := writer.WriteField("caption", caption); err != nil {
+			return err
+		}
+	}
+	part, err := writer.CreateFormFile("document", filename)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, bytes.NewReader(data))
+	return err
 }
 
 func (s *TelegramService) NotifyTelegramEvent(event string, fields map[string]string) {
@@ -341,7 +426,10 @@ func (s *TelegramService) NotifyTelegramEvent(event string, fields map[string]st
 		}
 		msg += "\n" + key + ": " + value
 	}
-	defaultTelegramNotifier.Enqueue(telegramNotification{event: event, text: msg})
+	notifier := s.runtime().telegram()
+	if notifier != nil {
+		notifier.Enqueue(telegramNotification{event: event, text: msg})
+	}
 }
 
 func (s *TelegramService) send(text string) TelegramResult {
@@ -489,35 +577,36 @@ func newTelegramHTTPClient(cfg telegramProxyConfig) (*http.Client, error) {
 		if username != "" || password != "" {
 			auth = &proxy.Auth{User: username, Password: password}
 		}
-		dialer, err := proxy.SOCKS5("tcp", parsed.Host, auth, proxy.Direct)
+		transport, err := newTelegramSOCKS5Transport(parsed.Host, auth)
 		if err != nil {
 			return nil, err
 		}
 		return &http.Client{
-			Timeout: 10 * time.Second,
-			Transport: &http.Transport{
-				DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
-					type dialResult struct {
-						conn net.Conn
-						err  error
-					}
-					resultCh := make(chan dialResult, 1)
-					go func() {
-						conn, err := dialer.Dial(network, address)
-						resultCh <- dialResult{conn: conn, err: err}
-					}()
-					select {
-					case result := <-resultCh:
-						return result.conn, result.err
-					case <-ctx.Done():
-						return nil, ctx.Err()
-					}
-				},
-			},
+			Timeout:   10 * time.Second,
+			Transport: transport,
 		}, nil
 	default:
 		return nil, common.NewError("unsupported telegram proxy scheme")
 	}
+}
+
+func newTelegramSOCKS5Transport(proxyHost string, auth *proxy.Auth) (*http.Transport, error) {
+	forward := &net.Dialer{Timeout: telegramProxyDialTime}
+	dialer, err := proxy.SOCKS5("tcp", proxyHost, auth, forward)
+	if err != nil {
+		return nil, err
+	}
+	contextDialer, ok := dialer.(proxy.ContextDialer)
+	if !ok {
+		return nil, common.NewError("telegram socks5 proxy does not support context dial")
+	}
+	return &http.Transport{
+		DialContext: func(ctx context.Context, network string, address string) (net.Conn, error) {
+			dialCtx, cancel := context.WithTimeout(ctx, telegramProxyDialTime)
+			defer cancel()
+			return contextDialer.DialContext(dialCtx, network, address)
+		},
+	}, nil
 }
 
 func validateTelegramProxyURL(rawURL string) error {

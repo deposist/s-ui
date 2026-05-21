@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/deposist/s-ui-rus-inst/logger"
+	"github.com/deposist/s-ui-rus-inst/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,7 +25,7 @@ type Msg struct {
 // configured list of trusted proxies. Without trusted proxies it always
 // returns the transport peer.
 func getRemoteIp(c *gin.Context) string {
-	remoteIP := splitRemoteIP(c.Request.RemoteAddr)
+	remoteIP := canonicalClientIP(splitRemoteIP(c.Request.RemoteAddr))
 	if !isTrustedProxy(remoteIP) {
 		return remoteIP
 	}
@@ -35,7 +36,7 @@ func getRemoteIp(c *gin.Context) string {
 	parts := strings.Split(value, ",")
 	// Walk right-to-left: strip trusted proxies.
 	for i := len(parts) - 1; i >= 0; i-- {
-		hop := strings.TrimSpace(parts[i])
+		hop := canonicalClientIP(strings.TrimSpace(parts[i]))
 		if hop == "" {
 			continue
 		}
@@ -49,16 +50,56 @@ func getRemoteIp(c *gin.Context) string {
 func splitRemoteIP(addr string) string {
 	ip, _, err := net.SplitHostPort(addr)
 	if err != nil {
-		return addr
+		return strings.Trim(addr, "[]")
 	}
-	return ip
+	return strings.Trim(ip, "[]")
+}
+
+func canonicalClientIP(value string) string {
+	value = strings.TrimSpace(strings.Trim(value, "[]"))
+	if value == "" || strings.Contains(value, "%") {
+		return ""
+	}
+	addr, err := netip.ParseAddr(value)
+	if err != nil || addr.Zone() != "" {
+		return ""
+	}
+	return addr.Unmap().String()
 }
 
 func requestIsHTTPS(c *gin.Context) bool {
 	if c.Request.TLS != nil {
 		return true
 	}
-	return isTrustedProxy(splitRemoteIP(c.Request.RemoteAddr)) && strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	return isTrustedProxy(canonicalClientIP(splitRemoteIP(c.Request.RemoteAddr))) && strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+}
+
+func resolveCookieSecure(c *gin.Context, settingService *service.SettingService) bool {
+	if settingService != nil {
+		forceSecure, err := settingService.GetForceCookieSecure()
+		if err != nil {
+			logger.Warning("invalid forceCookieSecure setting:", err)
+		} else if forceSecure {
+			return true
+		}
+
+		if webURI, err := settingService.GetWebURI(); err == nil {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(webURI)), "https://") {
+				return true
+			}
+		} else {
+			logger.Warning("unable to get webURI:", err)
+		}
+
+		if webDomain, err := settingService.GetWebDomain(); err == nil {
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(webDomain)), "https://") {
+				return true
+			}
+		} else {
+			logger.Warning("unable to get webDomain:", err)
+		}
+	}
+	return requestIsHTTPS(c)
 }
 
 var (
@@ -90,6 +131,7 @@ func parseTrustedProxies() []netip.Prefix {
 			continue
 		}
 		if itemAddr, err := netip.ParseAddr(item); err == nil {
+			itemAddr = itemAddr.Unmap()
 			parsed = append(parsed, netip.PrefixFrom(itemAddr, itemAddr.BitLen()))
 			continue
 		}
@@ -104,7 +146,7 @@ func isTrustedProxy(remoteIP string) bool {
 	if len(prefixes) == 0 {
 		return false
 	}
-	addr, err := netip.ParseAddr(remoteIP)
+	addr, err := netip.ParseAddr(canonicalClientIP(remoteIP))
 	if err != nil {
 		return false
 	}
@@ -172,10 +214,18 @@ func checkLogin(c *gin.Context) {
 		if c.GetHeader("X-Requested-With") == "XMLHttpRequest" {
 			pureJsonMsg(c, false, "Invalid login")
 		} else {
-			c.Redirect(http.StatusTemporaryRedirect, "./login")
+			c.Redirect(http.StatusTemporaryRedirect, loginRedirectPath())
 		}
 		c.Abort()
 	} else {
 		c.Next()
 	}
+}
+
+func loginRedirectPath() string {
+	webPath, err := (&service.SettingService{}).GetWebPath()
+	if err != nil || webPath == "" {
+		return "/login"
+	}
+	return strings.TrimRight(webPath, "/") + "/login"
 }

@@ -17,6 +17,14 @@ import (
 
 type InboundService struct {
 	ClientService
+	Runtime *Runtime
+}
+
+func (s *InboundService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
 }
 
 type inboundListItem struct {
@@ -263,9 +271,8 @@ func (s *InboundService) hasUser(inboundType string) bool {
 }
 
 // userJSONField maps an inbound type to the JSON path used inside
-// clients.config to locate per-user data. The keys define an allow-list of
-// inbound types the user-fetch query understands; combined with using JSON
-// path placeholders this prevents SQL injection through the type string.
+// clients.config to locate per-user data. Do not extend this map without a
+// positive list for both the inbound type and the JSON field value.
 var userJSONField = map[string]string{
 	"mixed":         "mixed",
 	"socks":         "socks",
@@ -281,6 +288,22 @@ var userJSONField = map[string]string{
 	"hysteria2":     "hysteria2",
 	"vless":         "vless",
 	"anytls":        "anytls",
+}
+
+var allowedUserJSONFields = map[string]struct{}{
+	"mixed":       {},
+	"socks":       {},
+	"http":        {},
+	"shadowsocks": {},
+	"vmess":       {},
+	"trojan":      {},
+	"naive":       {},
+	"hysteria":    {},
+	"shadowtls":   {},
+	"tuic":        {},
+	"hysteria2":   {},
+	"vless":       {},
+	"anytls":      {},
 }
 
 func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uint, inboundType string) ([]byte, error) {
@@ -354,6 +377,9 @@ func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, 
 	if !ok {
 		return nil, common.NewErrorf("unsupported inbound type for user lookup: %s", inboundType)
 	}
+	if _, ok := allowedUserJSONFields[field]; !ok {
+		return nil, common.NewErrorf("unsupported user JSON field for user lookup: %s", field)
+	}
 
 	var users []string
 	// `field` is constrained to a static allow-list above, so embedding it
@@ -375,7 +401,8 @@ func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, 
 }
 
 func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
-	if !corePtr.IsRunning() {
+	coreInstance := s.runtime().Core()
+	if coreInstance == nil || !coreInstance.IsRunning() {
 		return nil
 	}
 	var inbounds []*model.Inbound
@@ -384,13 +411,13 @@ func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
 		return err
 	}
 	for _, inbound := range inbounds {
-		err = corePtr.RemoveInbound(inbound.Tag)
+		err = coreInstance.RemoveInbound(inbound.Tag)
 		if err != nil && err != os.ErrInvalid {
 			return err
 		}
 		// Close all existing connections. The core may have been stopped
 		// concurrently (cron / user restart), so guard against a nil instance.
-		if instance := corePtr.GetInstance(); instance != nil {
+		if instance := coreInstance.GetInstance(); instance != nil {
 			if tracker := instance.ConnTracker(); tracker != nil {
 				tracker.CloseConnByInbound(inbound.Tag)
 			}
@@ -404,7 +431,7 @@ func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
 		if err != nil {
 			return err
 		}
-		err = corePtr.AddInbound(inboundConfig)
+		err = coreInstance.AddInbound(inboundConfig)
 		if err != nil {
 			return err
 		}

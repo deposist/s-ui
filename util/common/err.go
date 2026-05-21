@@ -21,7 +21,6 @@ func NewError(a ...interface{}) error {
 		}
 		builder.WriteString(fmt.Sprint(item))
 	}
-	builder.WriteByte('\n')
 	msg := builder.String()
 	return errors.New(msg)
 }

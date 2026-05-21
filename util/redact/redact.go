@@ -10,6 +10,7 @@ const Marker = "[REDACTED]"
 var sensitiveKeyFragments = []string{
 	"authorization",
 	"cookie",
+	"passphrase",
 	"password",
 	"private",
 	"secret",

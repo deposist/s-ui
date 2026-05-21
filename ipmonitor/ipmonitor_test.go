@@ -431,6 +431,59 @@ func TestAllowCacheConcurrent10K(t *testing.T) {
 	}
 }
 
+func TestResetCachesClearsSaltAndAllowState(t *testing.T) {
+	pending.Lock()
+	pending.byClient = map[string]map[string]pendingIP{
+		"alice": {"hash": {lastSeen: 1}},
+	}
+	pending.Unlock()
+	allowCache.Lock()
+	allowCache.byClient = map[string]allowCacheEntry{
+		"alice": {limit: 1, mode: ModeEnforce, ips: map[string]struct{}{"hash": {}}, expiresAt: time.Now().Add(time.Minute)},
+	}
+	allowCache.Unlock()
+	allowCacheRefresh.Lock()
+	allowCacheRefresh.inFlight = map[string]struct{}{"alice": {}}
+	allowCacheRefresh.Unlock()
+	securityEvents.Lock()
+	securityEvents.lastEmittedAt = map[string]time.Time{"alice|reject": time.Now()}
+	securityEvents.Unlock()
+	ipHashSalt.Lock()
+	ipHashSalt.value = []byte("salt")
+	ipHashSalt.Unlock()
+	ipPrivacySettings.Lock()
+	ipPrivacySettings.showRaw = true
+	ipPrivacySettings.expiresAt = time.Now().Add(time.Minute)
+	ipPrivacySettings.Unlock()
+
+	ResetCaches()
+
+	pending.Lock()
+	pendingCount := len(pending.byClient)
+	pending.Unlock()
+	allowCache.Lock()
+	allowCount := len(allowCache.byClient)
+	allowCache.Unlock()
+	allowCacheRefresh.Lock()
+	refreshCount := len(allowCacheRefresh.inFlight)
+	allowCacheRefresh.Unlock()
+	securityEvents.Lock()
+	securityCount := len(securityEvents.lastEmittedAt)
+	securityEvents.Unlock()
+	ipHashSalt.Lock()
+	saltLen := len(ipHashSalt.value)
+	ipHashSalt.Unlock()
+	ipPrivacySettings.Lock()
+	showRaw := ipPrivacySettings.showRaw
+	privacyExpired := ipPrivacySettings.expiresAt.IsZero()
+	ipPrivacySettings.Unlock()
+
+	if pendingCount != 0 || allowCount != 0 || refreshCount != 0 || securityCount != 0 || saltLen != 0 || showRaw || !privacyExpired {
+		t.Fatalf("reset did not clear caches: pending=%d allow=%d refresh=%d security=%d salt=%d showRaw=%v privacyExpired=%v",
+			pendingCount, allowCount, refreshCount, securityCount, saltLen, showRaw, privacyExpired)
+	}
+}
+
 func warmUpIPMonitorForTest(t *testing.T) {
 	t.Helper()
 	if err := WarmUp(); err != nil {

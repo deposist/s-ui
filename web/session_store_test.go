@@ -10,6 +10,7 @@ import (
 	"github.com/deposist/s-ui-rus-inst/database"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/securecookie"
 	"gorm.io/gorm"
 )
 
@@ -59,6 +60,51 @@ func TestSQLiteSessionStorePersistsServerSide(t *testing.T) {
 	}
 }
 
+func TestSQLiteSessionStoreSupportsCookieKeyRollover(t *testing.T) {
+	db := initSQLiteSessionTestDB(t)
+
+	oldKey := []byte("0123456789abcdef0123456789abcdef")
+	newKey := []byte("abcdef0123456789abcdef0123456789")
+
+	oldRouter := newSQLiteSessionTestRouterWithKeys(t, db, oldKey)
+	oldLogin := performSQLiteSessionRequest(oldRouter, "/login")
+	if oldLogin.Code != http.StatusNoContent {
+		t.Fatalf("old-key login returned %d", oldLogin.Code)
+	}
+	oldCookies := oldLogin.Result().Cookies()
+	if len(oldCookies) != 1 {
+		t.Fatalf("expected one old-key cookie, got %d", len(oldCookies))
+	}
+
+	var oldSessionID string
+	if err := securecookie.DecodeMulti("s-ui", oldCookies[0].Value, &oldSessionID, codecsFromHashKeys(oldKey)...); err != nil {
+		t.Fatalf("old cookie decode with old key failed: %v", err)
+	}
+
+	rotatedRouter := newSQLiteSessionTestRouterWithKeys(t, db, newKey, oldKey)
+	protected := performSQLiteSessionRequest(rotatedRouter, "/protected", oldCookies...)
+	if protected.Code != http.StatusNoContent {
+		t.Fatalf("rotated store did not accept old cookie, got %d", protected.Code)
+	}
+
+	newLogin := performSQLiteSessionRequest(rotatedRouter, "/login")
+	if newLogin.Code != http.StatusNoContent {
+		t.Fatalf("rotated login returned %d", newLogin.Code)
+	}
+	newCookies := newLogin.Result().Cookies()
+	if len(newCookies) != 1 {
+		t.Fatalf("expected one new-key cookie, got %d", len(newCookies))
+	}
+
+	var newSessionID string
+	if err := securecookie.DecodeMulti("s-ui", newCookies[0].Value, &newSessionID, codecsFromHashKeys(newKey, oldKey)...); err != nil {
+		t.Fatalf("new cookie decode with rotated keyset failed: %v", err)
+	}
+	if err := securecookie.DecodeMulti("s-ui", newCookies[0].Value, &newSessionID, codecsFromHashKeys(oldKey)...); err == nil {
+		t.Fatal("new cookie should not decode with old key only")
+	}
+}
+
 func BenchmarkSQLiteSessionStoreProtectedRequest(b *testing.B) {
 	db := initSQLiteSessionTestDB(b)
 	router := newSQLiteSessionTestRouter(b, db)
@@ -104,9 +150,13 @@ func closeSQLiteSessionTestDB(db *gorm.DB) {
 }
 
 func newSQLiteSessionTestRouter(tb testing.TB, db *gorm.DB) *gin.Engine {
+	return newSQLiteSessionTestRouterWithKeys(tb, db, []byte("test-session-secret-32-bytes-long"))
+}
+
+func newSQLiteSessionTestRouterWithKeys(tb testing.TB, db *gorm.DB, keyPairs ...[]byte) *gin.Engine {
 	tb.Helper()
 	gin.SetMode(gin.TestMode)
-	store, err := NewSQLiteSessionStore(db, []byte("test-session-secret-32-bytes-long"))
+	store, err := NewSQLiteSessionStore(db, keyPairs...)
 	if err != nil {
 		tb.Fatal(err)
 	}

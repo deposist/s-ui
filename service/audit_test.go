@@ -127,6 +127,54 @@ func TestAuditWriterFlushesBatchAtBatchSize(t *testing.T) {
 	}
 }
 
+func TestAuditWriterStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
+	wrote := make(chan []model.AuditEvent, 2)
+	writer := newAuditWriter(10, 1, time.Hour, func(events []model.AuditEvent) error {
+		wrote <- append([]model.AuditEvent(nil), events...)
+		return nil
+	})
+
+	writer.Enqueue(model.AuditEvent{Event: "before_stop"})
+	select {
+	case events := <-wrote:
+		if len(events) != 1 || events[0].Event != "before_stop" {
+			t.Fatalf("unexpected initial write: %#v", events)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("audit writer did not flush before stop")
+	}
+
+	if err := writer.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	writer.Enqueue(model.AuditEvent{Event: "after_stop"})
+
+	select {
+	case events := <-wrote:
+		t.Fatalf("late enqueue flushed after stop: %#v", events)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestAuditWriterStopBeforeStartPreventsStart(t *testing.T) {
+	writer := newAuditWriter(10, 1, time.Hour, func(events []model.AuditEvent) error {
+		t.Fatalf("stopped writer flushed events: %#v", events)
+		return nil
+	})
+	if err := writer.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	writer.Enqueue(model.AuditEvent{Event: "after_stop"})
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	if !writer.stopped || writer.started || len(writer.queue) != 0 {
+		t.Fatalf("unexpected writer state after stop-before-start: started=%v stopped=%v queue=%d", writer.started, writer.stopped, len(writer.queue))
+	}
+}
+
 func TestAuditRecordSyncForTestWritesImmediately(t *testing.T) {
 	auditService := &AuditService{}
 	initSettingTestDB(t)
@@ -155,5 +203,28 @@ func TestAuditRecordReturnsMarshalErrorOnly(t *testing.T) {
 		Details: map[string]any{"bad": func() {}},
 	}); err == nil {
 		t.Fatal("expected marshal error")
+	}
+}
+
+func TestRecordListenFallbackAudit(t *testing.T) {
+	initSettingTestDB(t)
+
+	if err := RecordListenFallbackAudit("web", "192.0.2.10:2095", ":2095", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	var event model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "listen_fallback").First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	if event.Actor != "system" || event.Resource != "network" || event.Severity != AuditSeverityWarn {
+		t.Fatalf("unexpected audit event: %#v", event)
+	}
+	var details map[string]any
+	if err := json.Unmarshal(event.Details, &details); err != nil {
+		t.Fatal(err)
+	}
+	if details["component"] != "web" || details["requested_addr"] != "192.0.2.10:2095" || details["fallback_addr"] != ":2095" {
+		t.Fatalf("unexpected details: %#v", details)
 	}
 }

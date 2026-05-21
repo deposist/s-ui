@@ -1,0 +1,56 @@
+P0 fix validation
+
+Environment:
+- OS: Windows 10
+- Go workspace: c:/s-ui-main-deposist
+- Frontend: Node v25.3.0, Vite 8.0.12, Vitest 4.1.6
+
+Implemented P0:
+- C1 captured err race: service/panel.go, database/backup.go
+- C2 StatsTracker reset preserves live counters: core/tracker_stats.go, core/tracker_stats_test.go
+- C3 SQLiteSessionStore options race: web/session_store.go
+- C4 SSRF reserved/meta/mapped ranges: util/ssrf/validator.go, util/ssrf/validator_test.go
+- C5 rollback symlink escape: api/import_xui.go, api/import_xui_test.go
+- C6 canonical client IP: api/utils.go, api/utils_test.go, sub/rate_limit.go, sub/rate_limit_test.go
+- C7 audit writer lifecycle: service/audit_writer.go, service/audit_test.go
+- C8 DB version downgrade guard: database/adapt.go, database/adapt_test.go
+
+Targeted validation:
+- go test -race ./core: PASS
+- go test -race ./web ./api: PASS
+- go test ./util/ssrf: PASS
+- go test ./api -run "Xui|Rollback|ValidateRollback": PASS
+- go test ./api ./sub ./realtime: PASS
+- go test -race ./service -run Audit: PASS
+- go test ./database -run "Adapt|Version": PASS
+- go test -race ./service ./database ./api: PASS
+- go test ./database/importxui -run "TestImport_Clients_DefaultsDeterministic|TestImport": PASS
+
+Final backend validation:
+- go test -race ./core ./web ./service ./database ./database/importxui ./api: PASS
+- go vet ./...: PASS
+- go build ./...: PASS
+
+Frontend validation:
+- npm run lint: PASS
+- npm run build: PASS
+- npm test: FAIL in baseline frontend test harness before test execution:
+  TypeError: Cannot read properties of undefined (reading 'config')
+  Affected suites:
+  - src/components/ipHistory.test.ts
+  - src/components/settingsSecretField.test.ts
+  - src/locales/index.test.ts
+  - src/plugins/base-url.test.ts
+  - src/store/ws.test.ts
+- npm test -- --pool=forks: same FAIL
+- npx vite --version && npx vitest --version: vite/8.0.12 win32-x64 node-v25.3.0; vitest/4.1.6 win32-x64 node-v25.3.0
+
+Baseline investigation:
+- plans/lint-baseline.txt preserved.
+- plans/lint-baseline-normalized.txt created from UTF-8 with NUL removal after first UTF-16 attempt produced mojibake.
+- Original go test -race ./... failure included external github.com/sagernet/sing-tun Windows network monitor race, no project stack.
+- database/importxui TempDir cleanup baseline failure was not reproduced after current changes: targeted importxui tests PASS.
+
+Notes:
+- go.mod/go.sum diff from pre-existing go mod tidy/line-ending state was inspected but not normalized in this P0 pass.
+- Working tree contained many pre-existing modifications unrelated to this P0 pass; no commit made.

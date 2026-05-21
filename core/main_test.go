@@ -27,3 +27,21 @@ func TestCoreCheckOutboundRequiresRunningCore(t *testing.T) {
 		t.Fatalf("expected core not running error, got %q", result.Error)
 	}
 }
+
+func TestNewCoreContextsDoNotInterfere(t *testing.T) {
+	type contextKey string
+	const key contextKey = "core"
+	first := NewCore()
+	second := NewCore()
+
+	first.access.Lock()
+	first.ctx = context.WithValue(first.ctx, key, "first")
+	first.access.Unlock()
+
+	if got := first.GetCtx().Value(key); got != "first" {
+		t.Fatalf("first context value=%v", got)
+	}
+	if got := second.GetCtx().Value(key); got != nil {
+		t.Fatalf("second core observed first context value: %v", got)
+	}
+}

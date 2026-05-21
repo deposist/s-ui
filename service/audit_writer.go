@@ -16,12 +16,7 @@ const (
 	auditFlushInterval = 200 * time.Millisecond
 )
 
-var (
-	auditWriterMu     sync.Mutex
-	defaultAuditWrite = writeAuditEvents
-	defaultAuditQueue = newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, defaultAuditWrite)
-	auditDroppedTotal atomic.Uint64
-)
+var auditDroppedTotal atomic.Uint64
 
 type auditWriter struct {
 	capacity      int
@@ -61,23 +56,18 @@ func newAuditWriter(capacity int, batchSize int, flushInterval time.Duration, wr
 }
 
 func getAuditWriter() *auditWriter {
-	auditWriterMu.Lock()
-	defer auditWriterMu.Unlock()
-	return defaultAuditQueue
+	return DefaultRuntime().audit()
 }
 
 func StopAuditWriter(ctx context.Context) error {
-	auditWriterMu.Lock()
-	writer := defaultAuditQueue
-	auditWriterMu.Unlock()
+	runtime := DefaultRuntime()
+	writer := runtime.audit()
+	if writer == nil {
+		return nil
+	}
 
 	err := writer.Stop(ctx)
-
-	auditWriterMu.Lock()
-	if defaultAuditQueue == writer {
-		defaultAuditQueue = newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, defaultAuditWrite)
-	}
-	auditWriterMu.Unlock()
+	runtime.replaceAuditWriterIfCurrent(writer)
 	return err
 }
 
@@ -86,7 +76,9 @@ func AuditDroppedTotal() uint64 {
 }
 
 func (w *auditWriter) Enqueue(event model.AuditEvent) {
-	w.Start()
+	if !w.Start() {
+		return
+	}
 	w.push(event)
 }
 
@@ -107,19 +99,24 @@ func (w *auditWriter) push(event model.AuditEvent) {
 	w.signalLocked()
 }
 
-func (w *auditWriter) Start() {
+func (w *auditWriter) Start() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.stopped {
+		return false
+	}
 	if w.started {
-		return
+		return true
 	}
 	w.started = true
 	go w.run()
+	return true
 }
 
 func (w *auditWriter) Stop(ctx context.Context) error {
 	w.mu.Lock()
 	if !w.started {
+		w.stopped = true
 		w.mu.Unlock()
 		return nil
 	}

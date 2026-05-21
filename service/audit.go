@@ -16,6 +16,14 @@ const (
 )
 
 type AuditService struct {
+	Runtime *Runtime
+}
+
+func (s *AuditService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
 }
 
 type AuditEvent struct {
@@ -38,7 +46,7 @@ func (s *AuditService) Record(event AuditEvent) error {
 	if AuditSyncForTest {
 		return writeAuditEvents([]model.AuditEvent{record})
 	}
-	getAuditWriter().Enqueue(record)
+	writeAuditRuntime(s.runtime().audit(), record)
 	return nil
 }
 

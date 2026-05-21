@@ -158,6 +158,9 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				if congestion_control, ok := obMap["congestion_control"].(string); ok {
 					proxy["congestion-controller"] = congestion_control
 				}
+				if udpRelayMode, ok := obMap["udp_relay_mode"].(string); ok && udpRelayMode != "" {
+					proxy["udp-relay-mode"] = udpRelayMode
+				}
 			}
 		case "trojan":
 			proxy["password"] = obMap["password"]

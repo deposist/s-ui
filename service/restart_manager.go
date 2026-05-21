@@ -13,8 +13,6 @@ import (
 
 const restartSignalDelay = 3 * time.Second
 
-var defaultRestartManager = newRestartManager(restartSignalDelay, signalCurrentProcess)
-
 type restartManager struct {
 	mu           sync.Mutex
 	inFlight     bool
@@ -23,9 +21,17 @@ type restartManager struct {
 	signal       func() error
 }
 
+type RestartScheduler interface {
+	ScheduleRestart(delay time.Duration) error
+}
+
 func init() {
 	database.SetSendSighupHook(func() error {
-		return defaultRestartManager.sendSighup()
+		manager := DefaultRuntime().restart()
+		if manager == nil {
+			return nil
+		}
+		return manager.sendSighup()
 	})
 }
 
@@ -37,7 +43,10 @@ func newRestartManager(signalDelay time.Duration, signal func() error) *restartM
 }
 
 func StopRestartManager() {
-	defaultRestartManager.cancelPending()
+	manager := DefaultRuntime().restart()
+	if manager != nil {
+		manager.cancelPending()
+	}
 }
 
 func (m *restartManager) run(operation func() error) error {
@@ -49,12 +58,19 @@ func (m *restartManager) run(operation func() error) error {
 }
 
 func (m *restartManager) sendSighup() error {
+	return m.ScheduleRestart(m.signalDelay)
+}
+
+func (m *restartManager) ScheduleRestart(delay time.Duration) error {
+	if delay <= 0 {
+		delay = m.signalDelay
+	}
 	if !m.begin() {
 		return nil
 	}
 
 	var timer *time.Timer
-	timer = time.AfterFunc(m.signalDelay, func() {
+	timer = time.AfterFunc(delay, func() {
 		defer m.endPending(timer)
 		if err := m.signal(); err != nil {
 			logger.Error("send signal SIGHUP failed:", err)

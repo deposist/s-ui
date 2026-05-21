@@ -192,9 +192,13 @@ func (s *Server) Start() (err error) {
 	}
 
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
-	listener, err := network.ListenWithFallback(listenAddr, listen, strconv.Itoa(port))
+	listenResult, err := network.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
 	if err != nil {
 		return err
+	}
+	listener := listenResult.Listener
+	if listenResult.Fallback {
+		_ = service.RecordListenFallbackAudit("sub", listenResult.RequestedAddr, listenResult.FallbackAddr, listenResult.BindError)
 	}
 
 	if certFile != "" || keyFile != "" {

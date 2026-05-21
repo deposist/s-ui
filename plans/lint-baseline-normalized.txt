@@ -1,0 +1,405 @@
+# Baseline 2026-05-20T09:11:39.4524540+07:00
+
+## go env
+COMMAND: go env
+START: 2026-05-20T09:11:39.4674572+07:00
+set AR=ar
+set CC=gcc
+set CGO_CFLAGS=-O2 -g
+set CGO_CPPFLAGS=
+set CGO_CXXFLAGS=-O2 -g
+set CGO_ENABLED=1
+set CGO_FFLAGS=-O2 -g
+set CGO_LDFLAGS=-O2 -g
+set CXX=g++
+set GCCGO=gccgo
+set GO111MODULE=
+set GOAMD64=v1
+set GOARCH=amd64
+set GOAUTH=netrc
+set GOBIN=
+set GOCACHE=C:\Users\User1\AppData\Local\go-build
+set GOCACHEPROG=
+set GODEBUG=
+set GOENV=C:\Users\User1\AppData\Roaming\go\env
+set GOEXE=.exe
+set GOEXPERIMENT=
+set GOFIPS140=off
+set GOFLAGS=
+set GOGCCFLAGS=-m64 -mthreads -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=C:\Users\User1\AppData\Local\Temp\go-build2373526736=/tmp/go-build -gno-record-gcc-switches
+set GOHOSTARCH=amd64
+set GOHOSTOS=windows
+set GOINSECURE=
+set GOMOD=C:\s-ui-main-deposist\go.mod
+set GOMODCACHE=C:\Users\User1\go\pkg\mod
+set GONOPROXY=
+set GONOSUMDB=
+set GOOS=windows
+set GOPATH=C:\Users\User1\go
+set GOPRIVATE=
+set GOPROXY=https://proxy.golang.org,direct
+set GOROOT=C:\Program Files\Go
+set GOSUMDB=sum.golang.org
+set GOTELEMETRY=local
+set GOTELEMETRYDIR=C:\Users\User1\AppData\Roaming\go\telemetry
+set GOTMPDIR=
+set GOTOOLCHAIN=auto
+set GOTOOLDIR=C:\Program Files\Go\pkg\tool\windows_amd64
+set GOVCS=
+set GOVERSION=go1.26.2
+set GOWORK=
+set PKG_CONFIG=pkg-config
+EXIT: 0
+END: 2026-05-20T09:11:39.8439200+07:00
+
+## go mod tidy
+COMMAND: go mod tidy
+START: 2026-05-20T09:11:39.8469190+07:00
+EXIT: 0
+END: 2026-05-20T09:12:03.0652821+07:00
+
+## go build ./...
+COMMAND: go build ./...
+START: 2026-05-20T09:12:03.0668403+07:00
+EXIT: 0
+END: 2026-05-20T09:12:29.1846277+07:00
+
+## go vet ./...
+COMMAND: go vet ./...
+START: 2026-05-20T09:12:29.1866431+07:00
+EXIT: 0
+END: 2026-05-20T09:12:34.2465057+07:00
+
+## go test -race ./...
+COMMAND: go test -race ./...
+START: 2026-05-20T09:12:34.2485030+07:00
+?   	github.com/deposist/s-ui-rus-inst	[no test files]
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIHandlerRegistersLegacyActionRoutesExplicitly3913115393\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditDoesNotPruneOnRead2301205340\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditPaginatesByCursorAndCapsLimit3399045324\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditFiltersEventAndSeverity3653808966\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditFiltersDateRange2993493820\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixcookie_session_without_scope2071813542\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixadmin_bearer_scope395735509\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixread_bearer_scope4192859502\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixwrite_bearer_scope2794760063\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixobservability_bearer_scope2417957390\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixunknown_bearer_scope1903122409\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditRateLimitReturns429AndAudits2089508393\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2SecurityAuditRequiresAdminScope3832954425\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2AcceptsBearerTokenAfterHashMigration1202639638\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2LegacyTokenHeaderEmitsSunset4040974459\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestCSRFMiddlewareRequiresTokenForMutatingBrowserAPI3155938564\002\initial-admin.txt; delete after first login
+INFO - user admin logged out all admin web sessions
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestImportDbRequiresAdminScopeAndAuditsFailure4190839777\002\initial-admin.txt; delete after first login
+WARNING - failed : Invalid db file format
+
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbAuditsExport4177443755\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbEncryptedWithTelegramBackupPassphrase1158611334\002\initial-admin.txt; delete after first login
+WARNING - SUI_SECRETBOX_KEY is not set; encrypted settings use settings.secret compatibility key
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbEncryptedRejectsMissingTelegramBackupPassphrase2138517382\002\initial-admin.txt; delete after first login
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiPlanAndApplyWithEditedPlan798316104\001\s-ui-pre-xui-import-1779243401.db
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiRollbackRestoresBackup2512744177\001\s-ui-pre-xui-import-1779243402.db
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiAppliesImportAndAuditsSuccess3011275832\001\s-ui-pre-xui-import-1779243402.db
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestLoadDataIncludesSubscriptionURIOverrides604786921\002\initial-admin.txt; delete after first login
+ERROR - naive outbound is disabled when built without with_naive_outbound tag
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetLogsRejectsInvalidSource1746938717\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryFiltersMetricBucketAndSince1912438794\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryRejectsInvalidInputs2183422471\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryRequiresObservabilityScope1022506248\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestEnforceWSHandshakeRateLimitReturns429AndAudits950740750\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestIssueWSTokenRejectsForeignOriginAndAudits2330195894\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken2660065469\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSSendsHeartbeatPing1195919708\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSSendsPublishedEvents169303060\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsadmin_scope_receiv3523794916\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsread_scope_filters798124741\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventswrite_scope_filter3101429178\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsobservability_scop2812513309\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong2281304577\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSRejectsReplayToken938122916\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSClosesWhenPongMissing1284319314\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRotateSessionGenerationInvalidatesExistingSessions794068257\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveSettingsAuditsSubscriptionPathChange435583567\002\initial-admin.txt; delete after first login
+INFO - starting core
+INFO - networkupdated default interface 5A?@>2>4=0O A5BL 2, index 29
+INFO - sing-box started (0.05s)
+INFO - sing-box started
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits919151642\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointAcceptsPlaintextDatabaseBackup354637505\002\initial-admin.txt; delete after first login
+
+2026/05/20 09:17:08 [32mC:/s-ui-main-deposist/database/backup.go:86 [33mSLOW SQL >= 200ms
+[0m[31;1m[211.254ms] [33m[rows:0][35m CREATE TABLE `services` (`id` integer PRIMARY KEY AUTOINCREMENT,`type` text,`tag` text,`tls_id` integer,`options` blob,CONSTRAINT `fk_services_tls` FOREIGN KEY (`tls_id`) REFERENCES `tls`(`id`),CONSTRAINT `uni_services_tag` UNIQUE (`tag`))[0m
+==================
+WARNING: DATA RACE
+Read at 0x00c0002bacc8 by goroutine 3156:
+  github.com/sagernet/sing-tun.(*defaultInterfaceMonitor).delayCheckUpdate()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/monitor_shared.go:70 +0x39
+  github.com/sagernet/sing-tun.(*defaultInterfaceMonitor).delayCheckUpdate-fm()
+      <autogenerated>:1 +0x2e
+  github.com/sagernet/sing-tun.(*networkUpdateMonitor).emit()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/monitor_shared.go:33 +0x33b
+  github.com/sagernet/sing-tun.(*networkUpdateMonitor).Start.func2()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/monitor_windows.go:38 +0x2e
+  github.com/sagernet/sing-tun/internal/winipcfg.interfaceChanged.func1()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/internal/winipcfg/interface_change_handler.go:82 +0x4e
+  github.com/sagernet/sing-tun/internal/winipcfg.interfaceChanged.gowrap1()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/internal/winipcfg/interface_change_handler.go:84 +0x38
+
+Previous write at 0x00c0002bacc8 by goroutine 3155:
+  github.com/sagernet/sing-tun.(*defaultInterfaceMonitor).delayCheckUpdate()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/monitor_shared.go:71 +0xed
+  github.com/sagernet/sing-tun.(*defaultInterfaceMonitor).delayCheckUpdate-fm()
+      <autogenerated>:1 +0x2e
+  github.com/sagernet/sing-tun.(*networkUpdateMonitor).emit()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/monitor_shared.go:33 +0x33b
+  github.com/sagernet/sing-tun.(*networkUpdateMonitor).Start.func2()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/monitor_windows.go:38 +0x2e
+  github.com/sagernet/sing-tun/internal/winipcfg.interfaceChanged.func1()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/internal/winipcfg/interface_change_handler.go:82 +0x4e
+  github.com/sagernet/sing-tun/internal/winipcfg.interfaceChanged.gowrap1()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/internal/winipcfg/interface_change_handler.go:84 +0x38
+
+Goroutine 3156 (running) created at:
+  github.com/sagernet/sing-tun/internal/winipcfg.interfaceChanged()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/internal/winipcfg/interface_change_handler.go:81 +0x15c
+
+Goroutine 3155 (finished) created at:
+  github.com/sagernet/sing-tun/internal/winipcfg.interfaceChanged()
+      C:/Users/User1/go/pkg/mod/github.com/sagernet/sing-tun@v0.8.9/internal/winipcfg/interface_change_handler.go:81 +0x15c
+==================
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+--- FAIL: TestRestoreEndpointAcceptsPlaintextDatabaseBackup (1.84s)
+    testing.go:1712: race detected during execution of test
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointDecryptsTelegramBackupEnvelope559426857\002\initial-admin.txt; delete after first login
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouc2136859171\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramBackupRequiresTelegramOrAdminScope3031148745\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramBackupDisabledFailureAuditsWithoutKey1476435856\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupManualRoutesShareRateLimitBucket2723776200\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupBrowserRouteRequiresCSRF1163545579\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramTestRequiresAdminScope658405645\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramTestAuditsWithoutSecrets1172358979\002\initial-admin.txt; delete after first login
+FAIL
+FAIL	github.com/deposist/s-ui-rus-inst/api	83.860s
+?   	github.com/deposist/s-ui-rus-inst/app	[no test files]
+ok  	github.com/deposist/s-ui-rus-inst/cmd	9.895s
+ok  	github.com/deposist/s-ui-rus-inst/cmd/migration	3.830s
+?   	github.com/deposist/s-ui-rus-inst/config	[no test files]
+ok  	github.com/deposist/s-ui-rus-inst/core	4.861s
+ok  	github.com/deposist/s-ui-rus-inst/cronjob	27.380s
+ok  	github.com/deposist/s-ui-rus-inst/database	32.149s
+--- FAIL: TestImport_Clients_DefaultsDeterministic (0.58s)
+    testing.go:1464: TempDir RemoveAll cleanup: unlinkat C:\Users\User1\AppData\Local\Temp\TestImport_Clients_DefaultsDeterministic624884599\002: The directory is not empty.
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestApply_RespectsPerObjectAction3795174143\001\s-ui-pre-xui-import-1779243369.db
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestApply_RespectsRenamedTag4038895743\001\s-ui-pre-xui-import-1779243370.db
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestApply_EmitsProgressAndRecordsRollbackPath1442870578\001\s-ui-pre-xui-import-1779243371.db
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestApply_ImportsSettingsAndNewPasswordAdmins823367385\001\s-ui-pre-xui-import-1779243372.db
+FAIL
+FAIL	github.com/deposist/s-ui-rus-inst/database/importxui	12.676s
+ok  	github.com/deposist/s-ui-rus-inst/database/importxui/source/file	2.839s
+ok  	github.com/deposist/s-ui-rus-inst/database/importxui/source/ssh	3.033s
+ok  	github.com/deposist/s-ui-rus-inst/database/importxui/source/xuihttp	3.238s
+ok  	github.com/deposist/s-ui-rus-inst/database/model	2.154s
+ok  	github.com/deposist/s-ui-rus-inst/ipmonitor	22.425s
+ok  	github.com/deposist/s-ui-rus-inst/logger	3.828s
+ok  	github.com/deposist/s-ui-rus-inst/middleware	3.135s
+ok  	github.com/deposist/s-ui-rus-inst/network	2.536s
+ok  	github.com/deposist/s-ui-rus-inst/realtime	2.636s
+ok  	github.com/deposist/s-ui-rus-inst/service	97.106s
+ok  	github.com/deposist/s-ui-rus-inst/sub	27.687s
+ok  	github.com/deposist/s-ui-rus-inst/util	3.214s
+ok  	github.com/deposist/s-ui-rus-inst/util/common	8.916s
+ok  	github.com/deposist/s-ui-rus-inst/util/redact	2.535s
+ok  	github.com/deposist/s-ui-rus-inst/util/secretbox	2.410s
+ok  	github.com/deposist/s-ui-rus-inst/util/ssrf	2.532s
+ok  	github.com/deposist/s-ui-rus-inst/web	6.619s
+FAIL
+EXIT: 1
+END: 2026-05-20T09:17:53.1676221+07:00
+
+## frontend npm install
+COMMAND: cd frontend && npm install
+START: 2026-05-20T09:17:53.2046202+07:00
+
+up to date, audited 286 packages in 8s
+
+82 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+EXIT: 0
+END: 2026-05-20T09:18:02.0826846+07:00
+
+## frontend npm run lint
+COMMAND: cd frontend && npm run lint
+START: 2026-05-20T09:18:02.0856858+07:00
+
+> s-ui-frontend@1.5.2-beta-hotfix2 lint
+> eslint .
+
+EXIT: 0
+END: 2026-05-20T09:18:17.3959364+07:00
+
+## frontend npm run test:unit
+COMMAND: cd frontend && npm run test:unit
+START: 2026-05-20T09:18:17.3988032+07:00
+
+> s-ui-frontend@1.5.2-beta-hotfix2 test:unit
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.6 [39m[90mC:/s-ui-main-deposist/frontend[39m
+
+ [32m'[39m src/components/ipHistory.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m'[39m src/components/settingsSecretField.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m'[39m src/plugins/base-url.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 37[2mms[22m[39m
+ [32m'[39m src/store/ws.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 30[2mms[22m[39m
+ [32m'[39m src/locales/index.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 458[2mms[22m[39m
+     [33m[2m'[22m[39m loads only default messages on default startup [33m 376[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m5 passed[39m[22m[90m (5)[39m
+[2m      Tests [22m [1m[32m19 passed[39m[22m[90m (19)[39m
+[2m   Start at [22m 09:18:20
+[2m   Duration [22m 1.46s[2m (transform 581ms, setup 0ms, import 1.02s, tests 544ms, environment 3ms)[22m
+
+EXIT: 0
+END: 2026-05-20T09:18:21.9251669+07:00
+
+## frontend npm run build
+COMMAND: cd frontend && npm run build
+START: 2026-05-20T09:18:21.9281502+07:00
+
+> s-ui-frontend@1.5.2-beta-hotfix2 build
+> vue-tsc --noEmit && vite build
+
+[36mvite v8.0.12 [32mbuilding client environment for production...[36m[39m
+[2K
+transforming...' 829 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                    0.61 kB % gzip:   0.36 kB
+dist/assets/Vazirmatn-UI-NL-Regular.woff2         21.84 kB
+dist/assets/materialdesignicons-webfont.woff2    403.21 kB
+dist/assets/materialdesignicons-webfont.woff     587.98 kB
+dist/assets/materialdesignicons-webfont.ttf    1,307.66 kB
+dist/assets/materialdesignicons-webfont.eot    1,307.88 kB
+dist/assets/4LO58Dpb.css                           0.05 kB % gzip:   0.07 kB
+dist/assets/eXTK9UNe.css                           0.05 kB % gzip:   0.07 kB
+dist/assets/B_PbRL7B.css                           0.06 kB % gzip:   0.08 kB
+dist/assets/D-9mbkzy.css                           0.20 kB % gzip:   0.15 kB
+dist/assets/oG2180vf.css                           0.83 kB % gzip:   0.33 kB
+dist/assets/CzYeN5_2.css                           0.88 kB % gzip:   0.40 kB
+dist/assets/7vBphVPM.css                           0.89 kB % gzip:   0.44 kB
+dist/assets/BF1LvuDE.css                           1.01 kB % gzip:   0.42 kB
+dist/assets/DCLf3B32.css                           1.10 kB % gzip:   0.46 kB
+dist/assets/CRNHF_7l.css                           1.22 kB % gzip:   0.50 kB
+dist/assets/BlT-bpEo.css                           1.67 kB % gzip:   0.70 kB
+dist/assets/CFboWNt2.css                           1.85 kB % gzip:   0.64 kB
+dist/assets/GecF_XTQ.css                           3.02 kB % gzip:   0.85 kB
+dist/assets/C54P9oMV.css                           3.48 kB % gzip:   1.13 kB
+dist/assets/Ceg84e_O.css                           3.57 kB % gzip:   0.98 kB
+dist/assets/DHU883SJ.css                           4.48 kB % gzip:   1.05 kB
+dist/assets/BLkYbdcK.css                           4.78 kB % gzip:   1.26 kB
+dist/assets/CeXrdDVX.css                           5.43 kB % gzip:   1.36 kB
+dist/assets/wQ5Bzigh.css                           5.88 kB % gzip:   1.63 kB
+dist/assets/BvWj0_ui.css                           6.02 kB % gzip:   1.45 kB
+dist/assets/DMDWYYs3.css                           6.73 kB % gzip:   1.48 kB
+dist/assets/CXOLkT7V.css                           7.63 kB % gzip:   1.67 kB
+dist/assets/B8zZ6xI3.css                          11.77 kB % gzip:   1.81 kB
+dist/assets/C17T5Gw8.css                          11.92 kB % gzip:   2.04 kB
+dist/assets/BG15Y5Fu.css                         146.25 kB % gzip:  15.55 kB
+dist/assets/Dgzul2Cn.css                         517.25 kB % gzip:  82.10 kB
+dist/assets/BGkhfTk9.js                            0.08 kB % gzip:   0.09 kB
+dist/assets/CfWMQiOq.js                            0.08 kB % gzip:   0.09 kB
+dist/assets/DWtBweBl2.js                           0.38 kB % gzip:   0.22 kB
+dist/assets/DTg1P2462.js                           0.39 kB % gzip:   0.24 kB
+dist/assets/D72EESEY.js                            0.93 kB % gzip:   0.54 kB
+dist/assets/C3j90g3o.js                            1.00 kB % gzip:   0.53 kB
+dist/assets/-W3A8GjA.js                            1.23 kB % gzip:   0.68 kB
+dist/assets/CnjWgyo-.js                            1.29 kB % gzip:   0.64 kB
+dist/assets/Bcw-Vcol.js                            1.42 kB % gzip:   0.74 kB
+dist/assets/8ekdYU-O.js                            1.50 kB % gzip:   0.77 kB
+dist/assets/DtcIwKmB.js                            1.51 kB % gzip:   0.75 kB
+dist/assets/BuwtAs_i.js                            1.55 kB % gzip:   0.61 kB
+dist/assets/CZWRfKJY.js                            1.62 kB % gzip:   0.64 kB
+dist/assets/DwwM5n_K2.js                           1.96 kB % gzip:   0.86 kB
+dist/assets/6BoAWyHI.js                            2.40 kB % gzip:   1.00 kB
+dist/assets/DLBvvpXl.js                            2.52 kB % gzip:   1.21 kB
+dist/assets/CEItrSYG.js                            3.13 kB % gzip:   1.42 kB
+dist/assets/BWuK87Ej.js                            4.83 kB % gzip:   1.76 kB
+dist/assets/C2gE6dwP2.js                           5.20 kB % gzip:   2.19 kB
+dist/assets/DvVQKTiy.js                            5.45 kB % gzip:   2.28 kB
+dist/assets/Co-Ioa0w2.js                           5.91 kB % gzip:   2.55 kB
+dist/assets/D5cnm8hL2.js                           6.14 kB % gzip:   1.49 kB
+dist/assets/UFvPZRSi.js                            6.20 kB % gzip:   2.05 kB
+dist/assets/jIPoEv08.js                            6.65 kB % gzip:   2.63 kB
+dist/assets/C2PlwSDI.js                            6.81 kB % gzip:   2.92 kB
+dist/assets/C9G8omW02.js                           8.52 kB % gzip:   2.17 kB
+dist/assets/BmqYoNHH.js                            9.30 kB % gzip:   3.22 kB
+dist/assets/n72wCPlL2.js                           9.70 kB % gzip:   2.17 kB
+dist/assets/eq0IdHpJ.js                           10.02 kB % gzip:   4.04 kB
+dist/assets/C63O8Pnl.js                           10.54 kB % gzip:   1.99 kB
+dist/assets/DqWUqJt02.js                          11.41 kB % gzip:   3.16 kB
+dist/assets/DL7Qv-k1.js                           11.65 kB % gzip:   2.22 kB
+dist/assets/BBPfgYjr2.js                          13.84 kB % gzip:   2.76 kB
+dist/assets/RTE-JY2O.js                           16.15 kB % gzip:   4.31 kB
+dist/assets/D65FzKjh.js                           17.24 kB % gzip:   8.26 kB
+dist/assets/BM3hQRDA.js                           17.36 kB % gzip:   8.16 kB
+dist/assets/C3yT1r2r.js                           17.41 kB % gzip:   7.00 kB
+dist/assets/B6hyNYug2.js                          17.84 kB % gzip:   5.31 kB
+dist/assets/2Abl3oTT.js                           18.26 kB % gzip:   6.53 kB
+dist/assets/B3FkBibZ.js                           20.64 kB % gzip:   7.88 kB
+dist/assets/puFUxUk32.js                          20.89 kB % gzip:   4.61 kB
+dist/assets/C5fLfrE6.js                           22.85 kB % gzip:   8.12 kB
+dist/assets/lV64cFR0.js                           25.38 kB % gzip:   8.94 kB
+dist/assets/BxvJXe4U2.js                          26.62 kB % gzip:   6.97 kB
+dist/assets/D-yWGzST2.js                          27.17 kB % gzip:   6.45 kB
+dist/assets/BzSn9My9.js                           28.13 kB % gzip:   9.30 kB
+dist/assets/BLpE4iMW2.js                          30.40 kB % gzip:   7.27 kB
+dist/assets/1LgHkUSd2.js                          33.36 kB % gzip:   6.78 kB
+dist/assets/P3sIFttV2.js                          36.86 kB % gzip:   6.18 kB
+dist/assets/BZPmfEFq.js                           37.00 kB % gzip:  11.83 kB
+dist/assets/Dfl6shwq2.js                          38.51 kB % gzip:   8.06 kB
+dist/assets/Xf6Rao2K2.js                          40.27 kB % gzip:   7.78 kB
+dist/assets/DJRxBk-32.js                          54.39 kB % gzip:  13.52 kB
+dist/assets/C8md8n8p2.js                          58.93 kB % gzip:  11.05 kB
+dist/assets/WMXdQVoj2.js                         136.89 kB % gzip:  39.53 kB
+dist/assets/DVR1VHNk.js                          171.96 kB % gzip:  59.95 kB
+dist/assets/DNknpjey.js                          326.51 kB % gzip: 104.30 kB
+dist/assets/BLlLVKm6.js                          510.02 kB % gzip: 177.25 kB
+
+cmd : [33m[33m[PLUGIN_TIMINGS] Warning:[0m Your build spent significant time in plugins. Here is a breakdown:
+At line:1 char:319
++ ... ND: $cmd`nSTART: $(Get-Date -Format o)"; cmd /c $cmd *>> $out; $code= ...
++                                              ~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([33m[33m[PLUG...is a breakdown::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  - vuetify:styles (43%)
+  - vite:css (36%)
+  - vuetify:import (12%)
+  - vite:vue (6%)
+See https://rolldown.rs/options/checks#plugintimings for more details.
+[39m
+[32m' built in 10.25s[39m
+EXIT: 0
+END: 2026-05-20T09:19:00.5757250+07:00
+
+## Summary
+npm_install: 0
+npm_build: 0
+go_env: 0
+go_build: 0
+go_test_race: 1
+go_mod_tidy: 0
+go_vet: 0
+npm_test_unit: 0
+npm_lint: 0

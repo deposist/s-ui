@@ -1,0 +1,106 @@
+P4 architecture debt validation - 2026-05-20
+
+Environment:
+- OS: Windows
+- Workspace: C:\s-ui-main-deposist
+- CGO/race: supported; `go test -race` was executed.
+
+Scope:
+- P4.1 remaining globals moved behind DI-compatible runtime.
+- P4.2 logging migration advanced to `slog` facade with legacy adapter.
+- P4.3 sing-box tracker revalidation policy formalized.
+- P4.4 SemVer/version release policy formalized.
+
+Targeted validation:
+
+===== P4.1 runtime DI =====
+Command:
+go test ./service -run "ConfigCore|ConfigSave|RestartManager|PanelService|Audit|TelegramNotifier|TokenUse"
+Result: PASS
+
+Command:
+go test ./api ./web ./app -run "LoadData|API|Logs|Session|Version|NoTest"
+Result: PASS
+
+===== P4.2 slog adapter/facade =====
+Command:
+go test ./logger ./app ./service -run "Slog|Logs|ConfigCore|ConfigSave"
+Result: PASS
+
+Command:
+go test ./api ./web -run "Logs|LoadData|Session"
+Result: PASS
+
+===== P4.3 sing-box tracker policy =====
+Command:
+go test ./core -run "TrackerPolicy|Tracker|Core"
+Result: PASS
+
+Command:
+go test -race ./core -run "TrackerPolicy|Tracker"
+Result: PASS
+
+===== P4.4 SemVer/version policy =====
+Command:
+go test ./config ./database ./service ./cmd/migration -run "Version|Adapt|MigrateDbDoesNotDowngrade|ReleasePolicy"
+Result: PASS
+
+Command:
+go test ./api -run Version
+Result: PASS (no matching tests)
+
+Final validation gate:
+
+===== go test ./... =====
+First run:
+- Non-code assertion failures only: Windows `t.TempDir()` cleanup reported
+  `directory is not empty` in sqlite-heavy tests.
+- Affected examples: `cmd/migration`, `cronjob`, `database`,
+  `database/importxui`.
+Isolated reruns:
+- `go test ./cmd/migration -run TestMigrateDbFrom14RunsCheckpointAfterCommit -count=1 -v` PASS
+- `go test ./cronjob -run TestTelegramBackupSchedulerNoopWhenTelegramDisabled -count=1 -v` PASS
+- `go test ./database -run TestInitDBDropsObsoleteClientIPUniqueIndex -count=1 -v` PASS
+- `go test ./database/importxui -run TestApply_ImportsSettingsAndNewPasswordAdmins -count=1 -v` PASS
+Second full run:
+go test ./...
+Result: PASS
+
+===== go test -race ./... =====
+First run:
+- Non-code assertion failure only: Windows `t.TempDir()` cleanup in
+  `database/importxui`.
+Isolated rerun:
+- `go test -race ./database/importxui -run TestImport_Wireguard_AsEndpoint -count=1 -v` PASS
+Second full run:
+go test -race ./...
+Result: PASS
+
+===== go vet ./... =====
+Result: PASS
+
+===== go build ./... =====
+Result: PASS
+
+===== frontend lint/test/build =====
+Command:
+cd frontend && npm run lint
+Result: PASS
+
+Command:
+cd frontend && npm run test:unit
+Result: PASS
+- Test files: 5 passed
+- Tests: 20 passed
+
+Command:
+cd frontend && npm run build
+Result: PASS
+- Vite emitted a plugin timing warning for Vuetify/CSS work; non-blocking.
+
+Deferred:
+- No P4 scope item deferred.
+- Full removal of `github.com/op/go-logging` from `go.mod` is intentionally
+  left as a later compatibility cleanup after deprecated `InitLogger` and
+  `GetLogger` consumers are gone. Current application initialization and new
+  logging paths use the `slog` facade.

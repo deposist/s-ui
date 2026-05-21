@@ -32,13 +32,17 @@ func TestListenWithFallbackHandlesUnbindableAddress(t *testing.T) {
 	// interface on conventional hosts, so binding it produces
 	// EADDRNOTAVAIL on Linux/macOS and the equivalent error on Windows.
 	stale := "240.0.0.1"
-	listener, err := ListenWithFallback(net.JoinHostPort(stale, "0"), stale, "0")
+	result, err := ListenWithFallbackResult(net.JoinHostPort(stale, "0"), stale, "0")
 	if err != nil {
 		// Some test environments may have unusual networking; surface a
 		// clear hint so it's obvious why the test was skipped.
 		t.Skipf("fallback path could not be exercised: %v", err)
 	}
+	listener := result.Listener
 	defer listener.Close()
+	if !result.Fallback || result.BindError == nil || result.FallbackAddr == "" {
+		t.Fatalf("fallback result was not populated: %#v", result)
+	}
 	if strings.HasPrefix(listener.Addr().String(), stale+":") {
 		t.Fatalf("expected fallback, but listener is still on %s", listener.Addr())
 	}

@@ -6,6 +6,9 @@ import (
 	"github.com/deposist/s-ui-rus-inst/util/common"
 )
 
+// ReservedPathPrefixes are framework-owned routes that custom web/sub paths
+// must not shadow. `/assets/` stays reserved even when webPath is `/`, because
+// the embedded frontend serves hashed chunks from that absolute route.
 var ReservedPathPrefixes = []string{
 	"/api/",
 	"/apiv2/",
@@ -37,7 +40,7 @@ func ValidatePath(path string, reserved []string) error {
 	}
 	for _, prefix := range reserved {
 		if hasReservedPathPrefix(path, prefix) {
-			return common.NewError("reserved path prefix")
+			return common.NewError("reserved path prefix:", prefix)
 		}
 	}
 	return nil

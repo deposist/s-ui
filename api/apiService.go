@@ -1,10 +1,13 @@
 package api
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -15,12 +18,14 @@ import (
 	"github.com/deposist/s-ui-rus-inst/realtime"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util"
+	"github.com/deposist/s-ui-rus-inst/util/common"
 	"github.com/deposist/s-ui-rus-inst/util/redact"
 
 	"github.com/gin-gonic/gin"
 )
 
 type ApiService struct {
+	Runtime *service.Runtime
 	service.SettingService
 	service.UserService
 	service.ConfigService
@@ -39,7 +44,64 @@ type ApiService struct {
 	service.VersionService
 }
 
+type Option func(*ApiService)
+
+func WithRuntime(runtime *service.Runtime) Option {
+	return func(a *ApiService) {
+		if runtime != nil {
+			a.Runtime = runtime
+		}
+	}
+}
+
+func NewApiService(options ...Option) ApiService {
+	a := ApiService{
+		Runtime: service.DefaultRuntime(),
+	}
+	for _, option := range options {
+		if option != nil {
+			option(&a)
+		}
+	}
+	a.bindRuntime()
+	return a
+}
+
+func (a *ApiService) bindRuntime() {
+	runtime := a.Runtime
+	if runtime == nil {
+		runtime = service.DefaultRuntime()
+		a.Runtime = runtime
+	}
+	a.UserService = service.UserService{Runtime: runtime}
+	a.ConfigService = *service.NewConfigServiceWithRuntime(runtime)
+	a.ClientService = service.ClientService{Runtime: runtime}
+	a.TlsService = service.TlsService{
+		Runtime:         runtime,
+		InboundService:  service.InboundService{Runtime: runtime, ClientService: service.ClientService{Runtime: runtime}},
+		ServicesService: service.ServicesService{Runtime: runtime},
+	}
+	a.InboundService = service.InboundService{Runtime: runtime, ClientService: service.ClientService{Runtime: runtime}}
+	a.ServicesService = service.ServicesService{Runtime: runtime}
+	a.PanelService = service.PanelService{Runtime: runtime}
+	a.StatsService = service.StatsService{Runtime: runtime}
+	a.ServerService = service.ServerService{Runtime: runtime}
+	a.AuditService = service.AuditService{Runtime: runtime}
+	a.ObservabilityService = service.ObservabilityService{
+		ServerService: service.ServerService{Runtime: runtime},
+	}
+	a.TelegramService = service.TelegramService{Runtime: runtime}
+}
+
 const maxDatabaseImportBytes = 64 << 20
+
+type memoryMultipartFile struct {
+	*bytes.Reader
+}
+
+func (f memoryMultipartFile) Close() error {
+	return nil
+}
 
 func (a *ApiService) LoadData(c *gin.Context) {
 	data, err := a.getData(c)
@@ -280,6 +342,10 @@ func (a *ApiService) GetDb(c *gin.Context) {
 		return
 	}
 	exclude := c.Query("exclude")
+	if c.Query("encryptTelegramBackup") == "true" {
+		a.getEncryptedDb(c, exclude)
+		return
+	}
 	db, err := database.GetDb(exclude)
 	if err != nil {
 		a.recordAudit(c, requestActor(c), "db_export_failed", "database", service.AuditSeverityWarn, map[string]any{
@@ -295,6 +361,79 @@ func (a *ApiService) GetDb(c *gin.Context) {
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db")
 	c.Writer.Write(db)
+}
+
+func (a *ApiService) getEncryptedDb(c *gin.Context, exclude string) {
+	hasPassphrase, err := a.SettingService.HasTelegramBackupPassphrase()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Msg{
+			Success: false,
+			Msg:     "backup: settings",
+			Obj:     gin.H{"errorClass": "settings"},
+		})
+		return
+	}
+	if !hasPassphrase {
+		c.JSON(http.StatusBadRequest, Msg{
+			Success: false,
+			Msg:     "backup: missing_passphrase",
+			Obj:     gin.H{"errorClass": "missing_passphrase"},
+		})
+		return
+	}
+	db, err := database.GetDb(exclude)
+	if err != nil {
+		a.recordAudit(c, requestActor(c), "db_export_failed", "database", service.AuditSeverityWarn, map[string]any{
+			"channel":   "local_download",
+			"encrypted": true,
+		})
+		jsonMsg(c, "", err)
+		return
+	}
+	payloadSize := len(db)
+	defer wipeBytes(db)
+
+	passphrase, err := a.SettingService.GetTelegramBackupPassphraseBytes()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Msg{
+			Success: false,
+			Msg:     "backup: settings",
+			Obj:     gin.H{"errorClass": "settings"},
+		})
+		return
+	}
+	defer wipeBytes(passphrase)
+	if len(passphrase) == 0 {
+		c.JSON(http.StatusBadRequest, Msg{
+			Success: false,
+			Msg:     "backup: missing_passphrase",
+			Obj:     gin.H{"errorClass": "missing_passphrase"},
+		})
+		return
+	}
+
+	envelope, err := service.BuildTelegramBackupEnvelope(db, passphrase)
+	wipeBytes(passphrase)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, Msg{
+			Success: false,
+			Msg:     "backup: encryption_failed",
+			Obj:     gin.H{"errorClass": "encryption_failed"},
+		})
+		return
+	}
+	wipeBytes(db)
+	db = nil
+
+	a.recordAudit(c, requestActor(c), "tg_backup_manual_encrypted", "database", service.AuditSeverityInfo, map[string]any{
+		"channel":           "local_download",
+		"payloadSizeBytes":  int64(payloadSize),
+		"envelopeSizeBytes": int64(len(envelope)),
+		"excludedTables":    database.ParseBackupExcludes(exclude),
+	})
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db.aes")
+	c.Writer.Write(envelope)
 }
 
 func (a *ApiService) postActions(c *gin.Context) (string, json.RawMessage, error) {
@@ -384,6 +523,21 @@ func (a *ApiService) Save(c *gin.Context, loginUser string) {
 	subscriptionPathBefore := a.subscriptionPathSnapshot(obj, data)
 	objs, err := a.ConfigService.Save(obj, act, json.RawMessage(data), initUsers, loginUser, hostname)
 	if err != nil {
+		invalidSettingKey := false
+		if obj == "settings" {
+			event := "settings_save_rejected"
+			if strings.Contains(err.Error(), "invalid setting key:") {
+				event = "settings_save_rejected_key"
+				invalidSettingKey = true
+			}
+			a.recordAudit(c, loginUser, event, "settings", service.AuditSeverityWarn, map[string]any{
+				"reason": err.Error(),
+			})
+		}
+		if invalidSettingKey {
+			c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "save: " + err.Error()})
+			return
+		}
 		jsonMsg(c, "save", err)
 		return
 	}
@@ -461,7 +615,7 @@ func (a *ApiService) auditSubscriptionPathChanges(c *gin.Context, actor string, 
 }
 
 func (a *ApiService) RestartApp(c *gin.Context) {
-	err := a.PanelService.RestartPanel(3)
+	err := a.PanelService.RestartPanel(3 * time.Second)
 	jsonMsg(c, "restartApp", err)
 }
 
@@ -537,7 +691,14 @@ func (a *ApiService) ImportDb(c *gin.Context) {
 		return
 	}
 	defer file.Close()
-	err = database.ImportDB(file)
+	importFile, cleanup, ok := a.prepareDatabaseImportFile(c, file)
+	if cleanup != nil {
+		defer cleanup()
+	}
+	if !ok {
+		return
+	}
+	err = database.ImportDB(importFile)
 	if err != nil {
 		a.recordAudit(c, requestActor(c), "db_import_failed", "database", service.AuditSeverityWarn, map[string]any{
 			"reason": databaseImportErrorClass(err),
@@ -546,6 +707,80 @@ func (a *ApiService) ImportDb(c *gin.Context) {
 		a.recordAudit(c, requestActor(c), "db_imported", "database", service.AuditSeverityWarn, nil)
 	}
 	jsonMsg(c, "", err)
+}
+
+func (a *ApiService) prepareDatabaseImportFile(c *gin.Context, file multipart.File) (multipart.File, func(), bool) {
+	header := make([]byte, len(service.TelegramBackupMagic))
+	n, readErr := io.ReadFull(file, header)
+	if seekErr := seekMultipartFileStart(file); seekErr != nil {
+		a.recordAudit(c, requestActor(c), "db_import_failed", "database", service.AuditSeverityWarn, map[string]any{
+			"reason": "failed",
+		})
+		jsonMsg(c, "", seekErr)
+		return nil, nil, false
+	}
+	if readErr != nil && readErr != io.ErrUnexpectedEOF && readErr != io.EOF {
+		a.recordAudit(c, requestActor(c), "db_import_failed", "database", service.AuditSeverityWarn, map[string]any{
+			"reason": "failed",
+		})
+		jsonMsg(c, "", readErr)
+		return nil, nil, false
+	}
+	if !service.IsTelegramBackupEnvelope(header[:n]) {
+		return file, nil, true
+	}
+
+	passphraseValue := c.PostForm("telegramBackupPassphrase")
+	if passphraseValue == "" {
+		passphraseValue = c.PostForm("backupPassphrase")
+	}
+	passphrase := []byte(passphraseValue)
+	defer wipeBytes(passphrase)
+	if len(passphrase) == 0 {
+		a.respondTelegramBackupRestoreDecryptionFailed(c)
+		return nil, nil, false
+	}
+	envelope, err := io.ReadAll(file)
+	if err != nil {
+		a.respondTelegramBackupRestoreDecryptionFailed(c)
+		return nil, nil, false
+	}
+	defer wipeBytes(envelope)
+	plaintext, err := service.OpenTelegramBackupEnvelope(envelope, passphrase)
+	if err != nil {
+		a.respondTelegramBackupRestoreDecryptionFailed(c)
+		return nil, nil, false
+	}
+	cleanup := func() {
+		wipeBytes(plaintext)
+	}
+	return memoryMultipartFile{Reader: bytes.NewReader(plaintext)}, cleanup, true
+}
+
+func seekMultipartFileStart(file multipart.File) error {
+	if _, err := file.Seek(0, 0); err != nil {
+		return common.NewErrorf("Error resetting file reader: %v", err)
+	}
+	return nil
+}
+
+func (a *ApiService) respondTelegramBackupRestoreDecryptionFailed(c *gin.Context) {
+	a.recordAudit(c, requestActor(c), "tg_backup_restore_failed", "database", service.AuditSeverityWarn, map[string]any{
+		"errorClass": "decryption_failed",
+	})
+	c.JSON(http.StatusBadRequest, Msg{
+		Success: false,
+		Msg:     "restore: decryption_failed",
+		Obj: gin.H{
+			"errorClass": "decryption_failed",
+		},
+	})
+}
+
+func wipeBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
 }
 
 func databaseImportErrorClass(err error) string {

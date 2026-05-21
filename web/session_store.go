@@ -4,6 +4,7 @@ import (
 	"encoding/base32"
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 
 	ginsessions "github.com/gin-contrib/sessions"
@@ -13,10 +14,11 @@ import (
 )
 
 type SQLiteSessionStore struct {
-	db      *gorm.DB
-	codecs  []securecookie.Codec
-	options *gsessions.Options
-	now     func() time.Time
+	db        *gorm.DB
+	codecs    []securecookie.Codec
+	optionsMu sync.RWMutex
+	options   *gsessions.Options
+	now       func() time.Time
 }
 
 type sqliteSessionRow struct {
@@ -31,9 +33,13 @@ func NewSQLiteSessionStore(db *gorm.DB, keyPairs ...[]byte) (*SQLiteSessionStore
 	if db == nil {
 		return nil, errors.New("sqlite session store requires an initialized database")
 	}
+	codecs := codecsFromHashKeys(keyPairs...)
+	if len(codecs) == 0 {
+		return nil, errors.New("sqlite session store requires at least one non-empty cookie key")
+	}
 	store := &SQLiteSessionStore{
 		db:     db,
-		codecs: securecookie.CodecsFromPairs(keyPairs...),
+		codecs: codecs,
 		options: &gsessions.Options{
 			Path:     "/",
 			MaxAge:   86400 * 30,
@@ -49,7 +55,10 @@ func NewSQLiteSessionStore(db *gorm.DB, keyPairs ...[]byte) (*SQLiteSessionStore
 }
 
 func (s *SQLiteSessionStore) Options(options ginsessions.Options) {
-	s.options = options.ToGorillaOptions()
+	next := cloneSessionOptions(options.ToGorillaOptions())
+	s.optionsMu.Lock()
+	s.options = next
+	s.optionsMu.Unlock()
 }
 
 func (s *SQLiteSessionStore) Get(r *http.Request, name string) (*gsessions.Session, error) {
@@ -58,8 +67,7 @@ func (s *SQLiteSessionStore) Get(r *http.Request, name string) (*gsessions.Sessi
 
 func (s *SQLiteSessionStore) New(r *http.Request, name string) (*gsessions.Session, error) {
 	session := gsessions.NewSession(s, name)
-	opts := *s.options
-	session.Options = &opts
+	session.Options = s.currentOptions()
 	session.IsNew = true
 
 	cookie, err := r.Cookie(name)
@@ -156,4 +164,29 @@ func (s *SQLiteSessionStore) load(session *gsessions.Session) (bool, error) {
 
 func (s *SQLiteSessionStore) erase(id string) error {
 	return s.db.Exec("DELETE FROM sessions WHERE id = ?", id).Error
+}
+
+func (s *SQLiteSessionStore) currentOptions() *gsessions.Options {
+	s.optionsMu.RLock()
+	defer s.optionsMu.RUnlock()
+	return cloneSessionOptions(s.options)
+}
+
+func cloneSessionOptions(options *gsessions.Options) *gsessions.Options {
+	if options == nil {
+		return nil
+	}
+	clone := *options
+	return &clone
+}
+
+func codecsFromHashKeys(keys ...[]byte) []securecookie.Codec {
+	codecs := make([]securecookie.Codec, 0, len(keys))
+	for _, key := range keys {
+		if len(key) == 0 {
+			continue
+		}
+		codecs = append(codecs, securecookie.New(key, nil))
+	}
+	return codecs
 }

@@ -6,6 +6,154 @@
 
 ## 未发布
 
+## [1.5.3-beta] - 2026-05-20 - 聚合修复 + 上游对齐 (#1114)
+
+### Multi-chat 交付总览 (P0-P5)
+
+#### 安全性
+
+- [P0] 强化 SSRF 过滤与 dial 阶段二次地址校验；收紧备份恢复时的
+  路径/符号链接校验。
+- [P1] 强化 CSRF/session 生命周期，包括 logout/logout-all 后 token 更新，
+  以及更严格的 WS token 处理。
+- [P2] 扩展 secret/settings 安全检查与迁移护栏。
+- [P3] 增加 listen fallback 审计，并统一 restart 路径的一致性。
+
+#### 可靠性 / 数据完整性
+
+- [P0] 修复 tracker/session options/audit writer 相关竞态路径。
+- [P1] 稳定 realtime fallback 行为与前端单元测试 harness。
+- [P2] 增加 reset hooks、tracker wait guards 与 foreign-key 迁移检查。
+- [P3] 统一重启调度，并通过初始 DI 切片减少全局副作用。
+- [P4] 将剩余 service runtime globals 移入 DI-compatible runtime，同时保留
+  zero-value service 兼容性。
+- [P5] 完成 logging backend 清理，且不改变 API endpoint 行为。
+
+#### API 与运行时行为
+
+- [P0] 强化 trusted proxy 解析与导入错误分类安全性。
+- [P1] 收紧 realtime/session/CSRF 流程与 Telegram 错误分类。
+- [P2] 统一重负载数据路径中的 batching 与 timeout 行为。
+- [P3] 增加初始 `slog` adapter 路径，支持从 `op/go-logging` 渐进迁移。
+- [P4] 将 `slog` 提升为 logger facade；`op/go-logging` 仅保留在 deprecated
+  compatibility API 后方。
+- [P5] 移除 deprecated `logger.InitLogger`/`logger.GetLogger`；logger facade
+  输出完全迁移到标准库 `log/slog`，并保留 panel/core log-buffer。
+- [P5] 从 `go.mod` 与 `go.sum` 移除 legacy 模块
+  `github.com/op/go-logging`。
+- [P4] 为 `github.com/sagernet/sing-box v1.13.11` 增加可检查的 tracker
+  revalidation policy。
+- [P4] 增加可检查的 SemVer release/version policy，并防止 migration code
+  降级未来的 `settings.version`。
+
+#### 前端
+
+- [P1] 修复 `frontend/vitest.config.ts` 中的 Vitest harness 配置。
+- [P1/P2] 对齐 CSRF 缓存清理、请求去重边界与 realtime degraded-mode 行为。
+
+#### 测试与验证
+
+- Baseline 与分阶段报告：
+  - `plans/lint-baseline.txt`
+  - `plans/lint-baseline-normalized.txt`
+  - `plans/fix-validation.txt` (P0)
+  - `plans/p1-validation.txt` (P1)
+  - `plans/p2-validation.txt` (P2)
+  - `plans/p3-architecture-validation.txt` (P3)
+  - `plans/p4-architecture-debt-validation.txt` (P4)
+  - `plans/p5-logging-cleanup-validation.txt` (P5)
+- 每个阶段都包含定向检查与最终命令通过集，详见对应验证文件。
+
+### 可追溯性 (multi-chat policy)
+
+- 每条完成项都加阶段标签：`[P0]`、`[P1]`、`[P2]`、`[P3]`、`[P4]`、`[P5]`。
+- 按统一格式追加引用：`(ref: <commit|PR|chat-id>)`。
+- 跨阶段事项使用组合标签，例如 `[P1/P2]`。
+- 延后架构项单独维护，不与已完成项混写。
+
+### 升级提示（聚合窗口）
+
+- 将 P0->P5 视为一个发布窗口；升级前先做完整 SQLite 备份。
+- 在生产发布前先于 staging 验证 session/CSRF/realtime 与 listen fallback
+  行为变化。
+- 以上分阶段 validation 文件可作为升级验证证据。
+- 如果外部 Go 集成曾导入 `logger.InitLogger` 或 `logger.GetLogger`，需要迁移到
+  `logger.Init(logger.Level*)`、`logger.Slog(source)` 或 `slog.Default()`。
+
+### 回滚（聚合窗口）
+
+- 回滚时恢复窗口前 SQLite 快照与旧二进制/镜像。
+- 若回滚跨越 session/token 行为变更，降级后应失效当前活跃会话并轮换
+  管理员凭据。
+
+### 延后架构债务
+
+- [P5] P5 范围内没有 deferred 项。legacy `op/go-logging` 依赖与 deprecated
+  logger compatibility API 已移除。
+
+### 后续 multi-chat 发布模板
+
+- 固定使用域分组：Security、Reliability/Data integrity、API/Runtime、
+  Frontend、Tests。
+- 每条变更都加 phase 标签并追加 traceability 引用。
+- 对聚合窗口明确提供 `Upgrade notes` 与 `Rollback`。
+
+### 修复
+
+- TUIC 订阅/分享链接与 Clash 导出现在会包含 `udp_relay_mode`，保留已配置的
+  值，并在生成链接未设置时默认使用 `quic`。
+
+### 新增
+
+- 支持定时与手动将 SQLite 数据库加密备份到 Telegram。备份密码短语只在
+  Telegram 标签页配置，功能默认关闭。新增设置及默认值：
+  `telegramBackupEnabled="false"`、`telegramBackupPassphrase=""`、
+  `telegramBackupCron=""`、
+  `telegramBackupExcludeTables="stats,client_ips,audit_events,changes"`、
+  `telegramBackupMaxSizeMB="45"`。新增手动触发路由：
+  `POST /api/telegram/backup/run` 与 `POST /apiv2/telegram/backup/run`。
+- Restore 现在会自动识别上传文件中的 `SUI-TGBKP\x00` backup envelope，
+  并在 Backup & Restore 中显示 Backup passphrase 字段。明文 `.db`
+  上传仍然不需要该字段。
+- 现有 Backup 按钮可通过「Encrypt with Telegram backup passphrase」
+  复选框可选下载同一加密 envelope。复选框默认未选中，明文下载行为保持
+  不变，现有 `getdb` 端点使用新的非破坏性 query 参数
+  `encryptTelegramBackup=true`。
+- 主发布二进制现在包含 `s-ui decrypt-backup`，可用于离线解密 envelope。
+  不需要单独的 artifact。
+- `docs/scope-matrix.md` 现在记录 `tg_backup_run` 操作。
+
+### 变更
+
+- BREAKING：旧版 `POST /api/telegram/backup` 与
+  `POST /apiv2/telegram/backup` 现在委托给新的 Telegram backup service。
+  所有响应都移除了 `backupKey`，要求 `telegramBackupEnabled=true`，
+  成功响应新增 `trigger="manual"`。没有兼容过渡期。严格迁移步骤：
+  升级后在 Telegram 标签页启用 `telegramBackupEnabled`，否则旧版调用会
+  返回 HTTP 503，`errorClass=disabled`。
+- `util/secretbox` 新增 `EncryptBytes` 与 `DecryptBytes`，用于按字节处理
+  secret。
+- `api/rateLimit.go` 新增一个由四个手动触发路由共享的 Telegram backup
+  限速 bucket：60 秒内 3 次，并返回 `Retry-After`。
+- 新增 audit event 类型：`tg_backup_sent`、`tg_backup_failed`、
+  `tg_backup_passphrase_changed`、`tg_backup_manual_encrypted`、
+  `tg_backup_restore_failed`。
+
+### 升级提示
+
+- 升级前请备份 SQLite 数据库。如果使用 systemd，请先 `systemctl stop s-ui`，
+  复制 `s-ui.db` 以及任何 `-wal`/`-shm` 旁车文件，再启动服务。
+- Telegram database backup 会保持关闭，直到在 Telegram 标签页启用
+  `telegramBackupEnabled` 并配置 Backup passphrase。
+- 调用旧版 Telegram backup 端点的集成需要处理已移除的 `backupKey` 字段，
+  以及在启用设置前新的 HTTP 503 `disabled` 响应。
+
+### 回滚
+
+- 如需回滚，请恢复升级前的 SQLite 备份，并切回之前的二进制或镜像。
+- 加密的 `.db.aes` 文件仍可用创建它们时的 passphrase 解密；任何包含
+  `s-ui decrypt-backup` 的二进制都可以执行。
+
 ## [1.5.2-beta-hotfix2] - 2026-05-18 - 移除 client_ips 旧版唯一索引
 
 ### 修复
@@ -341,7 +489,7 @@ REST API、前端表单与数据库 schema 均保持不变。
 
 ### 破坏性 / 行为变化
 
-- **模块路径**：`github.com/admin8800/s-ui` → `github.com/deposist/s-ui-rus-inst`。
+- **模块路径**：`github.com/alireza0/s-ui` → `github.com/deposist/s-ui-rus-inst`。
   源码使用方需更新 import；预编译二进制不受影响。
 - **默认管理员密码**：在全新数据库上会生成 24 个字符的随机密码。请在
   应用日志中查找

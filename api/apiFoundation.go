@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/base64"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -10,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/service"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 	"github.com/deposist/s-ui-rus-inst/util/ssrf"
@@ -179,17 +177,20 @@ func (a *ApiService) requireTokenScopeAny(c *gin.Context, resource string, allow
 
 func (a *ApiService) enforceAuditEndpointRateLimit(c *gin.Context) bool {
 	actor := requestActor(c)
-	if actor == "" {
-		actor = getRemoteIp(c)
-	}
+	ip := getRemoteIp(c)
 	if actor == "" {
 		actor = "unknown"
 	}
-	err := checkAuditEndpointRateLimit(actor)
+	if ip == "" {
+		ip = "unknown"
+	}
+	err := checkAuditEndpointRateLimit(auditEndpointRateLimitKey(actor, ip))
 	if err == nil {
 		return true
 	}
-	a.recordAudit(c, actor, "audit_rate_limited", "audit", service.AuditSeverityWarn, nil)
+	a.recordAudit(c, actor, "audit_rate_limited", "audit", service.AuditSeverityWarn, map[string]any{
+		"ip": ip,
+	})
 	c.Header("Retry-After", strconv.Itoa(int(auditEndpointRateLimitWindow/time.Second)))
 	c.JSON(http.StatusTooManyRequests, Msg{Success: false, Msg: "audit: " + err.Error()})
 	return false
@@ -229,39 +230,102 @@ func (a *ApiService) TestTelegram(c *gin.Context) {
 }
 
 func (a *ApiService) BackupToTelegram(c *gin.Context) {
-	if !a.requireTokenScopeAny(c, "database", "admin") {
+	a.runTelegramBackupManual(c)
+}
+
+func (a *ApiService) RunTelegramBackup(c *gin.Context) {
+	a.runTelegramBackupManual(c)
+}
+
+func (a *ApiService) runTelegramBackupManual(c *gin.Context) {
+	if !a.requireTokenScopeAny(c, "telegram", "telegram", "admin") {
 		return
 	}
-	db, err := database.GetDb("")
-	if err != nil {
-		jsonMsg(c, "telegramBackup", err)
+	if !a.enforceTelegramBackupManualRateLimit(c) {
 		return
 	}
-	encrypted, key, err := service.EncryptTelegramBackup(db)
-	if err != nil {
-		jsonMsg(c, "telegramBackup", err)
-		return
+
+	backupService := service.TelegramBackupService{
+		SettingService:  a.SettingService,
+		TelegramService: a.TelegramService,
+		AuditService:    a.AuditService,
 	}
-	now := time.Now().UTC()
-	filename := "s-ui-backup-" + now.Format("20060102-150405") + ".db.aes"
-	caption := "S-UI encrypted database backup\ncreatedAt: " + now.Format(time.RFC3339)
-	result := a.TelegramService.SendTelegramDocument(filename, encrypted, caption)
-	if !result.Success {
-		a.recordAudit(c, requestActor(c), "db_export_failed", "database", service.AuditSeverityWarn, map[string]any{
-			"channel":    "telegram",
-			"errorClass": result.ErrorClass,
+	ctx := service.ContextWithTelegramBackupActor(c.Request.Context(), requestActor(c))
+	result := backupService.RunOnce(ctx, service.TelegramBackupTriggerManual)
+	if result.Success {
+		c.JSON(http.StatusOK, Msg{
+			Success: true,
+			Obj: gin.H{
+				"filename": result.Filename,
+				"trigger":  result.Trigger,
+			},
 		})
-		jsonObj(c, gin.H{"errorClass": result.ErrorClass}, common.NewError("telegram backup failed"))
 		return
 	}
-	a.recordAudit(c, requestActor(c), "db_exported", "database", service.AuditSeverityWarn, map[string]any{
-		"channel":   "telegram",
-		"encrypted": true,
+	errorClass := result.ErrorClass
+	if errorClass == "" {
+		errorClass = "internal"
+	}
+	c.JSON(telegramBackupHTTPStatus(errorClass), Msg{
+		Success: false,
+		Msg:     "telegramBackup: " + errorClass,
+		Obj: gin.H{
+			"errorClass": errorClass,
+			"trigger":    service.TelegramBackupTriggerManual,
+		},
 	})
-	jsonObj(c, gin.H{
-		"filename":  filename,
-		"backupKey": base64.StdEncoding.EncodeToString(key),
-	}, nil)
+}
+
+func (a *ApiService) enforceTelegramBackupManualRateLimit(c *gin.Context) bool {
+	actor := requestActor(c)
+	key := actor
+	if key == "" {
+		key = getRemoteIp(c)
+	}
+	if key == "" {
+		key = "unknown"
+	}
+	retryAfter, err := checkTelegramBackupManualRateLimit(key)
+	if err == nil {
+		return true
+	}
+	retrySeconds := int((retryAfter + time.Second - 1) / time.Second)
+	if retrySeconds < 1 {
+		retrySeconds = 1
+	}
+	a.recordAudit(c, key, "tg_backup_failed", "database", service.AuditSeverityWarn, map[string]any{
+		"trigger":           service.TelegramBackupTriggerManual,
+		"payloadSizeBytes":  int64(0),
+		"envelopeSizeBytes": int64(0),
+		"excludedTables":    []string{},
+		"channel":           "telegram",
+		"errorClass":        "rate_limited",
+	})
+	c.Header("Retry-After", strconv.Itoa(retrySeconds))
+	c.JSON(http.StatusTooManyRequests, Msg{
+		Success: false,
+		Msg:     "telegramBackup: rate_limited",
+		Obj: gin.H{
+			"errorClass": "rate_limited",
+			"trigger":    service.TelegramBackupTriggerManual,
+		},
+	})
+	return false
+}
+
+func telegramBackupHTTPStatus(errorClass string) int {
+	switch errorClass {
+	case "concurrent_run":
+		return http.StatusConflict
+	case "rate_limited":
+		return http.StatusTooManyRequests
+	case "disabled", "missing_token", "missing_chat", "missing_passphrase", "oversize", "network", "proxy", "unauthorized", "chat_not_found":
+		return http.StatusServiceUnavailable
+	case "db_snapshot_failed", "encryption_failed", "settings", "payload", "request", "unknown", "internal":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (a *ApiService) GetObservabilityHistory(c *gin.Context) {

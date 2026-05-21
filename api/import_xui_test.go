@@ -87,6 +87,43 @@ func TestImportXuiApplyRejectsStalePlan(t *testing.T) {
 	}
 }
 
+func TestImportXuiApplyAcceptsSevenMiBPlanField(t *testing.T) {
+	settingService, src := setupXuiAPITestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
+	})
+	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1", "merge"), cookies...)
+	if planRecorder.Code != http.StatusOK {
+		t.Fatalf("plan status=%d body=%s", planRecorder.Code, planRecorder.Body.String())
+	}
+	plan := decodePlanResponse(t, planRecorder.Body.Bytes())
+	if len(plan.Items) == 0 {
+		t.Fatal("test plan has no items to pad")
+	}
+	plan.Items[0].Warnings = []string{strings.Repeat("a", 7<<20)}
+
+	applyRecorder := performAuthenticatedTestRequest(router, newXuiApplyRequest(t, readFile(t, src), plan), cookies...)
+	if applyRecorder.Code != http.StatusOK {
+		t.Fatalf("7 MiB plan should be accepted, status=%d body=%s", applyRecorder.Code, applyRecorder.Body.String())
+	}
+}
+
+func TestImportXuiApplyRejectsNineMiBPlanFieldWith413(t *testing.T) {
+	settingService, src := setupXuiAPITestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
+	})
+	req := newXuiApplyRawPlanRequest(t, readFile(t, src), strings.Repeat("x", 9<<20))
+	recorder := performAuthenticatedTestRequest(router, req, cookies...)
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("9 MiB plan should return 413, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "payload_too_large") || !strings.Contains(recorder.Body.String(), "plan") {
+		t.Fatalf("expected field-specific payload_too_large response, got %s", recorder.Body.String())
+	}
+}
+
 func TestImportXuiRollbackRestoresBackup(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	database.SetSendSighupHook(func() error { return nil })
@@ -109,6 +146,34 @@ func TestImportXuiRollbackRestoresBackup(t *testing.T) {
 	rollbackRecorder := performAuthenticatedTestRequest(router, req, cookies...)
 	if rollbackRecorder.Code != http.StatusOK {
 		t.Fatalf("rollback status=%d body=%s", rollbackRecorder.Code, rollbackRecorder.Body.String())
+	}
+}
+
+func TestValidateRollbackPathRejectsSymlinkEscape(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", dir)
+	outside := filepath.Join(t.TempDir(), "outside.db")
+	if err := os.WriteFile(outside, []byte("SQLite format 3\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(dir, "s-ui-pre-xui-import-1.db")
+	if err := os.Symlink(outside, symlink); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := validateRollbackPath(symlink); err == nil {
+		t.Fatal("expected symlink rollback path to be rejected")
+	}
+}
+
+func TestValidateRollbackPathAllowsRealBackupInDatabaseDir(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", dir)
+	backup := filepath.Join(dir, "s-ui-pre-xui-import-1.db")
+	if err := os.WriteFile(backup, []byte("SQLite format 3\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateRollbackPath(backup); err != nil {
+		t.Fatalf("expected rollback path to be accepted: %v", err)
 	}
 }
 
@@ -350,6 +415,28 @@ func newXuiApplyRequest(t *testing.T, content []byte, plan importxui.MigrationPl
 		t.Fatal(err)
 	}
 	if err := writer.WriteField("plan", string(rawPlan)); err != nil {
+		t.Fatal(err)
+	}
+	part, err := writer.CreateFormFile("db", "x-ui.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/import-xui/apply", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+func newXuiApplyRawPlanRequest(t *testing.T, content []byte, rawPlan string) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("plan", rawPlan); err != nil {
 		t.Fatal(err)
 	}
 	part, err := writer.CreateFormFile("db", "x-ui.db")

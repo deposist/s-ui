@@ -86,8 +86,16 @@ func bumpVersionSetting(tx *gorm.DB) error {
 	if err != nil {
 		return err
 	}
+	cmp, ok := compareVersion(existing.Value, current)
+	if ok && cmp >= 0 {
+		return nil
+	}
 	if existing.Value == current {
 		return nil
 	}
 	return tx.Model(model.Setting{}).Where("key = ?", "version").Update("value", current).Error
+}
+
+func compareVersion(left string, right string) (int, bool) {
+	return config.CompareVersions(left, right)
 }

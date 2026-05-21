@@ -52,7 +52,7 @@ After the upgrade:
 - Pulling subscriptions from `http://127.0.0.1`? Set `SUI_ALLOW_PRIVATE_SUB_URLS=true`.
 
 ### Breaking / behaviour changes
-- Go module path renamed: `github.com/admin8800/s-ui` → `github.com/deposist/s-ui-rus-inst`. Source consumers must update imports; binary users are unaffected.
+- Go module path renamed: `github.com/alireza0/s-ui` → `github.com/deposist/s-ui-rus-inst`. Source consumers must update imports; binary users are unaffected.
 - Subscription fetch over self-signed TLS no longer succeeds without a trusted CA (the implicit `InsecureSkipVerify` was removed).
 - The leftmost `X-Forwarded-For` value is no longer used for client identity; configure `SUI_TRUSTED_PROXIES`.
 - Five failed logins from the same IP within 15 minutes now block that IP for 15 minutes.
@@ -125,7 +125,7 @@ sudo bash install.sh v1.4.2-beta
 - Если внешние подписки забираются с `http://127.0.0.1`, выставьте `SUI_ALLOW_PRIVATE_SUB_URLS=true`.
 
 ### Что меняет поведение
-- Go-модуль переименован: `github.com/admin8800/s-ui` → `github.com/deposist/s-ui-rus-inst`. Это касается только тех, кто собирает из исходников; готовые бинарники и docker-образ работают без изменений.
+- Go-модуль переименован: `github.com/alireza0/s-ui` → `github.com/deposist/s-ui-rus-inst`. Это касается только тех, кто собирает из исходников; готовые бинарники и docker-образ работают без изменений.
 - Загрузка подписки с самоподписанным TLS больше не проходит без доверенного CA — неявный `InsecureSkipVerify` удалён.
 - Крайнее левое значение `X-Forwarded-For` больше не используется как identity клиента; настройте `SUI_TRUSTED_PROXIES`.
 - 5 неуспешных входов с одного IP за 15 минут блокируют IP на 15 минут.

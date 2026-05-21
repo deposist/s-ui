@@ -6,11 +6,7 @@ import (
 )
 
 func TestConfigCoreMethodsHandleNilCore(t *testing.T) {
-	oldCore := corePtr
-	corePtr = nil
-	t.Cleanup(func() {
-		corePtr = oldCore
-	})
+	t.Cleanup(ReplaceDefaultRuntimeForTest(NewRuntimeWithCoreProvider(nil)))
 
 	configService := &ConfigService{}
 	if configService.IsCoreRunning() {

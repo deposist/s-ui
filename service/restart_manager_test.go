@@ -84,3 +84,24 @@ func TestRestartManagerCancelPendingSighup(t *testing.T) {
 	case <-time.After(75 * time.Millisecond):
 	}
 }
+
+type fakeRestartScheduler struct {
+	delay time.Duration
+}
+
+func (s *fakeRestartScheduler) ScheduleRestart(delay time.Duration) error {
+	s.delay = delay
+	return nil
+}
+
+func TestPanelServiceUsesInjectedRestartScheduler(t *testing.T) {
+	scheduler := &fakeRestartScheduler{}
+	panel := NewPanelService(scheduler)
+
+	if err := panel.RestartPanel(3 * time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if scheduler.delay != 3*time.Second {
+		t.Fatalf("scheduled delay = %s, want 3s", scheduler.delay)
+	}
+}

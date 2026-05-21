@@ -13,12 +13,13 @@ import (
 type TlsService struct {
 	InboundService
 	ServicesService
+	Runtime *Runtime
 }
 
 func (s *TlsService) GetAll() ([]model.Tls, error) {
 	db := database.GetDB()
 	tlsConfig := []model.Tls{}
-	err := db.Model(model.Tls{}).Scan(&tlsConfig).Error
+	err := db.Model(model.Tls{}).Where("id > 0").Scan(&tlsConfig).Error
 	if err != nil {
 		return nil, err
 	}

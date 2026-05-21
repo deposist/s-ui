@@ -26,6 +26,38 @@ func makeContext(t *testing.T, remoteAddr, xff string) *gin.Context {
 	return c
 }
 
+func TestCanonicalClientIPNormalizesMappedAndRejectsZones(t *testing.T) {
+	cases := map[string]string{
+		"::ffff:192.0.2.10":   "192.0.2.10",
+		"[::ffff:192.0.2.10]": "192.0.2.10",
+		"2001:db8::1":         "2001:db8::1",
+		"fe80::1%eth0":        "",
+		"not-ip":              "",
+		"":                    "",
+	}
+	for input, want := range cases {
+		if got := canonicalClientIP(input); got != want {
+			t.Fatalf("canonicalClientIP(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestGetRemoteIpCanonicalizesMappedTransportPeer(t *testing.T) {
+	t.Setenv("SUI_TRUSTED_PROXIES", "")
+	c := makeContext(t, "[::ffff:203.0.113.5]:1234", "10.0.0.1")
+	if got := getRemoteIp(c); got != "203.0.113.5" {
+		t.Fatalf("expected canonical transport peer, got %s", got)
+	}
+}
+
+func TestGetRemoteIpRejectsZoneIdentifiers(t *testing.T) {
+	t.Setenv("SUI_TRUSTED_PROXIES", "fe80::/10")
+	c := makeContext(t, "[fe80::1%25eth0]:1234", "203.0.113.5")
+	if got := getRemoteIp(c); got != "" {
+		t.Fatalf("expected invalid zoned transport peer to be rejected, got %q", got)
+	}
+}
+
 func TestGetRemoteIpIgnoresXFFWhenProxiesUntrusted(t *testing.T) {
 	t.Setenv("SUI_TRUSTED_PROXIES", "")
 	c := makeContext(t, "203.0.113.5:1234", "10.0.0.1")
@@ -107,5 +139,19 @@ func TestCoreRestartFailedTelegramFieldsDoNotExposeRawError(t *testing.T) {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("raw restart error leaked into Telegram payload: %#v", fields)
 		}
+	}
+}
+
+func TestLoginRedirectPathUsesConfiguredWebPath(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	if err := settingService.SetWebPath("/panel/"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := loginRedirectPath(); got != "/panel/login" {
+		t.Fatalf("unexpected login redirect path: %q", got)
 	}
 }

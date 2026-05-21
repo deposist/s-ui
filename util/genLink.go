@@ -18,6 +18,8 @@ type LinkParam struct {
 	Value string
 }
 
+const defaultTUICUDPRelayMode = "quic"
+
 func LinkGenerator(clientConfig json.RawMessage, i *model.Inbound, hostname string) []string {
 	inbound, err := i.MarshalFull()
 	if err != nil {
@@ -351,6 +353,7 @@ func tuicLink(
 	password, _ := userConfig["password"].(string)
 	uuid, _ := userConfig["uuid"].(string)
 	baseUri := fmt.Sprintf("%s%s:%s@", "tuic://", uuid, password)
+	udpRelayMode := tuicUDPRelayMode(inbound)
 	var links []string
 
 	for _, addr := range addrs {
@@ -361,6 +364,9 @@ func tuicLink(
 		if congestionControl, ok := inbound["congestion_control"].(string); ok {
 			params = append(params, LinkParam{"congestion_control", congestionControl})
 		}
+		if udpRelayMode != "" {
+			params = append(params, LinkParam{"udp_relay_mode", udpRelayMode})
+		}
 
 		port, _ := addr["server_port"].(float64)
 		uri := fmt.Sprintf("%s%s:%.0f", baseUri, addr["server"].(string), port)
@@ -368,6 +374,36 @@ func tuicLink(
 	}
 
 	return links
+}
+
+func tuicUDPRelayMode(inbound map[string]interface{}) string {
+	if outJson, ok := inbound["out_json"].(json.RawMessage); ok {
+		var out map[string]interface{}
+		if err := json.Unmarshal(outJson, &out); err == nil {
+			if mode := normalizeTUICUDPRelayMode(out["udp_relay_mode"]); mode != "" {
+				return mode
+			}
+		}
+	}
+	if outJson, ok := inbound["out_json"].(map[string]interface{}); ok {
+		if mode := normalizeTUICUDPRelayMode(outJson["udp_relay_mode"]); mode != "" {
+			return mode
+		}
+	}
+	if mode := normalizeTUICUDPRelayMode(inbound["udp_relay_mode"]); mode != "" {
+		return mode
+	}
+	return defaultTUICUDPRelayMode
+}
+
+func normalizeTUICUDPRelayMode(value interface{}) string {
+	mode, _ := value.(string)
+	switch strings.TrimSpace(mode) {
+	case "native", "quic":
+		return strings.TrimSpace(mode)
+	default:
+		return ""
+	}
 }
 
 func vlessLink(

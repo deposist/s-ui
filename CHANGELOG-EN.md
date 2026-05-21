@@ -7,6 +7,168 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.3-beta] - 2026-05-20 - aggregated remediation + upstream parity (#1114)
+
+### Multi-chat delivery ledger (P0-P5)
+
+#### Security
+
+- [P0] Hardened SSRF filtering and dial-time validation; tightened backup
+  restore path/symlink checks.
+- [P1] Hardened CSRF/session lifecycle behavior, including token renewal after
+  logout/logout-all and tighter WS token handling.
+- [P2] Expanded secret/settings safety checks and migration guardrails.
+- [P3] Added listen fallback auditing and restart-path consistency hardening.
+
+#### Reliability / data integrity
+
+- [P0] Closed race-condition paths in tracker/session options/audit writer code.
+- [P1] Stabilized realtime fallback behavior and frontend unit-test harness.
+- [P2] Added reset hooks, tracker wait guards, and foreign-key migration checks.
+- [P3] Unified restart scheduling and reduced global side effects with an
+  initial DI slice.
+- [P4] Moved the remaining service runtime globals behind a DI-compatible
+  runtime while preserving zero-value service compatibility.
+- [P5] Completed the logging backend cleanup without changing API endpoint
+  behavior.
+
+#### API and runtime behavior
+
+- [P0] Improved trusted-proxy handling and safer import error classification.
+- [P1] Tightened realtime/session/CSRF flows and Telegram error taxonomy.
+- [P2] Normalized batching and timeout behavior in heavy data paths.
+- [P3] Added an initial slog adapter path for gradual migration from
+  go-logging.
+- [P4] Promoted `slog` to the logger facade, leaving `op/go-logging` isolated
+  behind deprecated compatibility APIs.
+- [P5] Removed deprecated `logger.InitLogger`/`logger.GetLogger`, moved facade
+  output fully onto standard `log/slog`, and kept panel/core log buffering.
+- [P5] Removed the legacy `github.com/op/go-logging` module from `go.mod` and
+  `go.sum`.
+- [P4] Added a checked sing-box tracker revalidation policy for
+  `github.com/sagernet/sing-box v1.13.11`.
+- [P4] Added a checked SemVer release/version policy and prevented migration
+  code from downgrading future `settings.version` values.
+
+#### Frontend
+
+- [P1] Fixed Vitest harness configuration in `frontend/vitest.config.ts`.
+- [P1/P2] Aligned CSRF cache clearing, request dedupe boundaries, and realtime
+  degraded-mode behavior.
+
+#### Tests and verification
+
+- Baseline and phase reports:
+  - `plans/lint-baseline.txt`
+  - `plans/lint-baseline-normalized.txt`
+  - `plans/fix-validation.txt` (P0)
+  - `plans/p1-validation.txt` (P1)
+  - `plans/p2-validation.txt` (P2)
+  - `plans/p3-architecture-validation.txt` (P3)
+  - `plans/p4-architecture-debt-validation.txt` (P4)
+  - `plans/p5-logging-cleanup-validation.txt` (P5)
+- Each phase includes targeted checks and a final command pass set in its
+  validation artifact.
+
+### Traceability (multi-chat policy)
+
+- Prefix each completed item with a phase tag: `[P0]`, `[P1]`, `[P2]`, `[P3]`, `[P4]`, `[P5]`.
+- Add references in this format: `(ref: <commit|PR|chat-id>)`.
+- Use combined tags for cross-phase items, for example `[P1/P2]`.
+- Keep deferred architecture items in a separate section and do not mix them
+  into completed bullets.
+
+### Upgrade notes (aggregate window)
+
+- Treat P0->P5 as one release window; create a full SQLite backup before
+  upgrade.
+- Validate behavior changes around session/CSRF/realtime and listen fallback in
+  staging before production rollout.
+- Use the phase validation files above as upgrade verification evidence.
+- External Go integrations that imported `logger.InitLogger` or
+  `logger.GetLogger` must migrate to `logger.Init(logger.Level*)`,
+  `logger.Slog(source)`, or `slog.Default()`.
+
+### Rollback (aggregate window)
+
+- Restore the pre-window SQLite snapshot and previous binary/image.
+- If rollback crosses session/token behavior changes, invalidate active sessions
+  after downgrade and rotate admin credentials.
+
+### Deferred architecture debt
+
+- [P5] No P5 scope item is deferred. The legacy `op/go-logging` dependency and
+  deprecated logger compatibility APIs have been removed.
+
+### Reusable template for next multi-chat release
+
+- Use domain sections: Security, Reliability/Data integrity, API/Runtime,
+  Frontend, Tests.
+- Tag each bullet with phase marker(s) and append traceability refs.
+- Add explicit `Upgrade notes` and `Rollback` for the full aggregated window.
+
+### Fixed
+
+- TUIC subscription/share links and Clash export now include `udp_relay_mode`,
+  preserving the configured value and defaulting generated links to `quic`
+  when it is absent.
+
+### Added
+
+- Scheduled and manual encrypted SQLite database backup to Telegram. The backup
+  passphrase is configured only in the Telegram tab, and the feature is off by
+  default. New settings and defaults: `telegramBackupEnabled="false"`,
+  `telegramBackupPassphrase=""`, `telegramBackupCron=""`,
+  `telegramBackupExcludeTables="stats,client_ips,audit_events,changes"`, and
+  `telegramBackupMaxSizeMB="45"`. New manual trigger routes:
+  `POST /api/telegram/backup/run` and `POST /apiv2/telegram/backup/run`.
+- Restore now auto-detects uploaded `SUI-TGBKP\x00` backup envelopes and shows
+  a Backup passphrase field in Backup & Restore. Plaintext `.db` uploads are
+  still accepted without that field.
+- The existing Backup button can optionally download the same encrypted
+  envelope via checkbox "Encrypt with Telegram backup passphrase". The checkbox
+  is unchecked by default, plaintext download behavior is preserved, and the
+  existing `getdb` endpoint uses the new non-breaking query parameter
+  `encryptTelegramBackup=true`.
+- The main release binary now includes `s-ui decrypt-backup` for offline
+  envelope decryption. No separate artifact is required.
+- `docs/scope-matrix.md` now documents the `tg_backup_run` operation.
+
+### Changed
+
+- BREAKING: legacy `POST /api/telegram/backup` and
+  `POST /apiv2/telegram/backup` now delegate to the new Telegram backup
+  service. `backupKey` is removed from every response,
+  `telegramBackupEnabled=true` is required, and successful responses include
+  `trigger="manual"`. There is no compatibility window. Strict migration step:
+  after upgrading, enable `telegramBackupEnabled` in the Telegram tab; otherwise
+  the legacy call returns HTTP 503 with `errorClass=disabled`.
+- `util/secretbox` now has `EncryptBytes` and `DecryptBytes` helpers for
+  byte-oriented secret handling.
+- `api/rateLimit.go` has a shared manual Telegram backup bucket for all four
+  manual trigger routes: 3 attempts per 60 seconds with `Retry-After`.
+- New audit event types: `tg_backup_sent`, `tg_backup_failed`,
+  `tg_backup_passphrase_changed`, `tg_backup_manual_encrypted`, and
+  `tg_backup_restore_failed`.
+
+### Upgrade notes
+
+- Back up the SQLite database before upgrading. If using the system service,
+  stop `s-ui`, copy `s-ui.db` plus any `-wal`/`-shm` sidecars, then start the
+  service again.
+- Telegram database backup remains disabled until `telegramBackupEnabled` is
+  turned on in the Telegram tab and a Backup passphrase is configured.
+- Existing integrations that call the legacy Telegram backup endpoints must
+  handle the removed `backupKey` field and the new HTTP 503 `disabled` response
+  until the setting is enabled.
+
+### Rollback
+
+- Restore the pre-upgrade SQLite backup and previous binary/image if rollback
+  is required.
+- Encrypted `.db.aes` files remain decryptable with the passphrase that created
+  them via any binary containing `s-ui decrypt-backup`.
+
 ## [1.5.2-beta-hotfix2] - 2026-05-18 - drop legacy client_ips unique index
 
 ### Fixed
@@ -338,7 +500,7 @@ schema unchanged.
 
 This release rewrites large parts of the auth, transaction, and runtime
 control flow, hardens the external-subscription fetcher against SSRF,
-and renames the Go module to `github.com/deposist/s-ui-rus-inst`.
+and renames the Go module to `github.com/deposist/s-ui-x`.
 
 The full backend test suite (`go test`, `go test -race`,
 `go test -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale"`)
@@ -372,7 +534,7 @@ and the full frontend pipeline (`npm ci`, `npm run build`, `npm run lint`,
 
 ### Breaking / behaviour changes
 
-- **Module path**: `github.com/admin8800/s-ui` → `github.com/deposist/s-ui-rus-inst`.
+- **Module path**: `github.com/alireza0/s-ui` → `github.com/deposist/s-ui-x`.
   Source consumers must update imports. Pre-built binaries are unaffected.
 - **Default admin password**: on a fresh database, a random 24-character
   password is generated. Look for the line
@@ -468,9 +630,9 @@ and the full frontend pipeline (`npm ci`, `npm run build`, `npm run lint`,
 
 ### Repository / packaging
 
-- Go module renamed to `github.com/deposist/s-ui-rus-inst`; all internal imports updated.
+- Go module renamed to `github.com/deposist/s-ui-x`; all internal imports updated.
 - `frontend/go.mod` keeps root-level `go` commands away from `frontend/node_modules`.
-- README, `install.sh`, `s-ui.sh`, `docker-compose.yml` updated to point at `https://github.com/deposist/s-ui-rus-inst` and `ghcr.io/deposist/s-ui-rus-inst`.
+- README, `install.sh`, `s-ui.sh`, `docker-compose.yml` updated to point at `https://github.com/deposist/s-ui-x` and `ghcr.io/deposist/s-ui-x`.
 
 ### Tests
 
@@ -516,7 +678,7 @@ schema in the same flow.
 2. Stop the service: `systemctl stop s-ui`.
 3. Replace the binary or the docker image with the new build:
    - manual: extract the new tarball into `/usr/local/s-ui/`;
-   - docker: bump the image tag to `ghcr.io/deposist/s-ui-rus-inst` and `docker compose pull && docker compose up -d`.
+   - docker: bump the image tag to `ghcr.io/deposist/s-ui-x` and `docker compose pull && docker compose up -d`.
 4. Start the service: `systemctl start s-ui`.
 5. Log in as usual. Your password is stored in plaintext today; the
    panel hashes it transparently on first successful login.
@@ -531,7 +693,7 @@ What you should review after the upgrade:
 - If you fetch external subscriptions from a private endpoint
   (`http://127.0.0.1:…/sub` etc.), set `SUI_ALLOW_PRIVATE_SUB_URLS=true`.
 - If you used the old install / update script (`deposist/s-ui`), grab
-  the new one once: `wget -O /usr/bin/s-ui https://raw.githubusercontent.com/deposist/s-ui-rus-inst/main/s-ui.sh && chmod +x /usr/bin/s-ui`.
+  the new one once: `wget -O /usr/bin/s-ui https://raw.githubusercontent.com/deposist/s-ui-x/main/s-ui.sh && chmod +x /usr/bin/s-ui`.
 
 ## Rollback
 

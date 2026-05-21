@@ -1,0 +1,103 @@
+P5 logging cleanup validation - 2026-05-20
+
+Environment:
+- OS: Windows
+- Workspace: C:\s-ui-main-deposist
+- CGO/race: supported; `go test -race` was executed.
+
+Scope:
+- P5.1 removed deprecated logger compatibility APIs `InitLogger` and
+  `GetLogger`.
+- P5.2 moved the remaining logger backend path from `github.com/op/go-logging`
+  to the standard `log/slog` facade/handler path while preserving panel/core
+  log buffering.
+- P5.3 removed `github.com/op/go-logging` from `go.mod`, `go.sum`, and the Go
+  module graph.
+- P5.4 updated `plans/code-review-and-fixplan.md`,
+  `CHANGELOG-EN.md`, `CHANGELOG-RU.md`, and `CHANGELOG-ZH.md`.
+
+Implementation notes:
+- `logger.Init` now configures `slog.Default` and the shared backend level.
+- Facade calls (`Debug`, `Info`, `Warning`, `Error`, and core variants) use
+  `slog` levels and keep the existing in-memory ring buffer behavior.
+- Supported Unix platforms use standard-library `log/syslog`; unsupported
+  platforms and syslog failures fall back to stderr.
+- Repository search found no internal callers of `InitLogger` or `GetLogger`.
+  Migration note for external Go consumers was added to the plan and changelogs.
+
+Targeted validation:
+
+Command:
+rg -n "github\.com/op/go-logging|\bInitLogger\b|\bGetLogger\b|go-logging|logging\." --glob "*.go" --glob "go.mod" --glob "go.sum"
+Result: PASS (no matches)
+
+Command:
+go list -m all | rg "github\.com/op/go-logging"
+Result: PASS (no matches)
+
+Command:
+go test ./logger
+Result: PASS
+
+Command:
+go test ./app ./service -run "Slog|Logs|ConfigCore|ConfigSave|NoTest"
+Result: PASS
+
+Command:
+go test ./api ./web -run "Logs|LoadData|Session|NoTest"
+Result: PASS
+
+Final validation gate:
+
+Command:
+go test ./...
+Result: PASS
+
+Command:
+go test -race ./...
+First run:
+- Non-code assertion failure only: Windows `t.TempDir()` cleanup reported
+  `directory is not empty` in `database/importxui`
+  (`TestImport_Wireguard_AsEndpoint`).
+- No race report was emitted.
+
+Isolated rerun:
+go test -race ./database/importxui -run TestImport_Wireguard_AsEndpoint -count=1 -v
+Result: PASS
+
+Second full run:
+go test -race ./...
+Result: PASS
+
+Command:
+go vet ./...
+Result: PASS
+
+Command:
+go build ./...
+Result: PASS
+
+Command:
+cd frontend && npm run lint
+Result: PASS
+
+Command:
+cd frontend && npm run test:unit
+Result: PASS
+- Test files: 5 passed
+- Tests: 20 passed
+
+Command:
+cd frontend && npm run build
+Result: PASS
+- Vite emitted a plugin timing warning for Vuetify/CSS work; non-blocking.
+
+Deferred:
+- No P5 scope item deferred.
+
+Residual risks / notes:
+- `logger.InitLogger` and `logger.GetLogger` are removed intentionally. External
+  Go integrations that imported them must migrate to `logger.Init`,
+  `logger.Slog(source)`, or `slog.Default()`.
+- Syslog support now uses the Go standard library on supported Unix platforms;
+  unsupported platforms use the existing stderr fallback path.

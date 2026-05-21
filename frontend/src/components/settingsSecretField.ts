@@ -30,7 +30,7 @@ export const stripSecretPlaceholders = <T extends SettingsMap>(settings: T): T &
   for (const key of Object.keys(stripped)) {
     const secretKey = secretKeyFromMarker(key)
     if (!secretKey) continue
-    if (stripped[secretKey] === STORED_SECRET_PLACEHOLDER) {
+    if (stripped[secretKey] === STORED_SECRET_PLACEHOLDER && secretKey !== 'telegramBackupPassphrase') {
       stripped[secretKey] = ''
     }
   }

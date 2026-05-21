@@ -87,10 +87,8 @@ const login = async () => {
   loading.value=true
   const response = await HttpUtil.post('api/login',{user: username.value, pass: password.value})
   if(response.success){
-    setTimeout(() => {
-      loading.value=false
-      router.push('/')
-    }, 500)
+    loading.value=false
+    router.push('/')
   } else {
     loading.value=false
   }

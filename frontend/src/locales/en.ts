@@ -68,6 +68,23 @@ export default {
     report: "Report",
     reportCron: "Report Cron",
     securityWarning: "Telegram is disabled by default. Proxy URLs are validated server-side; tokens and proxy credentials are stored as secret fields.",
+    backup: {
+      title: "Database backup to Telegram",
+      enabled: "Telegram backup",
+      passphrase: "Backup passphrase",
+      passphraseHint: "This passphrase encrypts all backups sent to Telegram and optional manual backups from Backup & Restore. Remember it: without it, Telegram files cannot be restored in the panel or locally. Panel restore: upload the file in Backup & Restore and enter this passphrase. Local decrypt: use the main binary subcommand s-ui decrypt-backup.",
+      cron: "Backup Cron",
+      cronInvalid: "Use a 5-field cron expression; steps must be at least 1 minute.",
+      excludeTables: "Excluded tables",
+      maxSize: "Maximum size",
+      sendNow: "Send now",
+      tables: {
+        stats: "Stats",
+        client_ips: "Client IPs",
+        audit_events: "Audit events",
+        changes: "Changes",
+      },
+    },
   },
   audit: {
     title: "Audit",
@@ -116,6 +133,9 @@ export default {
       restore: "Restore Backup",
       exclStats: "Exclude graphs",
       exclChanges: "Exclude changes",
+      encryptTelegram: "Encrypt with Telegram backup passphrase",
+      encryptDisabledHint: "Set Backup passphrase in the Telegram tab",
+      restorePassphrase: "Backup passphrase",
       sbConfig: "Download Sing-Box Config",
       xui: {
         title: "Migrate from 3x-ui",

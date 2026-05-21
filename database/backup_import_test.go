@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database/model"
 	"github.com/deposist/s-ui-rus-inst/util/common"
@@ -68,6 +70,52 @@ func newLegacyBackup(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+func TestImportDBRunsResetHooks(t *testing.T) {
+	dbDir, err := os.MkdirTemp("", "s-ui-import-reset-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	livePath := filepath.Join(dbDir, "s-ui.db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	t.Cleanup(func() {
+		closeMainDB(t)
+		time.Sleep(25 * time.Millisecond)
+		_ = os.RemoveAll(dbDir)
+	})
+
+	if err := InitDB(livePath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+
+	prev := sendSighupHook
+	sendSighupHook = func() error { return nil }
+	t.Cleanup(func() { sendSighupHook = prev })
+
+	backupBytes, err := GetDb("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var calls atomic.Int32
+	const hookName = "test.import_db_reset_hooks"
+	RegisterResetHook(hookName, func() {
+		calls.Add(1)
+	})
+	t.Cleanup(func() {
+		RegisterResetHook(hookName, nil)
+	})
+
+	if err := ImportDB(memMultipartFile{Reader: bytes.NewReader(backupBytes)}); err != nil {
+		t.Fatalf("ImportDB returned error: %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("reset hook calls=%d, want 1", got)
+	}
 }
 
 func TestImportDBAdaptsLegacyBackup(t *testing.T) {

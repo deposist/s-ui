@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
 	"github.com/deposist/s-ui-rus-inst/util/common"
 )
@@ -71,6 +72,10 @@ type observabilityStore struct {
 var observabilityHistory = newObservabilityStore()
 var observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, time.Now)
 
+func init() {
+	database.RegisterResetHook("service.observability", resetObservabilityCaches)
+}
+
 type observabilityMemoryCapCacheState struct {
 	capMB             atomic.Int64
 	expiresAtUnixNano atomic.Int64
@@ -98,6 +103,16 @@ func newObservabilityStore() *observabilityStore {
 		core:                 newObservabilityRings[CoreSample](caps),
 		lastAppliedMemoryCap: observabilityDefaultMemoryCapMB,
 	}
+}
+
+func resetObservabilityCaches() {
+	observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, time.Now)
+	observabilityHistory.mu.Lock()
+	observabilityHistory.lastMemoryWarnCapMB = 0
+	observabilityHistory.lastMemoryWarnUnix = 0
+	observabilityHistory.lastAppliedMemoryCap = observabilityDefaultMemoryCapMB
+	observabilityHistory.applyCaps(capsForObservabilityMemory(observabilityDefaultMemoryCapMB), observabilityDefaultMemoryCapMB)
+	observabilityHistory.mu.Unlock()
 }
 
 func (s *ObservabilityService) CurrentObservabilitySample() ObservabilitySample {

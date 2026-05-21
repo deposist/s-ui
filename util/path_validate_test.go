@@ -26,6 +26,16 @@ func TestValidatePathRejectsUnsafeInput(t *testing.T) {
 	}
 }
 
+func TestValidatePathReportsReservedPrefix(t *testing.T) {
+	err := ValidatePath("/assets/app.js", ReservedPathPrefixes)
+	if err == nil {
+		t.Fatal("expected path to be rejected")
+	}
+	if err.Error() != "reserved path prefix: /assets/" {
+		t.Fatalf("unexpected error: %q", err.Error())
+	}
+}
+
 func TestValidatePathAcceptsSafeInput(t *testing.T) {
 	tests := []string{
 		"/",

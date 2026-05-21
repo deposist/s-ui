@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/database/model"
@@ -41,6 +42,7 @@ func closeSubTestDB(db *gorm.DB) {
 	}
 	if sqlDB, err := db.DB(); err == nil {
 		_ = sqlDB.Close()
+		time.Sleep(25 * time.Millisecond)
 	}
 }
 

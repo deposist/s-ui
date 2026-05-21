@@ -2,27 +2,70 @@ package logger
 
 import (
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/op/go-logging"
 )
 
 var (
-	logger      *logging.Logger
+	defaultSlog *slog.Logger
+	logConfigMu sync.RWMutex
+	logConfig   = loggerConfig{minLevel: slog.LevelDebug}
 	logBufferMu sync.RWMutex
 	logBuffer   = newLogRingBuffer(logBufferCapacity)
 )
 
 const logBufferCapacity = 10240
 
+type Level string
+
+const (
+	LevelDebug   Level = "debug"
+	LevelInfo    Level = "info"
+	LevelWarning Level = "warning"
+	LevelError   Level = "error"
+)
+
 type bufferedLog struct {
 	time   string
-	level  logging.Level
+	level  slog.Level
 	source string
 	log    string
+}
+
+type loggerConfig struct {
+	backend  logBackend
+	minLevel slog.Level
+}
+
+type logBackend interface {
+	Log(t time.Time, level slog.Level, message string)
+}
+
+type streamBackend struct {
+	writer      io.Writer
+	includeTime bool
+	mu          sync.Mutex
+}
+
+func newStreamBackend(writer io.Writer, includeTime bool) *streamBackend {
+	return &streamBackend{writer: writer, includeTime: includeTime}
+}
+
+func (b *streamBackend) Log(t time.Time, level slog.Level, message string) {
+	if t.IsZero() {
+		t = time.Now()
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.includeTime {
+		fmt.Fprintf(b.writer, "%s %s - %s\n", t.Format("2006/01/02 15:04:05"), slogLevelName(level), message)
+		return
+	}
+	fmt.Fprintf(b.writer, "%s - %s\n", slogLevelName(level), message)
 }
 
 type logRingBuffer struct {
@@ -40,116 +83,61 @@ func newLogRingBuffer(capacity int) *logRingBuffer {
 	}
 }
 
-func InitLogger(level logging.Level) {
-	newLogger := logging.MustGetLogger("s-ui")
-	var err error
-	var backend logging.Backend
-	var format logging.Formatter
+func Init(level Level) {
+	backend := initBackend()
+	panelLogger := Slog("panel")
 
-	_, inContainer := os.LookupEnv("container")
-	if !inContainer {
-		if _, statErr := os.Stat("/.dockerenv"); statErr == nil {
-			inContainer = true
-		}
+	logConfigMu.Lock()
+	logConfig = loggerConfig{
+		backend:  backend,
+		minLevel: levelToSlog(level),
 	}
-	if inContainer {
-		backend = logging.NewLogBackend(os.Stderr, "", 0)
-		format = logging.MustStringFormatter(`%{time:2006/01/02 15:04:05} %{level} - %{message}`)
-	} else {
-		backend, err = logging.NewSyslogBackend("")
-		if err != nil {
-			fmt.Println("Unable to use syslog: " + err.Error())
-			backend = logging.NewLogBackend(os.Stderr, "", 0)
-		}
-		if err != nil {
-			format = logging.MustStringFormatter(`%{time:2006/01/02 15:04:05} %{level} - %{message}`)
-		} else {
-			format = logging.MustStringFormatter(`%{level} - %{message}`)
-		}
-	}
+	defaultSlog = panelLogger
+	logConfigMu.Unlock()
 
-	backendFormatter := logging.NewBackendFormatter(backend, format)
-	backendLeveled := logging.AddModuleLevel(backendFormatter)
-	backendLeveled.SetLevel(level, "s-ui")
-	newLogger.SetBackend(backendLeveled)
-
-	logger = newLogger
+	slog.SetDefault(panelLogger)
 }
 
-func GetLogger() *logging.Logger {
-	return logger
+func Default() *slog.Logger {
+	logConfigMu.RLock()
+	current := defaultSlog
+	logConfigMu.RUnlock()
+	if current != nil {
+		return current
+	}
+	return Slog("panel")
 }
 
 func Debug(args ...interface{}) {
-	if logger == nil {
-		fmt.Println(append([]interface{}{"DEBUG -"}, args...)...)
-		return
-	}
-	logger.Debug(args...)
-	addToBuffer("panel", "DEBUG", fmt.Sprint(args...))
+	logWithSource("panel", slog.LevelDebug, fmt.Sprint(args...))
 }
 
 func Debugf(format string, args ...interface{}) {
-	if logger == nil {
-		fmt.Printf("DEBUG - "+format+"\n", args...)
-		return
-	}
-	logger.Debugf(format, args...)
-	addToBuffer("panel", "DEBUG", fmt.Sprintf(format, args...))
+	logWithSource("panel", slog.LevelDebug, fmt.Sprintf(format, args...))
 }
 
 func Info(args ...interface{}) {
-	if logger == nil {
-		fmt.Println(append([]interface{}{"INFO -"}, args...)...)
-		return
-	}
-	logger.Info(args...)
-	addToBuffer("panel", "INFO", fmt.Sprint(args...))
+	logWithSource("panel", slog.LevelInfo, fmt.Sprint(args...))
 }
 
 func Infof(format string, args ...interface{}) {
-	if logger == nil {
-		fmt.Printf("INFO - "+format+"\n", args...)
-		return
-	}
-	logger.Infof(format, args...)
-	addToBuffer("panel", "INFO", fmt.Sprintf(format, args...))
+	logWithSource("panel", slog.LevelInfo, fmt.Sprintf(format, args...))
 }
 
 func Warning(args ...interface{}) {
-	if logger == nil {
-		fmt.Println(append([]interface{}{"WARNING -"}, args...)...)
-		return
-	}
-	logger.Warning(args...)
-	addToBuffer("panel", "WARNING", fmt.Sprint(args...))
+	logWithSource("panel", slog.LevelWarn, fmt.Sprint(args...))
 }
 
 func Warningf(format string, args ...interface{}) {
-	if logger == nil {
-		fmt.Printf("WARNING - "+format+"\n", args...)
-		return
-	}
-	logger.Warningf(format, args...)
-	addToBuffer("panel", "WARNING", fmt.Sprintf(format, args...))
+	logWithSource("panel", slog.LevelWarn, fmt.Sprintf(format, args...))
 }
 
 func Error(args ...interface{}) {
-	if logger == nil {
-		fmt.Println(append([]interface{}{"ERROR -"}, args...)...)
-		return
-	}
-	logger.Error(args...)
-	addToBuffer("panel", "ERROR", fmt.Sprint(args...))
+	logWithSource("panel", slog.LevelError, fmt.Sprint(args...))
 }
 
 func Errorf(format string, args ...interface{}) {
-	if logger == nil {
-		fmt.Printf("ERROR - "+format+"\n", args...)
-		return
-	}
-	logger.Errorf(format, args...)
-	addToBuffer("panel", "ERROR", fmt.Sprintf(format, args...))
+	logWithSource("panel", slog.LevelError, fmt.Sprintf(format, args...))
 }
 
 func CoreDebug(args ...interface{}) {
@@ -169,32 +157,68 @@ func CoreError(args ...interface{}) {
 }
 
 func logCore(level string, message string) {
-	if logger == nil {
-		fmt.Println(level+" -", message)
+	logWithSource("core", parseSlogLevel(level), message)
+}
+
+func logWithSource(source string, level slog.Level, message string) {
+	t := time.Now()
+	writeConfiguredLog(t, level, message)
+	addToBufferAt(source, level, message, t)
+}
+
+func writeConfiguredLog(t time.Time, level slog.Level, message string) {
+	backend, minLevel := currentLogConfig()
+	if level < minLevel {
 		return
 	}
-	switch level {
-	case "DEBUG":
-		logger.Debug(message)
-	case "INFO":
-		logger.Info(message)
-	case "WARNING":
-		logger.Warning(message)
-	case "ERROR":
-		logger.Error(message)
+	backend.Log(t, level, message)
+}
+
+func currentLogConfig() (logBackend, slog.Level) {
+	logConfigMu.RLock()
+	backend := logConfig.backend
+	minLevel := logConfig.minLevel
+	logConfigMu.RUnlock()
+
+	if backend == nil {
+		backend = newStreamBackend(os.Stdout, false)
 	}
-	addToBuffer("core", level, message)
+	return backend, minLevel
+}
+
+func initBackend() logBackend {
+	_, inContainer := os.LookupEnv("container")
+	if !inContainer {
+		if _, statErr := os.Stat("/.dockerenv"); statErr == nil {
+			inContainer = true
+		}
+	}
+	if inContainer {
+		return newStreamBackend(os.Stderr, true)
+	}
+
+	backend, err := newSyslogBackend()
+	if err == nil {
+		return backend
+	}
+	fmt.Println("Unable to use syslog: " + err.Error())
+	return newStreamBackend(os.Stderr, true)
 }
 
 func addToBuffer(source string, level string, newLog string) {
-	t := time.Now()
+	addToBufferAt(source, parseSlogLevel(level), newLog, time.Now())
+}
+
+func addToBufferAt(source string, level slog.Level, newLog string, t time.Time) {
+	if t.IsZero() {
+		t = time.Now()
+	}
 	logBufferMu.Lock()
 	defer logBufferMu.Unlock()
 
-	logLevel, _ := logging.LogLevel(level)
 	logBuffer.append(bufferedLog{
 		time:   t.Format("2006/01/02 15:04:05"),
-		level:  logLevel,
+		level:  level,
 		source: source,
 		log:    newLog,
 	})
@@ -206,7 +230,7 @@ func GetLogs(c int, level string) []string {
 
 func GetLogsFiltered(c int, level string, source string, filter string) []string {
 	var output []string
-	logLevel, _ := logging.LogLevel(level)
+	minLevel := parseSlogLevel(level)
 
 	logBufferMu.RLock()
 	snapshot := logBuffer.snapshot()
@@ -220,11 +244,37 @@ func GetLogsFiltered(c int, level string, source string, filter string) []string
 		if filter != "" && !strings.Contains(entry.log, filter) {
 			continue
 		}
-		if entry.level <= logLevel {
-			output = append(output, fmt.Sprintf("%s %s - %s", entry.time, entry.level, entry.log))
+		if entry.level >= minLevel {
+			output = append(output, fmt.Sprintf("%s %s - %s", entry.time, slogLevelName(entry.level), entry.log))
 		}
 	}
 	return output
+}
+
+func parseSlogLevel(level string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warning", "warn":
+		return slog.LevelWarn
+	case "error", "critical":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+func levelToSlog(level Level) slog.Level {
+	switch level {
+	case LevelDebug:
+		return slog.LevelDebug
+	case LevelWarning:
+		return slog.LevelWarn
+	case LevelError:
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 func (r *logRingBuffer) append(entry bufferedLog) {

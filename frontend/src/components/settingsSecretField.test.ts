@@ -19,10 +19,13 @@ describe('settings secret field helpers', () => {
     const settings = normalizeSecretFields({
       telegramBotTokenHasSecret: 'true',
       telegramProxyPasswordHasSecret: 'false',
+      telegramBackupPassphraseHasSecret: 'true',
+      telegramBackupPassphrase: STORED_SECRET_PLACEHOLDER,
     })
 
     expect(settings.telegramBotToken).toBe('')
     expect(settings.telegramProxyPassword).toBe('')
+    expect(settings.telegramBackupPassphrase).toBe(STORED_SECRET_PLACEHOLDER)
   })
 
   it('does not submit the stored placeholder as a secret value', () => {
@@ -34,5 +37,14 @@ describe('settings secret field helpers', () => {
 
     expect(settings.telegramBotToken).toBe('')
     expect(settings.telegramChatID).toBe('42')
+  })
+
+  it('keeps the Telegram backup stored marker so save does not clear it', () => {
+    const settings = stripSecretPlaceholders({
+      telegramBackupPassphraseHasSecret: 'true',
+      telegramBackupPassphrase: STORED_SECRET_PLACEHOLDER,
+    })
+
+    expect(settings.telegramBackupPassphrase).toBe(STORED_SECRET_PLACEHOLDER)
   })
 })

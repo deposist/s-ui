@@ -68,6 +68,23 @@ export default {
     report: "报告",
     reportCron: "报告 Cron",
     securityWarning: "Telegram 默认关闭。代理 URL 会在服务端校验；Token 和代理凭据以 secret 字段存储。",
+    backup: {
+      title: "数据库备份到 Telegram",
+      enabled: "Telegram 备份",
+      passphrase: "备份密码短语",
+      passphraseHint: "此密码短语会加密发送到 Telegram 的所有备份，也可加密 Backup & Restore 中的手动备份。请牢记它：没有它，Telegram 文件无法在面板或本地恢复。面板恢复：在 Backup & Restore 上传文件并输入此密码。 本地解密：使用主程序子命令 s-ui decrypt-backup。",
+      cron: "备份 Cron",
+      cronInvalid: "请使用 5 字段 cron 表达式；步长至少为 1 分钟。",
+      excludeTables: "排除表",
+      maxSize: "最大大小",
+      sendNow: "立即发送",
+      tables: {
+        stats: "统计",
+        client_ips: "客户端 IP",
+        audit_events: "审计事件",
+        changes: "变更",
+      },
+    },
   },
   audit: {
     title: "审计",
@@ -116,6 +133,9 @@ export default {
       restore: "恢复备份",
       exclStats: "排除图表数据",
       exclChanges: "排除变更数据",
+      encryptTelegram: "使用 Telegram 备份密码短语加密",
+      encryptDisabledHint: "请先在 Telegram 标签页设置备份密码短语",
+      restorePassphrase: "备份密码短语",
       sbConfig: "下载 Sing-Box 配置",
       xui: {
         title: "从 3x-ui 迁移",

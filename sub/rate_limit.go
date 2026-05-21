@@ -2,7 +2,9 @@ package sub
 
 import (
 	"net/http"
+	"net/netip"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,8 @@ const (
 	rateLimitWindow          = time.Minute
 	defaultRateLimitRequests = 60
 	rateLimitSettingTTL      = time.Minute
+	rateLimitMaxKeys         = 4096
+	rateLimitGCEvery         = time.Minute
 )
 
 type rateBucket struct {
@@ -25,6 +29,7 @@ type rateBucket struct {
 var (
 	rateLimitMu      sync.Mutex
 	rateLimitBuckets = map[string]rateBucket{}
+	rateLimitGC      time.Time
 
 	rateLimitSettingMu sync.Mutex
 	rateLimitSetting   = struct {
@@ -35,15 +40,22 @@ var (
 
 func rateLimitMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
+		ip := canonicalClientIP(c.ClientIP())
+		if ip == "" {
+			ip = c.ClientIP()
+		}
 		now := time.Now()
 		rateLimitMu.Lock()
+		gcRateLimitBucketsLocked(now)
 		bucket := rateLimitBuckets[ip]
 		if now.Sub(bucket.windowStart) >= rateLimitWindow {
 			bucket = rateBucket{windowStart: now}
 		}
 		bucket.count++
 		rateLimitBuckets[ip] = bucket
+		if len(rateLimitBuckets) > rateLimitMaxKeys {
+			enforceRateLimitBucketCapLocked()
+		}
 		limit := currentRateLimitRequests(now)
 		allowed := bucket.count <= limit
 		retryAfter := int(bucket.windowStart.Add(rateLimitWindow).Sub(now).Seconds())
@@ -61,14 +73,52 @@ func rateLimitMiddleware() gin.HandlerFunc {
 	}
 }
 
+func canonicalClientIP(value string) string {
+	value = strings.TrimSpace(strings.Trim(value, "[]"))
+	if value == "" || strings.Contains(value, "%") {
+		return ""
+	}
+	addr, err := netip.ParseAddr(value)
+	if err != nil || addr.Zone() != "" {
+		return ""
+	}
+	return addr.Unmap().String()
+}
+
 func resetRateLimitBucketsForTest() {
 	rateLimitMu.Lock()
 	defer rateLimitMu.Unlock()
 	rateLimitBuckets = map[string]rateBucket{}
+	rateLimitGC = time.Time{}
 	rateLimitSettingMu.Lock()
 	defer rateLimitSettingMu.Unlock()
 	rateLimitSetting.limit = 0
 	rateLimitSetting.expiresAt = time.Time{}
+}
+
+func gcRateLimitBucketsLocked(now time.Time) {
+	if now.Sub(rateLimitGC) < rateLimitGCEvery && len(rateLimitBuckets) < rateLimitMaxKeys {
+		return
+	}
+	rateLimitGC = now
+	for ip, bucket := range rateLimitBuckets {
+		if now.Sub(bucket.windowStart) >= rateLimitWindow {
+			delete(rateLimitBuckets, ip)
+		}
+	}
+	enforceRateLimitBucketCapLocked()
+}
+
+func enforceRateLimitBucketCapLocked() {
+	if len(rateLimitBuckets) <= rateLimitMaxKeys {
+		return
+	}
+	for ip := range rateLimitBuckets {
+		delete(rateLimitBuckets, ip)
+		if len(rateLimitBuckets) <= rateLimitMaxKeys {
+			return
+		}
+	}
 }
 
 func currentRateLimitRequests(now time.Time) int {

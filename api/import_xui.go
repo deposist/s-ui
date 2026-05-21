@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ import (
 
 const (
 	maxXUIImportBytes = 200 << 20
+	maxXUIFieldBytes  = 8 << 20
 	xuiRequestWindow  = time.Minute
 	xuiRequestMax     = 5
 	xuiRequestTimeout = 10 * time.Minute
@@ -44,10 +46,29 @@ type xuiAttempt struct {
 	WindowAt time.Time
 }
 
+type xuiFieldTooLargeError struct {
+	Field string
+	Limit int64
+}
+
+func (e *xuiFieldTooLargeError) Error() string {
+	return "payload_too_large: field " + e.Field + " exceeds " + strconv.FormatInt(e.Limit, 10) + " bytes"
+}
+
 var (
 	xuiRateMu sync.Mutex
 	xuiRates  = map[string]xuiAttempt{}
 )
+
+func init() {
+	database.RegisterResetHook("api.xui_rates", resetXUIRateLimitCache)
+}
+
+func resetXUIRateLimitCache() {
+	xuiRateMu.Lock()
+	defer xuiRateMu.Unlock()
+	xuiRates = map[string]xuiAttempt{}
+}
 
 func (a *ApiService) ImportXui(c *gin.Context) {
 	ctx, cancel, ok := a.beginXUIRequest(c)
@@ -312,18 +333,29 @@ func saveXUIUpload(c *gin.Context) (*xuiUpload, error) {
 			upload.SHA256 = hex.EncodeToString(hash.Sum(nil))
 			continue
 		}
-		value, err := io.ReadAll(io.LimitReader(part, 1<<20))
+		value, err := readXUIField(part, name, maxXUIFieldBytes)
 		if err != nil {
 			_ = os.RemoveAll(dir)
 			return nil, err
 		}
-		upload.Fields[name] = string(value)
+		upload.Fields[name] = value
 	}
 	if upload.Path == "" {
 		_ = os.RemoveAll(dir)
 		return nil, errors.New("missing db file")
 	}
 	return upload, nil
+}
+
+func readXUIField(part *multipart.Part, name string, limit int64) (string, error) {
+	value, err := io.ReadAll(io.LimitReader(part, limit+1))
+	if err != nil {
+		return "", err
+	}
+	if int64(len(value)) > limit {
+		return "", &xuiFieldTooLargeError{Field: name, Limit: limit}
+	}
+	return string(value), nil
 }
 
 func validateSQLiteFile(path string) error {
@@ -359,8 +391,11 @@ func (a *ApiService) recordXuiImportFailure(c *gin.Context, err error, sha strin
 func xuiImportError(c *gin.Context, err error) {
 	status := http.StatusBadRequest
 	var maxBytesErr *http.MaxBytesError
+	var fieldTooLargeErr *xuiFieldTooLargeError
 	switch {
 	case errors.As(err, &maxBytesErr):
+		status = http.StatusRequestEntityTooLarge
+	case errors.As(err, &fieldTooLargeErr):
 		status = http.StatusRequestEntityTooLarge
 	case strings.Contains(err.Error(), "request body too large"):
 		status = http.StatusRequestEntityTooLarge
@@ -377,8 +412,9 @@ func xuiImportError(c *gin.Context, err error) {
 
 func xuiImportErrorClass(err error) string {
 	var maxBytesErr *http.MaxBytesError
+	var fieldTooLargeErr *xuiFieldTooLargeError
 	switch {
-	case errors.As(err, &maxBytesErr), strings.Contains(err.Error(), "request body too large"):
+	case errors.As(err, &maxBytesErr), errors.As(err, &fieldTooLargeErr), strings.Contains(err.Error(), "request body too large"):
 		return "payload_too_large"
 	case errors.Is(err, importxui.ErrBusy), strings.Contains(err.Error(), "xui_import_busy"):
 		return "busy"
@@ -403,7 +439,22 @@ func validateRollbackPath(path string) error {
 	if path == "" {
 		return errors.New("missing backup path")
 	}
-	abs, err := filepath.Abs(path)
+	abs, err := filepath.Abs(filepath.Clean(path))
+	if err != nil {
+		return err
+	}
+	info, err := os.Lstat(abs)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return errors.New("invalid backup path")
+	}
+	realPath, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return err
+	}
+	realPath, err = filepath.Abs(realPath)
 	if err != nil {
 		return err
 	}
@@ -411,7 +462,15 @@ func validateRollbackPath(path string) error {
 	if err != nil {
 		return err
 	}
-	if filepath.Dir(abs) != baseDir || !strings.HasPrefix(filepath.Base(abs), "s-ui-pre-xui-import-") || filepath.Ext(abs) != ".db" {
+	realBaseDir, err := filepath.EvalSymlinks(baseDir)
+	if err != nil {
+		return err
+	}
+	realBaseDir, err = filepath.Abs(realBaseDir)
+	if err != nil {
+		return err
+	}
+	if filepath.Dir(realPath) != realBaseDir || !strings.HasPrefix(filepath.Base(realPath), "s-ui-pre-xui-import-") || filepath.Ext(realPath) != ".db" {
 		return errors.New("invalid backup path")
 	}
 	return nil

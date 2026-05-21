@@ -48,6 +48,12 @@ func (c *CronJob) Start(loc *time.Location, trafficAge int) error {
 	if _, err := c.cron.AddJob("@every 1m", reportScheduler); err != nil {
 		return err
 	}
+	// Telegram encrypted database backup dynamic replanning
+	backupScheduler := NewTelegramBackupScheduler(c.cron)
+	backupScheduler.Run()
+	if _, err := c.cron.AddJob("@every 1m", backupScheduler); err != nil {
+		return err
+	}
 	// database WAL checkpoint
 	if _, err := c.cron.AddJob("@every 10m", NewWALCheckpointJob()); err != nil {
 		return err

@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/deposist/s-ui-rus-inst/config"
+	"github.com/deposist/s-ui-rus-inst/database"
 	"github.com/deposist/s-ui-rus-inst/logger"
 )
 
@@ -46,6 +46,18 @@ var versionCheckState = struct {
 }{
 	client: &http.Client{Timeout: versionCheckTimeout},
 	url:    versionCheckURL,
+}
+
+func init() {
+	database.RegisterResetHook("service.version_check", resetVersionCheckCache)
+}
+
+func resetVersionCheckCache() {
+	versionCheckState.Lock()
+	defer versionCheckState.Unlock()
+	versionCheckState.checkedAt = time.Time{}
+	versionCheckState.latest = ""
+	versionCheckState.releaseURL = ""
 }
 
 func (s *VersionService) GetVersionInfo() VersionInfo {
@@ -122,55 +134,5 @@ func fetchLatestRelease(client *http.Client, url string) (string, string, error)
 }
 
 func versionIsNewer(latest string, current string) bool {
-	latestParts, okLatest := parseVersion(latest)
-	currentParts, okCurrent := parseVersion(current)
-	if !okLatest || !okCurrent {
-		return normalizeVersion(latest) != "" && normalizeVersion(latest) != normalizeVersion(current)
-	}
-	for i := 0; i < len(latestParts); i++ {
-		if latestParts[i] > currentParts[i] {
-			return true
-		}
-		if latestParts[i] < currentParts[i] {
-			return false
-		}
-	}
-	return false
-}
-
-func parseVersion(value string) ([3]int, bool) {
-	var parts [3]int
-	value = normalizeVersion(value)
-	items := strings.Split(value, ".")
-	if len(items) == 0 {
-		return parts, false
-	}
-	for i := 0; i < len(parts) && i < len(items); i++ {
-		item := takeLeadingDigits(items[i])
-		if item == "" {
-			return parts, false
-		}
-		n, err := strconv.Atoi(item)
-		if err != nil {
-			return parts, false
-		}
-		parts[i] = n
-	}
-	return parts, true
-}
-
-func normalizeVersion(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.TrimPrefix(value, "v")
-	value = strings.TrimPrefix(value, "V")
-	return value
-}
-
-func takeLeadingDigits(value string) string {
-	for i, r := range value {
-		if r < '0' || r > '9' {
-			return value[:i]
-		}
-	}
-	return value
+	return config.VersionIsNewer(latest, current)
 }

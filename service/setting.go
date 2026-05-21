@@ -46,65 +46,71 @@ var defaultConfig = `{
 }`
 
 var defaultValueMap = map[string]string{
-	"webListen":                "",
-	"webDomain":                "",
-	"webPort":                  "2095",
-	"secret":                   common.Random(32),
-	"installSalt":              common.Random(32),
-	"webCertFile":              "",
-	"webKeyFile":               "",
-	"webPath":                  "/app/",
-	"webURI":                   "",
-	"sessionMaxAge":            "0",
-	"sessionGeneration":        "",
-	"trafficAge":               "30",
-	"timeLocation":             "Europe/Moscow",
-	"subListen":                "",
-	"subPort":                  "2096",
-	"subPath":                  "/sub/",
-	"subDomain":                "",
-	"subCertFile":              "",
-	"subKeyFile":               "",
-	"subUpdates":               "12",
-	"subEncode":                "true",
-	"subShowInfo":              "false",
-	"subSecretRequired":        "false",
-	"subRateLimitPerIP":        "60",
-	"subLinkEnable":            "true",
-	"subJsonEnable":            "true",
-	"subClashEnable":           "true",
-	"subJsonPath":              "/json/",
-	"subClashPath":             "/clash/",
-	"subJsonURI":               "",
-	"subClashURI":              "",
-	"subTitle":                 "",
-	"subSupportUrl":            "",
-	"subProfileUrl":            "",
-	"subAnnounce":              "",
-	"subNameInRemark":          "false",
-	"subJsonFragment":          "",
-	"subJsonNoises":            "",
-	"subJsonMux":               "false",
-	"subJsonDirectRules":       "false",
-	"subURI":                   "",
-	"subJsonExt":               "",
-	"subClashExt":              "",
-	"auditRetentionDays":       "30",
-	"ipShowRaw":                "false",
-	"ipHistoryRetentionDays":   "30",
-	"observabilityMemoryCapMB": "32",
-	"telegramEnabled":          "false",
-	"telegramBotToken":         "",
-	"telegramChatID":           "",
-	"telegramProxyURL":         "",
-	"telegramProxyUsername":    "",
-	"telegramProxyPassword":    "",
-	"telegramCpuThreshold":     "90",
-	"telegramNotifyCpu":        "false",
-	"telegramReport":           "false",
-	"telegramReportCron":       "",
-	"config":                   defaultConfig,
-	"version":                  config.GetVersion(),
+	"webListen":                   "",
+	"webDomain":                   "",
+	"webPort":                     "2095",
+	"secret":                      common.Random(32),
+	"installSalt":                 common.Random(32),
+	"webCertFile":                 "",
+	"webKeyFile":                  "",
+	"webPath":                     "/app/",
+	"webURI":                      "",
+	"sessionMaxAge":               "0",
+	"forceCookieSecure":           "false",
+	"sessionGeneration":           "",
+	"trafficAge":                  "30",
+	"timeLocation":                "Europe/Moscow",
+	"subListen":                   "",
+	"subPort":                     "2096",
+	"subPath":                     "/sub/",
+	"subDomain":                   "",
+	"subCertFile":                 "",
+	"subKeyFile":                  "",
+	"subUpdates":                  "12",
+	"subEncode":                   "true",
+	"subShowInfo":                 "false",
+	"subSecretRequired":           "false",
+	"subRateLimitPerIP":           "60",
+	"subLinkEnable":               "true",
+	"subJsonEnable":               "true",
+	"subClashEnable":              "true",
+	"subJsonPath":                 "/json/",
+	"subClashPath":                "/clash/",
+	"subJsonURI":                  "",
+	"subClashURI":                 "",
+	"subTitle":                    "",
+	"subSupportUrl":               "",
+	"subProfileUrl":               "",
+	"subAnnounce":                 "",
+	"subNameInRemark":             "false",
+	"subJsonFragment":             "",
+	"subJsonNoises":               "",
+	"subJsonMux":                  "false",
+	"subJsonDirectRules":          "false",
+	"subURI":                      "",
+	"subJsonExt":                  "",
+	"subClashExt":                 "",
+	"auditRetentionDays":          "30",
+	"ipShowRaw":                   "false",
+	"ipHistoryRetentionDays":      "30",
+	"observabilityMemoryCapMB":    "32",
+	"telegramEnabled":             "false",
+	"telegramBotToken":            "",
+	"telegramChatID":              "",
+	"telegramProxyURL":            "",
+	"telegramProxyUsername":       "",
+	"telegramProxyPassword":       "",
+	"telegramCpuThreshold":        "90",
+	"telegramNotifyCpu":           "false",
+	"telegramReport":              "false",
+	"telegramReportCron":          "",
+	"telegramBackupEnabled":       "false",
+	"telegramBackupPassphrase":    "",
+	"telegramBackupCron":          "",
+	"telegramBackupExcludeTables": "stats,client_ips,audit_events,changes",
+	"telegramBackupMaxSizeMB":     "45",
+	"config":                      defaultConfig,
+	"version":                     "",
 }
 
 type SettingService struct {
@@ -129,8 +135,9 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 		allSetting[setting.Key] = setting.Value
 	}
 
-	for key, defaultValue := range defaultValueMap {
+	for key := range defaultValueMap {
 		if !existingKeys[key] {
+			defaultValue, _ := defaultSettingValue(key)
 			err = s.saveSetting(key, defaultValue)
 			if err != nil {
 				return nil, err
@@ -171,7 +178,7 @@ func (s *SettingService) getSetting(key string) (*model.Setting, error) {
 func (s *SettingService) getString(key string) (string, error) {
 	setting, err := s.getSetting(key)
 	if database.IsNotFound(err) {
-		value, ok := defaultValueMap[key]
+		value, ok := defaultSettingValue(key)
 		if !ok {
 			return "", common.NewErrorf("key <%v> not in defaultValueMap", key)
 		}
@@ -183,6 +190,17 @@ func (s *SettingService) getString(key string) (string, error) {
 		return s.decryptSettingValue(key, setting.Value)
 	}
 	return setting.Value, nil
+}
+
+func defaultSettingValue(key string) (string, bool) {
+	value, ok := defaultValueMap[key]
+	if !ok {
+		return "", false
+	}
+	if key == "version" {
+		return config.GetVersion(), true
+	}
+	return value, true
 }
 
 func (s *SettingService) saveSetting(key string, value string) error {
@@ -236,6 +254,10 @@ func (s *SettingService) GetWebDomain() (string, error) {
 	return s.getString("webDomain")
 }
 
+func (s *SettingService) GetWebURI() (string, error) {
+	return s.getString("webURI")
+}
+
 func (s *SettingService) GetPort() (int, error) {
 	return s.getInt("webPort")
 }
@@ -275,28 +297,49 @@ func (s *SettingService) SetWebPath(webPath string) error {
 }
 
 func (s *SettingService) GetSecret() ([]byte, error) {
-	secret, err := s.getString("secret")
-	if secret == defaultValueMap["secret"] {
-		err := s.saveSetting("secret", secret)
-		if err != nil {
-			logger.Warning("save secret failed:", err)
+	setting, err := s.getSetting("secret")
+	if database.IsNotFound(err) {
+		secret := defaultValueMap["secret"]
+		if saveErr := s.saveSetting("secret", secret); saveErr != nil {
+			logger.Warning("save secret failed:", saveErr)
+			return []byte(secret), saveErr
 		}
+		return []byte(secret), nil
 	}
-	return []byte(secret), err
+	if err != nil {
+		return nil, err
+	}
+	return []byte(setting.Value), nil
 }
 
 func (s *SettingService) GetInstallSalt() ([]byte, error) {
-	salt, err := s.getString("installSalt")
-	if salt == defaultValueMap["installSalt"] {
+	setting, err := s.getSetting("installSalt")
+	if database.IsNotFound(err) {
+		salt := defaultValueMap["installSalt"]
 		if saveErr := s.saveSetting("installSalt", salt); saveErr != nil {
 			logger.Warning("save install salt failed:", saveErr)
+			return []byte(salt), saveErr
 		}
+		return []byte(salt), nil
 	}
-	return []byte(salt), err
+	if err != nil {
+		return nil, err
+	}
+	return []byte(setting.Value), nil
 }
 
 func (s *SettingService) GetSessionMaxAge() (int, error) {
 	return s.getInt("sessionMaxAge")
+}
+
+func (s *SettingService) GetForceCookieSecure() (bool, error) {
+	if enabled, ok, err := config.GetForceCookieSecureEnv(); ok {
+		if err != nil {
+			return false, common.NewError("invalid SUI_FORCE_COOKIE_SECURE")
+		}
+		return enabled, nil
+	}
+	return s.getBool("forceCookieSecure")
 }
 
 func (s *SettingService) GetSessionGeneration() (string, error) {
@@ -309,6 +352,18 @@ func (s *SettingService) RotateSessionGeneration() (string, error) {
 		return generation, err
 	}
 	realtime.CloseAll("session_rotated")
+	invalidated := invalidateWSTokensForSessionRotation()
+	if err := (&AuditService{}).Record(AuditEvent{
+		Actor:    "system",
+		Event:    "ws_tokens_invalidated",
+		Resource: "realtime",
+		Severity: AuditSeverityInfo,
+		Details: map[string]any{
+			"count": invalidated,
+		},
+	}); err != nil {
+		logger.Warning("ws token invalidation audit failed:", err)
+	}
 	return generation, nil
 }
 
@@ -544,6 +599,9 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 	if err != nil {
 		return err
 	}
+	if err = s.validateSaveKeys(settings); err != nil {
+		return err
+	}
 	if err = s.validateAll(settings); err != nil {
 		return err
 	}
@@ -553,12 +611,18 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 			continue
 		}
 		if isEncryptedSettingKey(key) {
-			if obj == "" {
+			if obj == StoredSecretMarker {
 				continue
 			}
-			obj, err = s.encryptSettingValue(key, obj)
-			if err != nil {
-				return err
+			if obj == "" {
+				if key != "telegramBackupPassphrase" {
+					continue
+				}
+			} else {
+				obj, err = s.encryptSettingValue(key, obj)
+				if err != nil {
+					return err
+				}
 			}
 		}
 		// Correct Pathes start and ends with `/`
@@ -576,12 +640,45 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 				return err
 			}
 		}
-		err = tx.Model(model.Setting{}).Where("key = ?", key).Update("value", obj).Error
-		if err != nil {
-			return err
+		result := tx.Model(model.Setting{}).Where("key = ?", key).Update("value", obj)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			if err = tx.Create(&model.Setting{Key: key, Value: obj}).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return err
+}
+
+func (s *SettingService) validateSaveKeys(settings map[string]string) error {
+	for _, key := range sortedSettingKeys(settings) {
+		if strings.HasSuffix(key, "HasSecret") {
+			baseKey := strings.TrimSuffix(key, "HasSecret")
+			if isEncryptedSettingKey(baseKey) {
+				continue
+			}
+			return common.NewError("invalid setting key: ", key)
+		}
+		if !isEditableSettingKey(key) {
+			return common.NewError("invalid setting key: ", key)
+		}
+	}
+	return nil
+}
+
+func isEditableSettingKey(key string) bool {
+	if _, ok := defaultValueMap[key]; !ok {
+		return false
+	}
+	switch key {
+	case "secret", "installSalt", "sessionGeneration", "config", "version":
+		return false
+	default:
+		return true
+	}
 }
 
 func (s *SettingService) validateAll(settings map[string]string) error {
@@ -606,6 +703,11 @@ func (s *SettingService) validateAll(settings map[string]string) error {
 		}
 		if err := validateSubscriptionSettingInput(key, obj); err != nil {
 			return err
+		}
+		if key == "forceCookieSecure" {
+			if _, err := strconv.ParseBool(obj); err != nil {
+				return common.NewError("invalid boolean setting: ", key)
+			}
 		}
 		if isDomainSetting(key) {
 			if err := util.ValidateHostname(obj); err != nil {
@@ -678,12 +780,73 @@ func (s *SettingService) GetTelegramNotifyCpu() (bool, error) {
 	return s.getBool("telegramNotifyCpu")
 }
 
+func (s *SettingService) GetTelegramEnabled() (bool, error) {
+	return s.getBool("telegramEnabled")
+}
+
 func (s *SettingService) GetTelegramReport() (bool, error) {
 	return s.getBool("telegramReport")
 }
 
 func (s *SettingService) GetTelegramReportCron() (string, error) {
 	return s.getString("telegramReportCron")
+}
+
+func (s *SettingService) GetTelegramBackupEnabled() (bool, error) {
+	return s.getBool("telegramBackupEnabled")
+}
+
+func (s *SettingService) GetTelegramBackupCron() (string, error) {
+	return s.getString("telegramBackupCron")
+}
+
+func (s *SettingService) GetTelegramBackupExcludeTables() (string, error) {
+	return s.getString("telegramBackupExcludeTables")
+}
+
+func (s *SettingService) GetTelegramBackupMaxSizeMB() (int, error) {
+	return s.getInt("telegramBackupMaxSizeMB")
+}
+
+func (s *SettingService) GetTelegramBackupPassphraseBytes() ([]byte, error) {
+	setting, err := s.getSetting("telegramBackupPassphrase")
+	if database.IsNotFound(err) {
+		value, _ := defaultSettingValue("telegramBackupPassphrase")
+		return []byte(value), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.decryptSettingBytes("telegramBackupPassphrase", setting.Value)
+}
+
+func (s *SettingService) HasTelegramBackupPassphrase() (bool, error) {
+	setting, err := s.getSetting("telegramBackupPassphrase")
+	if database.IsNotFound(err) {
+		value, _ := defaultSettingValue("telegramBackupPassphrase")
+		return value != "", nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return setting.Value != "", nil
+}
+
+func (s *SettingService) recordTelegramBackupPassphraseChanged(actor string, configured bool) {
+	if database.GetDB() == nil {
+		return
+	}
+	if err := (&AuditService{}).Record(AuditEvent{
+		Actor:    actor,
+		Event:    "tg_backup_passphrase_changed",
+		Resource: "database",
+		Severity: AuditSeverityInfo,
+		Details: map[string]any{
+			"configured": configured,
+		},
+	}); err != nil {
+		logger.Warning("telegram backup passphrase audit failed:", err)
+	}
 }
 
 func (s *SettingService) fileExists(path string) error {
@@ -863,6 +1026,10 @@ func validateTelegramSettingInput(key string, value string) error {
 		if _, err := strconv.ParseBool(value); err != nil {
 			return common.NewError("invalid boolean setting: ", key)
 		}
+	case "telegramBackupEnabled":
+		if value != "true" && value != "false" {
+			return common.NewError("invalid boolean setting: ", key)
+		}
 	case "telegramCpuThreshold":
 		threshold, err := strconv.Atoi(value)
 		if err != nil || threshold <= 0 || threshold > 100 {
@@ -871,6 +1038,23 @@ func validateTelegramSettingInput(key string, value string) error {
 	case "telegramReportCron":
 		if _, err := ParseTelegramReportCron(value); err != nil {
 			return err
+		}
+	case "telegramBackupPassphrase":
+		if value != "" && value != StoredSecretMarker && len([]rune(value)) < 12 {
+			return common.NewError("weak_passphrase")
+		}
+	case "telegramBackupCron":
+		if _, err := ParseTelegramReportCron(value); err != nil {
+			return err
+		}
+	case "telegramBackupExcludeTables":
+		if len(value) > 256 {
+			return common.NewError("telegramBackupExcludeTables is too long")
+		}
+	case "telegramBackupMaxSizeMB":
+		limit, err := strconv.Atoi(value)
+		if err != nil || limit < 1 || limit > 50 {
+			return common.NewError("invalid telegram backup max size setting")
 		}
 	}
 	return nil

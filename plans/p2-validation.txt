@@ -1,0 +1,628 @@
+P2 validation - 2026-05-20T13:18:39.9538656+07:00
+
+===== M1 go test -race ./database ./ipmonitor ./api ./service =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./database ./ipmonitor ./api ./service
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAdaptRehashesLegacyPlaintextPassword1861590541\001\initial-admin.txt; delete after first login
+INFO - backup adapt: rehashed plaintext password for user "admin"
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAdaptBumpsVersionSetting4109800553\001\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAdaptDoesNotDowngradeFutureVersionSetting786870212\001\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\s-ui-import-reset-808458239\initial-admin.txt; delete after first login
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.4.1
+Start migrating database...
+
+2026/05/20 13:19:05 [31;1mC:/s-ui-main-deposist/cmd/migration/1_6.go:6 [35;1mno such table: main.audit_events
+[0m[33m[0.000ms] [34;1m[rows:0][0m CREATE INDEX IF NOT EXISTS idx_audit_events_event_dt ON audit_events(event, date_time DESC)
+--- FAIL: TestImportDBRunsResetHooks (2.56s)
+    backup_import_test.go:109: ImportDB returned error: Error migrating imported db: migration to 1.6: no such table: main.audit_events
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbUsesRandomTempPathAndRemovesIt3818689762\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbExcludeSkipsSelectedTables1220866233\001\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbHandlesLargeTablesWithoutVariableLimit1141890526\001\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestInitDBDropsObsoleteClientIPUniqueIndex2778117804\001\initial-admin.txt; delete after first login
+FAIL
+FAIL	github.com/deposist/s-ui-rus-inst/database	34.746s
+ok  	github.com/deposist/s-ui-rus-inst/ipmonitor	22.248s
+ok  	github.com/deposist/s-ui-rus-inst/api	110.567s
+ok  	github.com/deposist/s-ui-rus-inst/service	137.958s
+FAIL
+EXIT_CODE: 1
+
+===== M1 retry go test -race ./database ./ipmonitor ./api ./service =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./database ./ipmonitor ./api ./service
+ok  	github.com/deposist/s-ui-rus-inst/database	17.375s
+ok  	github.com/deposist/s-ui-rus-inst/ipmonitor	(cached)
+ok  	github.com/deposist/s-ui-rus-inst/api	(cached)
+ok  	github.com/deposist/s-ui-rus-inst/service	(cached)
+EXIT_CODE: 0
+
+===== M2 go test -race ./core =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./core
+ok  	github.com/deposist/s-ui-rus-inst/core	2.830s
+EXIT_CODE: 0
+
+===== M3 go test -race ./database ./cmd/migration ./api =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./database ./cmd/migration ./api
+ok  	github.com/deposist/s-ui-rus-inst/database	47.034s
+ok  	github.com/deposist/s-ui-rus-inst/cmd/migration	3.481s
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIHandlerRegistersLegacyActionRoutesExplicitly1400052366\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditDoesNotPruneOnRead3039820864\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditPaginatesByCursorAndCapsLimit3275263330\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditFiltersEventAndSeverity2424849436\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditFiltersDateRange4208233438\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixcookie_session_without_scope3637329328\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixadmin_bearer_scope2951597254\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixread_bearer_scope4092554034\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixwrite_bearer_scope3422031051\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixobservability_bearer_scope924841274\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixunknown_bearer_scope4108618541\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditRateLimitReturns429AndAudits3271594113\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP3017242472\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2SecurityAuditRequiresAdminScope4269655663\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2AcceptsBearerTokenAfterHashMigration4380404\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2LegacyTokenHeaderEmitsSunset1502153641\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestCSRFMiddlewareRequiresTokenForMutatingBrowserAPI1353726275\002\initial-admin.txt; delete after first login
+INFO - user admin logged out all admin web sessions
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestCSRFCookieSecureForcedByEnv483709545\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestLoginResetsCSRFTokens217632905\002\initial-admin.txt; delete after first login
+INFO - user admin logged out all admin web sessions
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRotateSessionGenerationRejectsOldCSRFToken3537452504\002\initial-admin.txt; delete after first login
+INFO - user admin logged out all admin web sessions
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestImportDbRequiresAdminScopeAndAuditsFailure2376460099\002\initial-admin.txt; delete after first login
+WARNING - failed : Invalid db file format
+
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbAuditsExport2379747527\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbEncryptedWithTelegramBackupPassphrase899025299\002\initial-admin.txt; delete after first login
+WARNING - SUI_SECRETBOX_KEY is not set or invalid; encrypted settings use HKDF-derived settings.secret key
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbEncryptedRejectsMissingTelegramBackupPassphrase3434558881\002\initial-admin.txt; delete after first login
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiPlanAndApplyWithEditedPlan418242578\001\s-ui-pre-xui-import-1779258977.db
+--- FAIL: TestImportXuiPlanAndApplyWithEditedPlan (0.46s)
+    import_xui_test.go:64: apply status=400 body={"success":false,"msg":"import-xui: xui-import: FOREIGN KEY constraint failed","obj":null}
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiRollbackRestoresBackup4104230204\001\s-ui-pre-xui-import-1779258978.db
+--- FAIL: TestImportXuiRollbackRestoresBackup (0.43s)
+    import_xui_test.go:102: response failed: import-xui: xui-import: FOREIGN KEY constraint failed
+--- FAIL: TestImportXuiDryRunReturnsReportWithoutMutation (0.17s)
+    import_xui_test.go:176: unexpected status: 400 body={"success":false,"msg":"import-xui: xui-import: FOREIGN KEY constraint failed","obj":null}
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiAppliesImportAndAuditsSuccess1254802781\001\s-ui-pre-xui-import-1779258979.db
+--- FAIL: TestImportXuiAppliesImportAndAuditsSuccess (0.32s)
+    import_xui_test.go:204: unexpected status: 400 body={"success":false,"msg":"import-xui: xui-import: FOREIGN KEY constraint failed","obj":null}
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestLoadDataIncludesSubscriptionURIOverrides480007403\002\initial-admin.txt; delete after first login
+ERROR - naive outbound is disabled when built without with_naive_outbound tag
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetLogsRejectsInvalidSource2374859791\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryFiltersMetricBucketAndSince3277622020\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryRejectsInvalidInputs3942462480\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryRequiresObservabilityScope3249876934\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestEnforceWSHandshakeRateLimitReturns429AndAudits1600722775\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestIssueWSTokenRejectsForeignOriginAndAudits2115368018\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken3816726060\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSSendsHeartbeatPing3927048728\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSSendsPublishedEvents1584984021\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsadmin_scope_receiv216817353\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsread_scope_filters1078753830\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventswrite_scope_filter3820311372\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsobservability_scop2378041561\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong3789442048\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSRejectsReplayToken2201948278\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSClosesWhenPongMissing3340379624\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSessionCookieSecureForcedByEnv3661339617\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSessionCookieSecureAutoFromWebURI3262846861\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestClearSessionCookieSecureForcedByEnv3295733734\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixplain_http_default1373440074\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixenv_forced1792174530\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixrequest_tls513955810\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixtrusted_proxy_https3482565022\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixwebURI_https2631985965\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixwebDomain_https2506894664\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRotateSessionGenerationInvalidatesExistingSessions2529991352\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveSettingsAuditsSubscriptionPathChange3784480195\002\initial-admin.txt; delete after first login
+INFO - starting core
+INFO - networkupdated default interface Беспроводная сеть 2, index 29
+INFO - sing-box started (0.07s)
+INFO - sing-box started
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveSettingsRejectsUnknownKeyAndAudits4227814618\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveSettingsRejectsProtectedKeyAndAudits4053432087\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits661781867\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointAcceptsPlaintextDatabaseBackup1255425134\002\initial-admin.txt; delete after first login
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointDecryptsTelegramBackupEnvelope1599721730\002\initial-admin.txt; delete after first login
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouc150030694\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramBackupRequiresTelegramOrAdminScope2976620958\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramBackupDisabledFailureAuditsWithoutKey3185676086\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupManualRoutesShareRateLimitBucket2252549376\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupBrowserRouteRequiresCSRF3001101142\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramTestRequiresAdminScope538860641\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramTestAuditsWithoutSecrets1062392354\002\initial-admin.txt; delete after first login
+FAIL
+FAIL	github.com/deposist/s-ui-rus-inst/api	96.402s
+FAIL
+EXIT_CODE: 1
+
+===== M3 retry go test -race ./database ./cmd/migration ./api =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./database ./cmd/migration ./api
+ok  	github.com/deposist/s-ui-rus-inst/database	33.530s
+ok  	github.com/deposist/s-ui-rus-inst/cmd/migration	3.325s
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIHandlerRegistersLegacyActionRoutesExplicitly3099733799\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditDoesNotPruneOnRead1672209620\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditPaginatesByCursorAndCapsLimit1876072680\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditFiltersEventAndSeverity404762700\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditFiltersDateRange908561952\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixcookie_session_without_scope2411425004\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixadmin_bearer_scope467715610\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixread_bearer_scope2612262684\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixwrite_bearer_scope2988328419\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixobservability_bearer_scope3667519340\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditScopeMatrixunknown_bearer_scope613094197\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditRateLimitReturns429AndAudits761585995\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP2094721918\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2SecurityAuditRequiresAdminScope525620640\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2AcceptsBearerTokenAfterHashMigration3356265844\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2LegacyTokenHeaderEmitsSunset3794260698\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestCSRFMiddlewareRequiresTokenForMutatingBrowserAPI3151234501\002\initial-admin.txt; delete after first login
+INFO - user admin logged out all admin web sessions
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestCSRFCookieSecureForcedByEnv2323430096\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestLoginResetsCSRFTokens3649024364\002\initial-admin.txt; delete after first login
+INFO - user admin logged out all admin web sessions
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRotateSessionGenerationRejectsOldCSRFToken3762968783\002\initial-admin.txt; delete after first login
+INFO - user admin logged out all admin web sessions
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestImportDbRequiresAdminScopeAndAuditsFailure3043511836\002\initial-admin.txt; delete after first login
+WARNING - failed : Invalid db file format
+
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbAuditsExport2067984899\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbEncryptedWithTelegramBackupPassphrase3654719692\002\initial-admin.txt; delete after first login
+WARNING - SUI_SECRETBOX_KEY is not set or invalid; encrypted settings use HKDF-derived settings.secret key
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetDbEncryptedRejectsMissingTelegramBackupPassphrase3838964424\002\initial-admin.txt; delete after first login
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiPlanAndApplyWithEditedPlan4099048201\001\s-ui-pre-xui-import-1779259192.db
+--- FAIL: TestImportXuiPlanAndApplyWithEditedPlan (0.50s)
+    import_xui_test.go:64: apply status=400 body={"success":false,"msg":"import-xui: xui-import: FOREIGN KEY constraint failed","obj":null}
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiRollbackRestoresBackup1580707792\001\s-ui-pre-xui-import-1779259193.db
+--- FAIL: TestImportXuiRollbackRestoresBackup (0.38s)
+    import_xui_test.go:102: response failed: import-xui: xui-import: FOREIGN KEY constraint failed
+--- FAIL: TestImportXuiDryRunReturnsReportWithoutMutation (0.13s)
+    import_xui_test.go:176: unexpected status: 400 body={"success":false,"msg":"import-xui: xui-import: FOREIGN KEY constraint failed","obj":null}
+INFO - xui-import: pre-import backup saved to  C:\Users\User1\AppData\Local\Temp\TestImportXuiAppliesImportAndAuditsSuccess2072043074\001\s-ui-pre-xui-import-1779259193.db
+--- FAIL: TestImportXuiAppliesImportAndAuditsSuccess (0.28s)
+    import_xui_test.go:204: unexpected status: 400 body={"success":false,"msg":"import-xui: xui-import: FOREIGN KEY constraint failed","obj":null}
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestLoadDataIncludesSubscriptionURIOverrides2885742438\002\initial-admin.txt; delete after first login
+ERROR - naive outbound is disabled when built without with_naive_outbound tag
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetLogsRejectsInvalidSource2903241892\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryFiltersMetricBucketAndSince3178754230\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryRejectsInvalidInputs974692339\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetObservabilityHistoryRequiresObservabilityScope1448016605\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestEnforceWSHandshakeRateLimitReturns429AndAudits2586863123\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestIssueWSTokenRejectsForeignOriginAndAudits555118867\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken1189170738\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSSendsHeartbeatPing1202525962\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSSendsPublishedEvents1077560933\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsadmin_scope_receiv2070540710\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsread_scope_filters4186458484\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventswrite_scope_filter1145362833\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSUsesTokenScopeForSecurityEventsobservability_scop4147170279\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong696640716\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSRejectsReplayToken132505661\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRealtimeWSClosesWhenPongMissing2379962459\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSessionCookieSecureForcedByEnv1608763001\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSessionCookieSecureAutoFromWebURI2565860985\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestClearSessionCookieSecureForcedByEnv884911486\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixplain_http_default2915944794\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixenv_forced2127339284\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixrequest_tls1227162443\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixtrusted_proxy_https3760651317\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixwebURI_https2770849107\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResolveCookieSecureMatrixwebDomain_https401133082\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRotateSessionGenerationInvalidatesExistingSessions3882767246\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveSettingsAuditsSubscriptionPathChange283406709\002\initial-admin.txt; delete after first login
+INFO - starting core
+INFO - networkupdated default interface Беспроводная сеть 2, index 29
+INFO - sing-box started (0.06s)
+INFO - sing-box started
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveSettingsRejectsUnknownKeyAndAudits2123387671\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveSettingsRejectsProtectedKeyAndAudits4235152552\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits1685354189\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointAcceptsPlaintextDatabaseBackup2812246278\002\initial-admin.txt; delete after first login
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointDecryptsTelegramBackupEnvelope4288157535\002\initial-admin.txt; delete after first login
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouc3806138684\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramBackupRequiresTelegramOrAdminScope3964360264\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramBackupDisabledFailureAuditsWithoutKey708498634\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupManualRoutesShareRateLimitBucket2449146081\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupBrowserRouteRequiresCSRF2744231588\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramTestRequiresAdminScope1403986990\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAPIV2TelegramTestAuditsWithoutSecrets2370457631\002\initial-admin.txt; delete after first login
+FAIL
+FAIL	github.com/deposist/s-ui-rus-inst/api	99.847s
+FAIL
+EXIT_CODE: 1
+
+===== M3 retry 2 go test -race ./database ./cmd/migration ./api =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./database ./cmd/migration ./api
+ok  	github.com/deposist/s-ui-rus-inst/database	27.049s
+ok  	github.com/deposist/s-ui-rus-inst/cmd/migration	2.845s
+ok  	github.com/deposist/s-ui-rus-inst/api	78.411s
+EXIT_CODE: 0
+
+===== M4 go test -race ./api =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./api
+ok  	github.com/deposist/s-ui-rus-inst/api	73.236s
+EXIT_CODE: 0
+
+===== M5 go test ./api -run "ImportXui|Apply" =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test ./api -run "ImportXui|Apply"
+'Apply' is not recognized as an internal or external command,
+operable program or batch file.
+EXIT_CODE: 255
+
+===== M5 retry go test ./api -run "ImportXui^|Apply" =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test ./api -run "ImportXui^|Apply"
+ok  	github.com/deposist/s-ui-rus-inst/api	2.975s
+EXIT_CODE: 0
+
+===== M6 go test -race ./api ./service =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./api ./service
+ok  	github.com/deposist/s-ui-rus-inst/api	119.444s
+ok  	github.com/deposist/s-ui-rus-inst/service	134.421s
+EXIT_CODE: 0
+
+===== M7 go test -race ./service =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./service
+ok  	github.com/deposist/s-ui-rus-inst/service	125.613s
+EXIT_CODE: 0
+
+===== M8 go test -race ./service ./api =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./service ./api
+ok  	github.com/deposist/s-ui-rus-inst/service	135.592s
+ok  	github.com/deposist/s-ui-rus-inst/api	110.562s
+EXIT_CODE: 0
+
+===== M9 go test -race ./core =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./core
+ok  	github.com/deposist/s-ui-rus-inst/core	3.122s
+EXIT_CODE: 0
+
+===== M10 go test -race ./api =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./api
+ok  	github.com/deposist/s-ui-rus-inst/api	70.307s
+EXIT_CODE: 0
+
+===== M10 frontend npm test =====
+PWD: C:\s-ui-main-deposist\frontend
+CMD: cmd /c npm test
+
+> s-ui-frontend@1.5.2-beta-hotfix2 test
+> vitest run
+
+
+ RUN  v4.1.6 C:/s-ui-main-deposist/frontend
+
+
+ Test Files  5 passed (5)
+      Tests  20 passed (20)
+   Start at  14:09:22
+   Duration  1.26s (transform 573ms, setup 0ms, import 1.12s, tests 584ms, environment 2ms)
+
+EXIT_CODE: 0
+
+===== M11 go test -race ./service =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./service
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAuditRecordRedactsDetails4076248804\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAuditPruneDeletesOldEvents4156841463\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAuditRecordSyncForTestWritesImmediately1828478733\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAuditRecordReturnsMarshalErrorOnly2666451389\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestPrepareClientSubSecretGeneratesUUIDV42447600337\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRotateSubSecretChangesExistingClientSecret939241260\002\initial-admin.txt; delete after first login
+WARNING - test skipped client 7 with invalid inbounds: unexpected end of JSON input
+WARNING - test skipped client 7 with invalid links: unexpected end of JSON input
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestResetClientsUsesColumnUpdatesAndPreservesIndependentFields3180147868\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestConfigSaveRedactsSensitiveChangePayload280178751\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestInboundGetAllLoadsUsersForManyInboundsInBatch1125258577\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestObservabilityBucketsAreBoundedByDefault2064832704\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestObservabilityMemoryCapShrinksBuckets1358346513\002\initial-admin.txt; delete after first login
+WARNING - observability history capacities reduced by observabilityMemoryCapMB=1
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestObservabilityMemoryCapCacheRefreshesAfterTTL1382199886\002\initial-admin.txt; delete after first login
+WARNING - observability history capacities reduced by observabilityMemoryCapMB=1
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestObservabilityMemoryCapSettingValidation2469960933\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSecretSettingIsEncryptedAndMasked295453374\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestLegacyPlaintextSecretRoundTripEncryptsOnSave1738054966\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupPassphraseEncryptedMaskedAndClearable2478827602\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetCookieKeysDerivedFromSecretByDefault1686670586\002\initial-admin.txt; delete after first login
+WARNING - SUI_COOKIE_KEY is not set; using HKDF-derived compatibility key from settings.secret
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetCookieKeysUsesEnvRolloverList2396375917\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetCookieKeysInvalidEnvFallsBackToDerivedKey2166729868\002\initial-admin.txt; delete after first login
+WARNING - SUI_COOKIE_KEY is invalid: key material must be base64-encoded
+ ; using HKDF-derived compatibility key from settings.secret
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestInvalidSecretboxEnvFallsBackToSettingsSecret1349875348\002\initial-admin.txt; delete after first login
+WARNING - SUI_SECRETBOX_KEY is invalid: key material must be base64-encoded
+ ; encrypted settings use HKDF-derived settings.secret key
+WARNING - SUI_SECRETBOX_KEY is not set or invalid; encrypted settings use HKDF-derived settings.secret key
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSecretboxUsesEnvRawKeyOverride2957593874\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSecretboxLegacyFallbackAudits3357009882\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSecretboxEnvOverrideCanReadSettingsSecretLegacyCiphertext2664282599\002\initial-admin.txt; delete after first login
+Unable to use syslog: Platform does not support syslog
+2026/05/20 14:12:14 INFO - f32-1779261134022956500  panel
+2026/05/20 14:12:14 INFO - f32-1779261134022956500 core
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRotateSessionGenerationClosesRealtimeSessions1814666378\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetFinalSubURIOmitsDefaultPorts4099831390\001\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetFinalSubURIFormatsIPv6Hostsloopback_with_explicit_port2862890416\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetFinalSubURIFormatsIPv6Hostsdocumentation_address_with_ex826767950\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetFinalSubURIFormatsIPv6Hostsdefault_https_port_omitted381364781\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveRejectsReservedWebPath513347164\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveAllowsDefaultSubPathButRejectsOtherReservedSubPaths2566008364\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSubscriptionSettingsDefaultsAndValidation23599038\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSettingSaveDeterministicForDifferentPayloadOrders1059499574\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSettingSaveDeterministicForDifferentPayloadOrders1059499574\004\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveValidatesTelegramProxyURLBeforeEncrypting1776705400\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveValidatesTelegramCPUSettings1672295769\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetTimeLocationRespectsConfiguredLocation1029653574\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetTimeLocationFallsBackToLocalForInvalidLocation2483802816\002\initial-admin.txt; delete after first login
+2026/05/20 14:12:27 WARNING - location <Invalid/Nowhere> not exist, using local location
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveValidatesDomainSettings815373270\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveValidatesForceCookieSecureSetting1329965433\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetForceCookieSecureReadsSettingAndEnvOverride2269499122\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetForceCookieSecureRejectsInvalidEnv3753396110\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveRejectsUnknownSettingKey112551758\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveRejectsProtectedSettingKey145070441\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveRejectsUnknownHasSecretMarker2577378284\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecretCreatesSettingWhenMissing1647869883\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetInstallSaltCreatesSettingWhenMissing1420968078\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetSecretReturnsErrorWhenDBClosed2989335446\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestGetInstallSaltReturnsErrorWhenDBClosed3578668383\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestUpdateClientTrafficDeltasBatchesTwoHundredClients2379039351\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupRunOnceDisabledAndMissingPassphrase134332042\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupWeakPassphraseValidation557206196\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupRunOnceSuccessSendsEnvelopeAndAuditsSizes3590925335\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupRunOnceOversizeSkipsSend2462343810\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupRunOnceConcurrentGuard1538764215\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramBackupRunOncePassesThroughTelegramErrorClassAndFallb1811477731\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSaveValidatesTelegramReportCron1272275307\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramDisabledMakesNoOutboundCall1767200963\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestSendTelegramDocumentSanitizesCaptionAndUsesMultipart4234199045\002\initial-admin.txt; delete after first login
+--- FAIL: TestTelegramSOCKS5DialReturnsOnContextCancel (0.00s)
+    telegram_test.go:242: url host is not allowed
+        
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramInvalidProxySettingFailsBeforeOutbound198580273\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramStatusErrorClassMapping207450219\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestTelegramNotifierUsesRetryAfterFrom429Response3406861213\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestNotifyTelegramEventReturnsBeforeSendCompletes2549682799\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestNotifyTelegramEventRedactsSensitiveFields2102350832\002\initial-admin.txt; delete after first login
+2026/05/20 14:13:20 WARNING - telegram notification failed:  network
+2026/05/20 14:13:20 WARNING - telegram notifier queue overflow; dropped event:  e2
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestLoadTokensMigratesLegacyPlaintextToken1942552650\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestAddTokenValidatesScopeAllowlist1910139235\002\initial-admin.txt; delete after first login
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRecordTokenUseFlushesBatchedUpdate773193667\002\initial-admin.txt; delete after first login
+2026/05/20 14:13:23 WARNING - version check failed: feature not supported
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelopepla383732910\002\initial-admin.txt; delete after first login
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] POST   /api/importdb             --> github.com/deposist/s-ui-rus-inst/api.(*ApiService).ImportDb-fm (2 handlers)
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelopeenv177708904\002\initial-admin.txt; delete after first login
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] POST   /api/importdb             --> github.com/deposist/s-ui-rus-inst/api.(*ApiService).ImportDb-fm (2 handlers)
+Current version: 1.5.2-beta-hotfix2 
+Database version: 1.5.2-beta-hotfix2
+Database is up to date, no need to migrate
+initial admin password saved to C:\Users\User1\AppData\Local\Temp\TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelopewro2814742430\002\initial-admin.txt; delete after first login
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+
+[GIN-debug] POST   /api/importdb             --> github.com/deposist/s-ui-rus-inst/api.(*ApiService).ImportDb-fm (2 handlers)
+FAIL
+FAIL	github.com/deposist/s-ui-rus-inst/service	99.211s
+FAIL
+EXIT_CODE: 1
+
+===== M11 retry go test -race ./service =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./service
+ok  	github.com/deposist/s-ui-rus-inst/service	95.224s
+EXIT_CODE: 0
+
+===== M12 go test ./util/ssrf =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test ./util/ssrf
+ok  	github.com/deposist/s-ui-rus-inst/util/ssrf	0.403s
+EXIT_CODE: 0
+
+===== M13 go test -race ./service ./api =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./service ./api
+ok  	github.com/deposist/s-ui-rus-inst/service	132.331s
+ok  	github.com/deposist/s-ui-rus-inst/api	102.967s
+EXIT_CODE: 0
+
+===== final go test -race target packages =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go test -race ./core ./web ./service ./database ./database/importxui ./api ./sub ./realtime ./ipmonitor ./util/ssrf ./cmd/migration
+ok  	github.com/deposist/s-ui-rus-inst/core	(cached)
+ok  	github.com/deposist/s-ui-rus-inst/web	8.815s
+ok  	github.com/deposist/s-ui-rus-inst/service	(cached)
+ok  	github.com/deposist/s-ui-rus-inst/database	(cached)
+ok  	github.com/deposist/s-ui-rus-inst/database/importxui	10.302s
+ok  	github.com/deposist/s-ui-rus-inst/api	(cached)
+ok  	github.com/deposist/s-ui-rus-inst/sub	25.337s
+ok  	github.com/deposist/s-ui-rus-inst/realtime	(cached)
+ok  	github.com/deposist/s-ui-rus-inst/ipmonitor	17.954s
+ok  	github.com/deposist/s-ui-rus-inst/util/ssrf	2.675s
+ok  	github.com/deposist/s-ui-rus-inst/cmd/migration	(cached)
+EXIT_CODE: 0
+
+===== final go vet ./... =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go vet ./...
+EXIT_CODE: 0
+
+===== final go build ./... =====
+PWD: C:\s-ui-main-deposist
+CMD: cmd /c go build ./...
+EXIT_CODE: 0
+
+===== final frontend npm run lint =====
+PWD: C:\s-ui-main-deposist\frontend
+CMD: cmd /c npm run lint
+
+> s-ui-frontend@1.5.2-beta-hotfix2 lint
+> eslint .
+
+EXIT_CODE: 0
+
+===== final frontend npm test =====
+PWD: C:\s-ui-main-deposist\frontend
+CMD: cmd /c npm test
+
+> s-ui-frontend@1.5.2-beta-hotfix2 test
+> vitest run
+
+
+ RUN  v4.1.6 C:/s-ui-main-deposist/frontend
+
+
+ Test Files  5 passed (5)
+      Tests  20 passed (20)
+   Start at  14:23:46
+   Duration  1.51s (transform 775ms, setup 0ms, import 1.41s, tests 679ms, environment 3ms)
+
+EXIT_CODE: 0
+
+===== final frontend npm run build =====
+PWD: C:\s-ui-main-deposist\frontend
+CMD: cmd /c npm run build
+
+> s-ui-frontend@1.5.2-beta-hotfix2 build
+> vue-tsc --noEmit && vite build
+
+[36mvite v8.0.12 [32mbuilding client environment for production...[36m[39m
+[2K
+transforming...✓ 829 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                    0.61 kB │ gzip:   0.36 kB
+dist/assets/Vazirmatn-UI-NL-Regular.woff2         21.84 kB
+dist/assets/materialdesignicons-webfont.woff2    403.21 kB
+dist/assets/materialdesignicons-webfont.woff     587.98 kB
+dist/assets/materialdesignicons-webfont.ttf    1,307.66 kB
+dist/assets/materialdesignicons-webfont.eot    1,307.88 kB
+dist/assets/4LO58Dpb.css                           0.05 kB │ gzip:   0.07 kB
+dist/assets/eXTK9UNe.css                           0.05 kB │ gzip:   0.07 kB
+dist/assets/B_PbRL7B.css                           0.06 kB │ gzip:   0.08 kB
+dist/assets/D-9mbkzy.css                           0.20 kB │ gzip:   0.15 kB
+dist/assets/oG2180vf.css                           0.83 kB │ gzip:   0.33 kB
+dist/assets/CzYeN5_2.css                           0.88 kB │ gzip:   0.40 kB
+dist/assets/7vBphVPM.css                           0.89 kB │ gzip:   0.44 kB
+dist/assets/BF1LvuDE.css                           1.01 kB │ gzip:   0.42 kB
+dist/assets/DCLf3B32.css                           1.10 kB │ gzip:   0.46 kB
+dist/assets/CRNHF_7l.css                           1.22 kB │ gzip:   0.50 kB
+dist/assets/BlT-bpEo.css                           1.67 kB │ gzip:   0.70 kB
+dist/assets/CFboWNt2.css                           1.85 kB │ gzip:   0.64 kB
+dist/assets/GecF_XTQ.css                           3.02 kB │ gzip:   0.85 kB
+dist/assets/C54P9oMV.css                           3.48 kB │ gzip:   1.13 kB
+dist/assets/Ceg84e_O.css                           3.57 kB │ gzip:   0.98 kB
+dist/assets/DHU883SJ.css                           4.48 kB │ gzip:   1.05 kB
+dist/assets/BLkYbdcK.css                           4.78 kB │ gzip:   1.26 kB
+dist/assets/CeXrdDVX.css                           5.43 kB │ gzip:   1.36 kB
+dist/assets/wQ5Bzigh.css                           5.88 kB │ gzip:   1.63 kB
+dist/assets/BvWj0_ui.css                           6.02 kB │ gzip:   1.45 kB
+dist/assets/DMDWYYs3.css                           6.73 kB │ gzip:   1.48 kB
+dist/assets/CXOLkT7V.css                           7.63 kB │ gzip:   1.67 kB
+dist/assets/B8zZ6xI3.css                          11.77 kB │ gzip:   1.81 kB
+dist/assets/C17T5Gw8.css                          11.92 kB │ gzip:   2.04 kB
+dist/assets/BG15Y5Fu.css                         146.25 kB │ gzip:  15.55 kB
+dist/assets/Dgzul2Cn.css                         517.25 kB │ gzip:  82.10 kB
+dist/assets/BkfyOC18.js                            0.08 kB │ gzip:   0.09 kB
+dist/assets/CfWMQiOq.js                            0.08 kB │ gzip:   0.09 kB
+dist/assets/DWtBweBl2.js                           0.38 kB │ gzip:   0.22 kB
+dist/assets/DTg1P2462.js                           0.39 kB │ gzip:   0.24 kB
+dist/assets/Da-BV--P.js                            0.93 kB │ gzip:   0.53 kB
+dist/assets/DJx6iZK6.js                            1.00 kB │ gzip:   0.53 kB
+dist/assets/XZuY-BFj.js                            1.23 kB │ gzip:   0.68 kB
+dist/assets/CnjWgyo-.js                            1.29 kB │ gzip:   0.64 kB
+dist/assets/DFcm3lKf.js                            1.42 kB │ gzip:   0.74 kB
+dist/assets/qqhdBK3g.js                            1.50 kB │ gzip:   0.77 kB
+dist/assets/BKkV43o0.js                            1.51 kB │ gzip:   0.75 kB
+dist/assets/-9n-yQ_q.js                            1.55 kB │ gzip:   0.61 kB
+dist/assets/CrYvEOkm.js                            1.62 kB │ gzip:   0.64 kB
+dist/assets/D61Lq2Xx2.js                           1.96 kB │ gzip:   0.86 kB
+dist/assets/6BoAWyHI.js                            2.40 kB │ gzip:   1.00 kB
+dist/assets/CK9-aDe7.js                            2.52 kB │ gzip:   1.21 kB
+dist/assets/DIiWENf4.js                            3.13 kB │ gzip:   1.42 kB
+dist/assets/Bn3cTqkP.js                            4.83 kB │ gzip:   1.76 kB
+dist/assets/DTj3luOR2.js                           5.20 kB │ gzip:   2.19 kB
+dist/assets/DVFJg_w_.js                            5.45 kB │ gzip:   2.28 kB
+dist/assets/2nCte4mR2.js                           5.91 kB │ gzip:   2.55 kB
+dist/assets/D4y3zug52.js                           6.14 kB │ gzip:   1.49 kB
+dist/assets/fxD35bXw.js                            6.20 kB │ gzip:   2.05 kB
+dist/assets/BH_RQCs-.js                            6.65 kB │ gzip:   2.63 kB
+dist/assets/rFgM8ZeO.js                            6.81 kB │ gzip:   2.92 kB
+dist/assets/DYirOovA2.js                           8.52 kB │ gzip:   2.17 kB
+dist/assets/lzoc2C57.js                            9.30 kB │ gzip:   3.22 kB
+dist/assets/Ba55T_qM2.js                           9.70 kB │ gzip:   2.17 kB
+dist/assets/CsrP7yY_.js                           10.02 kB │ gzip:   4.03 kB
+dist/assets/B5yiD9AY.js                           10.54 kB │ gzip:   1.99 kB
+dist/assets/DS_Gexdq2.js                          11.41 kB │ gzip:   3.16 kB
+dist/assets/XKBZXd3M.js                           11.65 kB │ gzip:   2.22 kB
+dist/assets/S1TnqiMi2.js                          13.84 kB │ gzip:   2.76 kB
+dist/assets/B54rf9CD.js                           16.15 kB │ gzip:   4.31 kB
+dist/assets/D65FzKjh.js                           17.24 kB │ gzip:   8.26 kB
+dist/assets/BM3hQRDA.js                           17.36 kB │ gzip:   8.16 kB
+dist/assets/C3yT1r2r.js                           17.41 kB │ gzip:   7.00 kB
+dist/assets/JMfxh5YI2.js                          17.84 kB │ gzip:   5.31 kB
+dist/assets/BrzsnGw5.js                           18.26 kB │ gzip:   6.53 kB
+dist/assets/B3FkBibZ.js                           20.64 kB │ gzip:   7.88 kB
+dist/assets/rBhCxV8B2.js                          20.89 kB │ gzip:   4.61 kB
+dist/assets/C5fLfrE6.js                           22.85 kB │ gzip:   8.12 kB
+dist/assets/B3OvDDMJ.js                           25.38 kB │ gzip:   8.94 kB
+dist/assets/BAyibg_O2.js                          26.62 kB │ gzip:   6.98 kB
+dist/assets/BFNfl0si2.js                          27.17 kB │ gzip:   6.45 kB
+dist/assets/BzSn9My9.js                           28.13 kB │ gzip:   9.30 kB
+dist/assets/UuZd5_tw2.js                          30.40 kB │ gzip:   7.28 kB
+dist/assets/syGFQTVZ2.js                          33.36 kB │ gzip:   6.78 kB
+dist/assets/u3_sWGLt2.js                          36.86 kB │ gzip:   6.18 kB
+dist/assets/DMR0yWGw.js                           37.00 kB │ gzip:  11.83 kB
+dist/assets/C7F_Q2tO2.js                          38.51 kB │ gzip:   8.06 kB
+dist/assets/C_NIzBVq2.js                          40.27 kB │ gzip:   7.78 kB
+dist/assets/BymucnKl2.js                          54.39 kB │ gzip:  13.52 kB
+dist/assets/BzyvO-2Z2.js                          58.93 kB │ gzip:  11.05 kB
+dist/assets/G2bzydfD2.js                         136.89 kB │ gzip:  39.52 kB
+dist/assets/CyHXljEa.js                          171.96 kB │ gzip:  59.95 kB
+dist/assets/qn0HrC9a.js                          326.51 kB │ gzip: 104.30 kB
+dist/assets/CFjjGmMN.js                          510.05 kB │ gzip: 177.26 kB
+
+[PLUGIN_TIMINGS] Warning: Your build spent significant time in plugins. Here is a breakdown:
+  - vite:css (44%)
+  - vuetify:styles (34%)
+  - vuetify:import (12%)
+  - vite:vue (6%)
+See https://rolldown.rs/options/checks#plugintimings for more details.
+
+[32m✓ built in 9.50s[39m
+EXIT_CODE: 0

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -284,22 +286,18 @@ func syncSourceType(source importxui.SyncProfileSource) string {
 func syncSafeHostPort(source importxui.SyncProfileSource) string {
 	if source.Host != "" {
 		if source.Port > 0 {
-			return fmt.Sprintf("%s:%d", source.Host, source.Port)
+			return net.JoinHostPort(source.Host, strconv.Itoa(source.Port))
 		}
 		return source.Host
 	}
 	if source.URL == "" {
 		return ""
 	}
-	trimmed := strings.TrimPrefix(strings.TrimPrefix(source.URL, "ssh://"), "https://")
-	trimmed = strings.TrimPrefix(trimmed, "http://")
-	if at := strings.LastIndex(trimmed, "@"); at >= 0 {
-		trimmed = trimmed[at+1:]
+	parsed, err := url.Parse(source.URL)
+	if err != nil || parsed.Host == "" {
+		return ""
 	}
-	if slash := strings.Index(trimmed, "/"); slash >= 0 {
-		trimmed = trimmed[:slash]
-	}
-	return trimmed
+	return parsed.Host
 }
 
 func firstNonEmptyString(values ...string) string {

@@ -11,7 +11,16 @@ import (
 	"gorm.io/gorm"
 )
 
-type ServicesService struct{}
+type ServicesService struct {
+	Runtime *Runtime
+}
+
+func (s *ServicesService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
+}
 
 func (s *ServicesService) GetAll() (*[]map[string]interface{}, error) {
 	db := database.GetDB()
@@ -99,7 +108,8 @@ func (s *ServicesService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 }
 
 func (s *ServicesService) RestartServices(tx *gorm.DB, ids []uint) error {
-	if !corePtr.IsRunning() {
+	coreInstance := s.runtime().Core()
+	if coreInstance == nil || !coreInstance.IsRunning() {
 		return nil
 	}
 	var services []*model.Service
@@ -108,7 +118,7 @@ func (s *ServicesService) RestartServices(tx *gorm.DB, ids []uint) error {
 		return err
 	}
 	for _, srv := range services {
-		err = corePtr.RemoveService(srv.Tag)
+		err = coreInstance.RemoveService(srv.Tag)
 		if err != nil && err != os.ErrInvalid {
 			return err
 		}
@@ -116,7 +126,7 @@ func (s *ServicesService) RestartServices(tx *gorm.DB, ids []uint) error {
 		if err != nil {
 			return err
 		}
-		err = corePtr.AddService(srvConfig)
+		err = coreInstance.AddService(srvConfig)
 		if err != nil {
 			return err
 		}

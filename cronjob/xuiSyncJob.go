@@ -71,10 +71,14 @@ func (j *XUISyncJob) RunProfile(ctx context.Context, profile *model.XUISyncProfi
 		}
 		lastErr = err
 		if attempt < 3 {
+			timer := time.NewTimer(time.Duration(attempt) * 100 * time.Millisecond)
 			select {
 			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
 				return ctx.Err()
-			case <-time.After(time.Duration(attempt) * 100 * time.Millisecond):
+			case <-timer.C:
 			}
 		}
 	}

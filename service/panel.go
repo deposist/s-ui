@@ -1,32 +1,27 @@
 package service
 
 import (
-	"os"
-	"runtime"
-	"syscall"
 	"time"
-
-	"github.com/deposist/s-ui-rus-inst/logger"
 )
 
 type PanelService struct {
+	RestartScheduler RestartScheduler
+	Runtime          *Runtime
+}
+
+func NewPanelService(restartScheduler RestartScheduler) *PanelService {
+	return &PanelService{RestartScheduler: restartScheduler}
 }
 
 func (s *PanelService) RestartPanel(delay time.Duration) error {
-	p, err := os.FindProcess(syscall.Getpid())
-	if err != nil {
-		return err
+	var restartScheduler RestartScheduler
+	var runtime *Runtime
+	if s != nil {
+		restartScheduler = s.RestartScheduler
+		runtime = s.Runtime
 	}
-	go func() {
-		time.Sleep(delay)
-		if runtime.GOOS == "windows" {
-			err = p.Kill()
-		} else {
-			err = p.Signal(syscall.SIGHUP)
-		}
-		if err != nil {
-			logger.Error("send signal SIGHUP failed:", err)
-		}
-	}()
-	return nil
+	if restartScheduler == nil {
+		restartScheduler = runtimeOrDefault(runtime).RestartScheduler()
+	}
+	return restartScheduler.ScheduleRestart(delay)
 }

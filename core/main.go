@@ -16,15 +16,9 @@ import (
 	"github.com/sagernet/sing/service"
 )
 
-var (
-	globalCtx = struct {
-		sync.RWMutex
-		value context.Context
-	}{}
-)
-
 type Core struct {
 	access          sync.RWMutex
+	ctx             context.Context
 	isRunning       bool
 	instance        *Box
 	inboundManager  adapter.InboundManager
@@ -48,15 +42,20 @@ type coreRuntime struct {
 func NewCore() *Core {
 	ctx := context.Background()
 	ctx = sb.Context(ctx, InboundRegistry(), OutboundRegistry(), EndpointRegistry(), DNSTransportRegistry(), ServiceRegistry())
-	setGlobalCtx(ctx)
 	return &Core{
+		ctx:       ctx,
 		isRunning: false,
 		instance:  nil,
 	}
 }
 
 func (c *Core) GetCtx() context.Context {
-	return getGlobalCtx()
+	c.access.RLock()
+	defer c.access.RUnlock()
+	if c.ctx == nil {
+		return context.Background()
+	}
+	return c.ctx
 }
 
 func (c *Core) GetInstance() *Box {
@@ -88,9 +87,9 @@ func (c *Core) Start(sbConfig []byte) error {
 	}
 
 	ctx = service.ContextWith(ctx, c)
-	setGlobalCtx(ctx)
 
 	c.access.Lock()
+	c.ctx = ctx
 	c.instance = instance
 	c.isRunning = true
 	c.inboundManager = instance.Inbound()
@@ -129,21 +128,6 @@ func (c *Core) IsRunning() bool {
 	return c.isRunning
 }
 
-func getGlobalCtx() context.Context {
-	globalCtx.RLock()
-	defer globalCtx.RUnlock()
-	if globalCtx.value == nil {
-		return context.Background()
-	}
-	return globalCtx.value
-}
-
-func setGlobalCtx(ctx context.Context) {
-	globalCtx.Lock()
-	globalCtx.value = ctx
-	globalCtx.Unlock()
-}
-
 func (c *Core) runtime() (coreRuntime, bool) {
 	c.access.RLock()
 	defer c.access.RUnlock()
@@ -151,7 +135,7 @@ func (c *Core) runtime() (coreRuntime, bool) {
 		return coreRuntime{}, false
 	}
 	return coreRuntime{
-		ctx:             c.GetCtx(),
+		ctx:             c.ctx,
 		inboundManager:  c.inboundManager,
 		outboundManager: c.outboundManager,
 		serviceManager:  c.serviceManager,

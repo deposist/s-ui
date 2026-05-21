@@ -26,6 +26,14 @@ var (
 )
 
 type StatsService struct {
+	Runtime *Runtime
+}
+
+func (s *StatsService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
 }
 
 type trafficDelta struct {
@@ -41,10 +49,11 @@ type clientTrafficDelta struct {
 }
 
 func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
-	if corePtr == nil || !corePtr.IsRunning() {
+	coreInstance := s.runtime().Core()
+	if coreInstance == nil || !coreInstance.IsRunning() {
 		return nil
 	}
-	box := corePtr.GetInstance()
+	box := coreInstance.GetInstance()
 	if box == nil {
 		return nil
 	}

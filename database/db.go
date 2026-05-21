@@ -72,7 +72,7 @@ func OpenDB(dbPath string) error {
 	if strings.Contains(dbPath, "?") {
 		sep = "&"
 	}
-	dsn := dbPath + sep + "_busy_timeout=10000&_journal_mode=WAL"
+	dsn := dbPath + sep + "_busy_timeout=10000&_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on"
 	db, err = gorm.Open(sqlite.Open(dsn), c)
 	if err != nil {
 		return err
@@ -127,6 +127,9 @@ func InitDB(dbPath string) error {
 	if err != nil {
 		return err
 	}
+	if err := ensureNoTLSRow(); err != nil {
+		return err
+	}
 	if err := ensureIndexes(); err != nil {
 		return err
 	}
@@ -178,6 +181,10 @@ func ensureDefaultOutbound(store defaultOutboundStore) error {
 		{Type: "direct", Tag: "direct", Options: json.RawMessage(`{}`)},
 	}
 	return store.Create(&defaultOutbound)
+}
+
+func ensureNoTLSRow() error {
+	return db.Exec("INSERT OR IGNORE INTO tls(id, name, server, client) VALUES(0, ?, ?, ?)", "__none__", []byte("{}"), []byte("{}")).Error
 }
 
 func ensureIndexes() error {

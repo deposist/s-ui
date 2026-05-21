@@ -15,6 +15,14 @@ import (
 )
 
 type UserService struct {
+	Runtime *Runtime
+}
+
+func (s *UserService) runtime() *Runtime {
+	if s != nil {
+		return runtimeOrDefault(s.Runtime)
+	}
+	return DefaultRuntime()
 }
 
 const (
@@ -256,7 +264,10 @@ func (s *UserService) SetTokenEnabled(id string, enabled bool) error {
 }
 
 func (s *UserService) RecordTokenUse(id uint, ip string) error {
-	getTokenUseDebouncer().Record(id, ip, time.Now().Unix())
+	debouncer := s.runtime().tokenUseDebouncer()
+	if debouncer != nil {
+		debouncer.Record(id, ip, time.Now().Unix())
+	}
 	return nil
 }
 

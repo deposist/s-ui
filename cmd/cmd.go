@@ -16,6 +16,7 @@ func ParseCmd() {
 
 	adminCmd := flag.NewFlagSet("admin", flag.ExitOnError)
 	settingCmd := flag.NewFlagSet("setting", flag.ExitOnError)
+	migrateCmd := flag.NewFlagSet("migrate", flag.ExitOnError)
 
 	var username string
 	var password string
@@ -25,12 +26,14 @@ func ParseCmd() {
 	var subPath string
 	var reset bool
 	var show bool
+	var repairFKOrphans bool
 	settingCmd.BoolVar(&reset, "reset", false, "reset all settings")
 	settingCmd.BoolVar(&show, "show", false, "show current settings")
 	settingCmd.IntVar(&port, "port", 0, "set panel port")
 	settingCmd.StringVar(&path, "path", "", "set panel path")
 	settingCmd.IntVar(&subPort, "subPort", 0, "set sub port")
 	settingCmd.StringVar(&subPath, "subPath", "", "set sub path")
+	migrateCmd.BoolVar(&repairFKOrphans, "repair-fk-orphans", false, "delete safe foreign-key orphans during migration")
 
 	adminCmd.BoolVar(&show, "show", false, "show first admin credentials")
 	adminCmd.BoolVar(&reset, "reset", false, "reset first admin credentials")
@@ -43,6 +46,7 @@ func ParseCmd() {
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("    admin          set/reset/show first admin credentials")
+		fmt.Println("    decrypt-backup decrypt Telegram backup envelope")
 		fmt.Println("    import-xui     import configuration from a 3x-ui database")
 		fmt.Println("    sync-xui       run or list saved 3x-ui sync profiles")
 		fmt.Println("    uri            Show panel URI")
@@ -52,6 +56,8 @@ func ParseCmd() {
 		adminCmd.Usage()
 		fmt.Println()
 		settingCmd.Usage()
+		fmt.Println()
+		migrateCmd.Usage()
 	}
 
 	flag.Parse()
@@ -90,13 +96,20 @@ func ParseCmd() {
 		getPanelURI()
 
 	case "migrate":
-		if err := migration.MigrateDb(); err != nil {
+		if err := migrateCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Println(err)
+			return
+		}
+		if err := migration.MigrateDbWithOptions(migration.Options{RepairForeignKeyOrphans: repairFKOrphans}); err != nil {
 			fmt.Println("migrate failed:", err)
 			os.Exit(1)
 		}
 
 	case "import-xui":
 		os.Exit(runImportXui(os.Args[2:], os.Stdout))
+
+	case "decrypt-backup":
+		os.Exit(runDecryptBackup(os.Args[2:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
 
 	case "sync-xui":
 		runSyncXuiFromMain()

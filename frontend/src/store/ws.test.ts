@@ -14,7 +14,7 @@ vi.mock('@/store/modules/data', () => ({
 
 import axios from 'axios'
 import { clearCSRFToken, getCSRFToken } from './csrf'
-import { reconnectDelayForRetry, WsLike, WsRuntime } from './ws'
+import { reconnectDelayForRetry, WsLike, WsRuntime, wsProtocolsForToken } from './ws'
 
 class FakeSocket implements WsLike {
   onopen: ((event?: any) => void) | null = null
@@ -111,6 +111,10 @@ describe('WsRuntime fallback', () => {
     vi.mocked(Math.random).mockReturnValue(0.5)
     expect(reconnectDelayForRetry(0)).toBe(375)
     expect(reconnectDelayForRetry(1)).toBe(625)
+  })
+
+  it('formats websocket protocols with explicit token prefix', () => {
+    expect(wsProtocolsForToken('abc123')).toEqual(['sui.realtime', 'sui.token.abc123'])
   })
 
   it('clears csrf token after session-rotated websocket close', async () => {

@@ -23,6 +23,11 @@ const (
 	auditEndpointRateLimitMax     = 60
 	auditEndpointRateLimitMaxKeys = 4096
 	auditEndpointRateLimitGCEvery = 1 * time.Minute
+
+	telegramBackupManualRateLimitWindow  = 1 * time.Minute
+	telegramBackupManualRateLimitMax     = 3
+	telegramBackupManualRateLimitMaxKeys = 4096
+	telegramBackupManualRateLimitGCEvery = 1 * time.Minute
 )
 
 type loginAttempt struct {
@@ -43,6 +48,11 @@ type auditEndpointAttempt struct {
 	updatedAt time.Time
 }
 
+type telegramBackupManualAttempt struct {
+	timestamps []time.Time
+	updatedAt  time.Time
+}
+
 var (
 	loginRateLimitMu sync.Mutex
 	loginRateLimits  = map[string]loginAttempt{}
@@ -55,6 +65,10 @@ var (
 	auditEndpointRateLimitMu sync.Mutex
 	auditEndpointRateLimits  = map[string]auditEndpointAttempt{}
 	auditEndpointRateLimitGC time.Time
+
+	telegramBackupManualRateLimitMu sync.Mutex
+	telegramBackupManualRateLimits  = map[string]telegramBackupManualAttempt{}
+	telegramBackupManualRateLimitGC time.Time
 )
 
 // gcLoginRateLimitsLocked drops stale entries. Caller must hold loginRateLimitMu.
@@ -167,6 +181,16 @@ func wsHandshakeRateLimitKey(endpoint string, ip string) string {
 	return endpoint + "|" + ip
 }
 
+func auditEndpointRateLimitKey(actor string, ip string) string {
+	if actor == "" {
+		actor = "unknown"
+	}
+	if ip == "" {
+		ip = "unknown"
+	}
+	return actor + "|" + ip
+}
+
 func gcAuditEndpointRateLimitsLocked(now time.Time) {
 	if now.Sub(auditEndpointRateLimitGC) < auditEndpointRateLimitGCEvery && len(auditEndpointRateLimits) < auditEndpointRateLimitMaxKeys {
 		return
@@ -205,4 +229,66 @@ func checkAuditEndpointRateLimit(key string) error {
 	attempt.updatedAt = now
 	auditEndpointRateLimits[key] = attempt
 	return nil
+}
+
+func gcTelegramBackupManualRateLimitsLocked(now time.Time) {
+	if now.Sub(telegramBackupManualRateLimitGC) < telegramBackupManualRateLimitGCEvery && len(telegramBackupManualRateLimits) < telegramBackupManualRateLimitMaxKeys {
+		return
+	}
+	telegramBackupManualRateLimitGC = now
+	for key, attempt := range telegramBackupManualRateLimits {
+		filtered := pruneTelegramBackupManualTimestamps(attempt.timestamps, now)
+		if len(filtered) == 0 || now.Sub(attempt.updatedAt) > telegramBackupManualRateLimitWindow {
+			delete(telegramBackupManualRateLimits, key)
+			continue
+		}
+		attempt.timestamps = filtered
+		telegramBackupManualRateLimits[key] = attempt
+	}
+	if len(telegramBackupManualRateLimits) > telegramBackupManualRateLimitMaxKeys {
+		for key := range telegramBackupManualRateLimits {
+			delete(telegramBackupManualRateLimits, key)
+			if len(telegramBackupManualRateLimits) <= telegramBackupManualRateLimitMaxKeys {
+				break
+			}
+		}
+	}
+}
+
+func checkTelegramBackupManualRateLimit(key string) (time.Duration, error) {
+	telegramBackupManualRateLimitMu.Lock()
+	defer telegramBackupManualRateLimitMu.Unlock()
+	now := time.Now()
+	gcTelegramBackupManualRateLimitsLocked(now)
+	attempt := telegramBackupManualRateLimits[key]
+	attempt.timestamps = pruneTelegramBackupManualTimestamps(attempt.timestamps, now)
+	if len(attempt.timestamps) >= telegramBackupManualRateLimitMax {
+		retryAfter := attempt.timestamps[0].Add(telegramBackupManualRateLimitWindow).Sub(now)
+		if retryAfter < time.Second {
+			retryAfter = time.Second
+		}
+		attempt.updatedAt = now
+		telegramBackupManualRateLimits[key] = attempt
+		return retryAfter, common.NewError("too many telegram backup requests")
+	}
+	attempt.timestamps = append(attempt.timestamps, now)
+	attempt.updatedAt = now
+	telegramBackupManualRateLimits[key] = attempt
+	return 0, nil
+}
+
+func pruneTelegramBackupManualTimestamps(timestamps []time.Time, now time.Time) []time.Time {
+	if len(timestamps) == 0 {
+		return timestamps
+	}
+	cutoff := now.Add(-telegramBackupManualRateLimitWindow)
+	first := 0
+	for first < len(timestamps) && !timestamps[first].After(cutoff) {
+		first++
+	}
+	if first == 0 {
+		return timestamps
+	}
+	copy(timestamps, timestamps[first:])
+	return timestamps[:len(timestamps)-first]
 }
